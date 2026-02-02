@@ -1,34 +1,50 @@
-//! `rugix-pki` - CMS signature creation and verification library.
+//! CMS signature creation and verification library.
 //!
-//! This library provides high-level operations for creating and verifying CMS
-//! (Cryptographic Message Syntax) signatures, as defined in RFC 5652.
+//! This library provides high-level operations for creating and verifying [CMS
+//! (Cryptographic Message Syntax) signatures](https://datatracker.ietf.org/doc/html/rfc5652).
 //!
 //! # Features
 //!
 //! - Create CMS SignedData structures with embedded content
 //! - Verify CMS signatures against a trusted root certificate
 //! - Certificate chain validation
-//! - Support for ECDSA (P-256, P-384), RSA PKCS#1 v1.5, and RSA-PSS signatures
+//! - Support for ECDSA (P-256, P-384), RSA PKCS#1 v1.5, RSA-PSS, and Ed25519 signatures
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! use rugix_pki::{CmsSigner, CmsVerifier};
+//! #
+//! # let ca_key = rcgen::KeyPair::generate().unwrap();
+//! # let ca_cert = rcgen::CertificateParams::new(["Test CA".to_string()])
+//! #    .unwrap()
+//! #    .self_signed(&ca_key)
+//! #    .unwrap();
+//! # let signer_key = rcgen::KeyPair::generate().unwrap();
+//! # let signer_cert = rcgen::CertificateParams::new(["Test Signer".to_string()])
+//! #    .unwrap()
+//! #    .signed_by(&signer_key, &ca_cert, &ca_key)
+//! #    .unwrap();
+//! # let signer_cert_pem = signer_cert.pem();
+//! # let signer_key_pem = signer_key.serialize_pem();
+//! # let signer_cert_pem = signer_cert_pem.as_bytes();
+//! # let signer_key_pem = signer_key_pem.as_bytes();
+//! # let ca_cert_pem = ca_cert.pem();
+//! # let ca_cert_pem = ca_cert_pem.as_bytes();
 //!
-//! // Sign data
-//! let signer = CmsSigner::new(cert_pem, key_pem)?;
-//! let signature = signer.sign(data)?;
+//! let signer = CmsSigner::new(signer_cert_pem, signer_key_pem).unwrap();
+//! let signature = signer.sign(b"Hello, World!").unwrap();
 //!
-//! // Verify signature
-//! let verifier = CmsVerifier::new(root_cert_pem)?;
-//! let extracted_data = verifier.verify(&signature)?;
+//! let verifier = CmsVerifier::new(ca_cert_pem).unwrap();
+//! let result = verifier.verify(&signature).unwrap();
+//! assert_eq!(result.content, b"Hello, World!");
 //! ```
 
 mod pem;
 mod sign;
 mod verify;
 
-pub use sign::{CmsSigner, RsaHashAlgorithm, RsaSignatureMode, SignerBuilder};
+pub use sign::{CmsSigner, CmsSignerBuilder, RsaHashAlgorithm, RsaSignatureMode};
 pub use verify::{CmsVerifier, VerificationResult};
 
 use thiserror::Error;
@@ -117,4 +133,38 @@ pub enum SignatureAlgorithm {
     RsaPssSha512,
     /// Ed25519 (EdDSA with Curve25519).
     Ed25519,
+}
+
+/// RSA-PSS parameters as defined in RFC 4055.
+#[derive(Clone, Debug, Eq, PartialEq, der::Sequence)]
+pub(crate) struct RsaPssParams {
+    #[asn1(context_specific = "0", tag_mode = "EXPLICIT", optional = "true")]
+    pub hash_algorithm: Option<spki::AlgorithmIdentifierOwned>,
+    #[asn1(context_specific = "1", tag_mode = "EXPLICIT", optional = "true")]
+    pub mask_gen_algorithm: Option<spki::AlgorithmIdentifierOwned>,
+    #[asn1(context_specific = "2", tag_mode = "EXPLICIT", optional = "true")]
+    pub salt_length: Option<u8>,
+    #[asn1(context_specific = "3", tag_mode = "EXPLICIT", optional = "true")]
+    pub trailer_field: Option<u8>,
+}
+
+/// Compute a digest of the given content using the specified algorithm.
+///
+/// Returns `None` if the digest algorithm OID is not supported.
+pub(crate) fn compute_digest(
+    content: &[u8],
+    digest_oid: &const_oid::ObjectIdentifier,
+) -> Option<Vec<u8>> {
+    use aws_lc_rs::digest::{SHA256, SHA384, SHA512, digest};
+    use const_oid::db::rfc5912::{ID_SHA_256, ID_SHA_384, ID_SHA_512};
+
+    if *digest_oid == ID_SHA_256 {
+        Some(digest(&SHA256, content).as_ref().to_vec())
+    } else if *digest_oid == ID_SHA_384 {
+        Some(digest(&SHA384, content).as_ref().to_vec())
+    } else if *digest_oid == ID_SHA_512 {
+        Some(digest(&SHA512, content).as_ref().to_vec())
+    } else {
+        None
+    }
 }

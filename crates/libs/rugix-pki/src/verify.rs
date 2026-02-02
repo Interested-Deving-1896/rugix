@@ -1,43 +1,34 @@
 //! CMS signature verification with certificate chain validation.
 
-use aws_lc_rs::digest::{digest, SHA256, SHA384, SHA512};
 use aws_lc_rs::signature::{
-    UnparsedPublicKey, ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ED25519,
-    RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512,
-    RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512,
+    ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ED25519, RSA_PKCS1_2048_8192_SHA256,
+    RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256,
+    RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, UnparsedPublicKey,
 };
 use cms::cert::CertificateChoices;
 use cms::content_info::ContentInfo;
 use cms::signed_data::{SignedData, SignerIdentifier};
-use const_oid::db::rfc5911::{ID_MESSAGE_DIGEST, ID_SIGNED_DATA};
+use const_oid::ObjectIdentifier;
+use const_oid::db::rfc5911::{ID_CONTENT_TYPE, ID_DATA, ID_MESSAGE_DIGEST, ID_SIGNED_DATA};
 use const_oid::db::rfc5912::{
     ECDSA_WITH_SHA_256, ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, ID_SHA_256, ID_SHA_384, ID_SHA_512,
     RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION, SHA_384_WITH_RSA_ENCRYPTION,
     SHA_512_WITH_RSA_ENCRYPTION,
 };
-use const_oid::ObjectIdentifier;
 use der::asn1::OctetString;
-use der::{Decode, Encode, Tag};
+use der::{Decode, Encode, Tag, Tagged};
+use rustls_pki_types::{CertificateDer, UnixTime};
+use webpki::{EndEntityCert, anchor_from_trusted_cert};
 use x509_cert::Certificate;
+use x509_cert::ext::pkix::{BasicConstraints, KeyUsage as X509KeyUsage};
 
-use crate::{pem, PkiError, PkiResult};
+use crate::{PkiError, PkiResult, RsaPssParams, compute_digest, pem};
 
 /// OID for RSA-PSS signature algorithm (1.2.840.113549.1.1.10)
 const ID_RSASSA_PSS: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
 
 /// OID for Ed25519 (1.3.101.112) - RFC 8410
 const ID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
-
-/// Result of successful CMS verification.
-#[derive(Debug)]
-pub struct VerificationResult {
-    /// The extracted encapsulated content.
-    pub content: Vec<u8>,
-    /// The signer certificate (DER-encoded).
-    pub signer_certificate: Vec<u8>,
-    /// The certificate chain from signer to root (inclusive, DER-encoded).
-    pub certificate_chain: Vec<Vec<u8>>,
-}
 
 /// A CMS verifier that validates signatures against a trusted root certificate.
 pub struct CmsVerifier {
@@ -65,6 +56,7 @@ impl CmsVerifier {
     /// Verify a DER-encoded CMS signature.
     ///
     /// This method:
+    ///
     /// 1. Parses the CMS structure
     /// 2. Extracts and validates the certificate chain
     /// 3. Verifies the signature
@@ -105,18 +97,16 @@ impl CmsVerifier {
 
         let embedded_certs = extract_certificates(&signed_data)?;
         let signer_cert = find_signer_certificate(&embedded_certs, &signer_info.sid)?;
-        let chain = build_certificate_chain(signer_cert, &embedded_certs, &self.root_cert)?;
-
-        verify_cms_signature(&content, signer_info, signer_cert)?;
 
         let signer_cert_der = signer_cert
             .to_der()
             .map_err(|e| PkiError::DerParse(e.to_string()))?;
-        let chain_der: Vec<Vec<u8>> = chain
-            .iter()
-            .map(|c| c.to_der())
-            .collect::<Result<_, _>>()
-            .map_err(|e| PkiError::DerParse(e.to_string()))?;
+
+        validate_end_entity_key_usage(signer_cert)?;
+        let chain_der =
+            validate_certificate_chain(&signer_cert_der, &embedded_certs, &self.root_cert)?;
+
+        verify_cms_signature(&content, signer_info, signer_cert)?;
 
         Ok(VerificationResult {
             content,
@@ -134,6 +124,17 @@ impl CmsVerifier {
         }
         Ok(())
     }
+}
+
+/// Result of successful CMS verification.
+#[derive(Debug)]
+pub struct VerificationResult {
+    /// The extracted encapsulated content.
+    pub content: Vec<u8>,
+    /// The signer certificate (DER-encoded).
+    pub signer_certificate: Vec<u8>,
+    /// The certificate chain from signer to root (inclusive, DER-encoded).
+    pub certificate_chain: Vec<Vec<u8>>,
 }
 
 /// Extract all certificates from a SignedData structure.
@@ -193,101 +194,113 @@ fn find_signer_certificate<'a>(
 }
 
 /// Build the certificate chain from signer to root.
-fn build_certificate_chain<'a>(
-    signer_cert: &'a Certificate,
-    embedded_certs: &'a [Certificate],
-    root_cert: &'a Certificate,
-) -> PkiResult<Vec<&'a Certificate>> {
-    let mut chain = vec![signer_cert];
-    let mut current_cert = signer_cert;
-
-    const MAX_CHAIN_LENGTH: usize = 10;
-
-    for _ in 0..MAX_CHAIN_LENGTH {
-        if is_issued_by(current_cert, root_cert) {
-            verify_certificate_signature(current_cert, root_cert)?;
-            chain.push(root_cert);
-            return Ok(chain);
-        }
-
-        if is_self_signed(current_cert) {
-            return Err(PkiError::ChainValidation(
-                "chain ends at self-signed certificate that is not the trusted root".into(),
-            ));
-        }
-
-        let issuer = find_issuer_certificate(current_cert, embedded_certs)?;
-        verify_certificate_signature(current_cert, issuer)?;
-
-        chain.push(issuer);
-        current_cert = issuer;
-    }
-
-    Err(PkiError::ChainValidation(format!(
-        "certificate chain too long (max {} certificates)",
-        MAX_CHAIN_LENGTH
-    )))
-}
-
-/// Check if a certificate is issued by another certificate.
-fn is_issued_by(cert: &Certificate, issuer: &Certificate) -> bool {
-    cert.tbs_certificate.issuer == issuer.tbs_certificate.subject
-}
-
-/// Check if a certificate is self-signed.
-fn is_self_signed(cert: &Certificate) -> bool {
-    cert.tbs_certificate.issuer == cert.tbs_certificate.subject
-}
-
-/// Find the issuer certificate for a given certificate.
-fn find_issuer_certificate<'a>(
-    cert: &Certificate,
-    candidates: &'a [Certificate],
-) -> PkiResult<&'a Certificate> {
-    for candidate in candidates {
-        if is_issued_by(cert, candidate) {
-            return Ok(candidate);
-        }
-    }
-    Err(PkiError::ChainValidation(format!(
-        "issuer certificate not found for subject: {:?}",
-        cert.tbs_certificate.subject
-    )))
-}
-
-/// Verify that a certificate's signature is valid given the issuer's public key.
-fn verify_certificate_signature(cert: &Certificate, issuer: &Certificate) -> PkiResult<()> {
-    let tbs_der = cert
-        .tbs_certificate
+fn validate_certificate_chain(
+    signer_cert_der: &[u8],
+    embedded_certs: &[Certificate],
+    root_cert: &Certificate,
+) -> PkiResult<Vec<Vec<u8>>> {
+    let root_der = root_cert
         .to_der()
-        .map_err(|e| PkiError::ChainValidation(format!("failed to encode TBS: {}", e)))?;
+        .map_err(|e| PkiError::DerParse(e.to_string()))?;
 
-    let signature_bytes = cert
-        .signature
-        .as_bytes()
-        .ok_or_else(|| PkiError::ChainValidation("certificate signature has unused bits".into()))?;
+    let root_cert_der = CertificateDer::from_slice(&root_der);
+    let trust_anchor = anchor_from_trusted_cert(&root_cert_der)
+        .map_err(|e| PkiError::ChainValidation(format!("invalid trust anchor: {e:?}")))?;
 
-    let issuer_spki = &issuer.tbs_certificate.subject_public_key_info;
-    let public_key_der = issuer_spki
-        .subject_public_key
-        .as_bytes()
-        .ok_or_else(|| PkiError::ChainValidation("public key has unused bits".into()))?;
+    let signer_cert_der = CertificateDer::from_slice(signer_cert_der);
+    let end_entity = EndEntityCert::try_from(&signer_cert_der)
+        .map_err(|e| PkiError::ChainValidation(format!("invalid signer certificate: {e:?}")))?;
 
-    let sig_alg = &cert.signature_algorithm.oid;
+    let intermediates_der = collect_intermediate_certs(embedded_certs, signer_cert_der.as_ref())?;
+    let intermediate_refs: Vec<CertificateDer<'_>> = intermediates_der
+        .iter()
+        .map(|der| CertificateDer::from_slice(der))
+        .collect();
 
-    verify_signature_with_algorithm(
-        &tbs_der,
-        signature_bytes,
-        public_key_der,
-        sig_alg,
-        issuer_spki,
-    )
-    .map_err(|e| PkiError::ChainValidation(format!("certificate signature invalid: {}", e)))
+    let time = UnixTime::now();
+
+    let usage = webpki::KeyUsage::required_if_present(
+        const_oid::db::rfc5280::ID_KP_CODE_SIGNING.as_bytes(),
+    );
+
+    let trust_anchors = [trust_anchor];
+    let verified_path = end_entity
+        .verify_for_usage(
+            webpki::ALL_VERIFICATION_ALGS,
+            &trust_anchors,
+            &intermediate_refs,
+            time,
+            usage,
+            None,
+            None,
+        )
+        .map_err(|e| PkiError::ChainValidation(format!("chain validation failed: {e:?}")))?;
+
+    let mut chain = Vec::new();
+    chain.push(signer_cert_der.to_vec());
+
+    for intermediate in verified_path.intermediate_certificates() {
+        chain.push(intermediate.der().as_ref().to_vec());
+    }
+
+    chain.push(root_der);
+
+    Ok(chain)
+}
+
+/// Collect intermediate certificates from the embedded certificates.
+fn collect_intermediate_certs(
+    embedded_certs: &[Certificate],
+    signer_cert_der: &[u8],
+) -> PkiResult<Vec<Vec<u8>>> {
+    let mut intermediates = Vec::new();
+    for cert in embedded_certs {
+        let der = cert
+            .to_der()
+            .map_err(|e| PkiError::DerParse(e.to_string()))?;
+        if der == signer_cert_der {
+            continue;
+        }
+        if is_ca_certificate(cert)? {
+            intermediates.push(der);
+        }
+    }
+    Ok(intermediates)
+}
+
+/// Check if a certificate is a CA certificate.
+fn is_ca_certificate(cert: &Certificate) -> PkiResult<bool> {
+    match cert.tbs_certificate.get::<BasicConstraints>() {
+        Ok(Some((_, constraints))) => Ok(constraints.ca),
+        Ok(None) => Ok(false),
+        Err(e) => Err(PkiError::ChainValidation(format!(
+            "failed to decode basic constraints: {e}"
+        ))),
+    }
+}
+
+/// Validate that the end-entity certificate is valid for digital signatures.
+fn validate_end_entity_key_usage(cert: &Certificate) -> PkiResult<()> {
+    match cert.tbs_certificate.get::<X509KeyUsage>() {
+        Ok(Some((_critical, usage))) => {
+            if !usage.digital_signature() {
+                return Err(PkiError::ChainValidation(
+                    "end-entity certificate not valid for digital signatures".into(),
+                ));
+            }
+            Ok(())
+        }
+        Ok(None) => Ok(()),
+        Err(e) => Err(PkiError::ChainValidation(format!(
+            "failed to decode key usage: {e}"
+        ))),
+    }
 }
 
 /// Verify the CMS signature on the content.
 ///
 /// This handles both cases:
+/// 
 /// - Without signed attributes: signature is over the content directly
 /// - With signed attributes: signature is over the DER-encoded signed attributes
 fn verify_cms_signature(
@@ -308,15 +321,21 @@ fn verify_cms_signature(
     let data_to_verify = if let Some(signed_attrs) = &signer_info.signed_attrs {
         // When signed attributes are present, the signature is over the DER encoding
         // of the signed attributes as a SET (not the IMPLICIT [0] used in the CMS structure)
-        let content_digest =
-            compute_digest(content, digest_alg).map_err(PkiError::SignatureVerification)?;
+        let content_digest = compute_digest(content, digest_alg).ok_or_else(|| {
+            PkiError::SignatureVerification(format!("unsupported digest algorithm: {}", digest_alg))
+        })?;
 
         verify_message_digest_attribute(signed_attrs, &content_digest)
             .map_err(PkiError::SignatureVerification)?;
 
+        verify_content_type_attribute(signed_attrs, ID_DATA)
+            .map_err(PkiError::SignatureVerification)?;
+
         encode_signed_attrs_as_set(signed_attrs).map_err(PkiError::SignatureVerification)?
     } else {
-        content.to_vec()
+        return Err(PkiError::SignatureVerification(
+            "missing signed attributes".into(),
+        ));
     };
 
     verify_signature_with_algorithm_params(
@@ -330,39 +349,73 @@ fn verify_cms_signature(
     .map_err(PkiError::SignatureVerification)
 }
 
-/// Compute the digest of content using the specified algorithm.
-fn compute_digest(content: &[u8], digest_alg: &ObjectIdentifier) -> Result<Vec<u8>, String> {
-    if *digest_alg == ID_SHA_256 {
-        Ok(digest(&SHA256, content).as_ref().to_vec())
-    } else if *digest_alg == ID_SHA_384 {
-        Ok(digest(&SHA384, content).as_ref().to_vec())
-    } else if *digest_alg == ID_SHA_512 {
-        Ok(digest(&SHA512, content).as_ref().to_vec())
-    } else {
-        Err(format!("unsupported digest algorithm: {}", digest_alg))
-    }
-}
-
 /// Verify the message-digest attribute matches the content digest.
 fn verify_message_digest_attribute(
     signed_attrs: &cms::signed_data::SignedAttributes,
     expected_digest: &[u8],
 ) -> Result<(), String> {
+    let mut found = false;
     for attr in signed_attrs.iter() {
         if attr.oid == ID_MESSAGE_DIGEST {
+            if found {
+                return Err("message-digest attribute appears multiple times".to_owned());
+            }
+            let mut value_found = false;
             for value in attr.values.iter() {
                 if let Ok(digest) = value.decode_as::<OctetString>() {
+                    value_found = true;
                     if digest.as_bytes() == expected_digest {
-                        return Ok(());
+                        found = true;
                     } else {
-                        return Err("message-digest attribute does not match content".into());
+                        return Err("message-digest attribute does not match content".to_owned());
                     }
                 }
             }
-            return Err("message-digest attribute has invalid format".into());
+            if !value_found {
+                return Err("message-digest attribute has invalid format".to_owned());
+            }
         }
     }
-    Err("message-digest attribute not found in signed attributes".into())
+    if found {
+        Ok(())
+    } else {
+        Err("message-digest attribute not found in signed attributes".to_owned())
+    }
+}
+
+/// Verify the content-type attribute matches the expected content type.
+fn verify_content_type_attribute(
+    signed_attrs: &cms::signed_data::SignedAttributes,
+    expected_content_type: ObjectIdentifier,
+) -> Result<(), String> {
+    let mut found = false;
+    for attr in signed_attrs.iter() {
+        if attr.oid == ID_CONTENT_TYPE {
+            if found {
+                return Err("content-type attribute appears multiple times".into());
+            }
+            let mut value_found = false;
+            for value in attr.values.iter() {
+                let oid = value
+                    .decode_as::<ObjectIdentifier>()
+                    .map_err(|_| "content-type attribute has invalid format")?;
+                value_found = true;
+                if oid == expected_content_type {
+                    found = true;
+                } else {
+                    return Err("content-type attribute does not match".into());
+                }
+            }
+            if !value_found {
+                return Err("content-type attribute has no values".into());
+            }
+        }
+    }
+    if found {
+        Ok(())
+    } else {
+        Err("content-type attribute not found in signed attributes".into())
+    }
 }
 
 /// Re-encode signed attributes as a SET instead of IMPLICIT [0].
@@ -384,18 +437,8 @@ fn encode_signed_attrs_as_set(
     Ok(result)
 }
 
-/// Verify a signature using the appropriate algorithm.
-fn verify_signature_with_algorithm(
-    data: &[u8],
-    signature: &[u8],
-    public_key: &[u8],
-    sig_alg_oid: &ObjectIdentifier,
-    spki: &x509_cert::spki::SubjectPublicKeyInfoOwned,
-) -> Result<(), String> {
-    verify_signature_with_algorithm_params(data, signature, public_key, sig_alg_oid, spki, None)
-}
-
-/// Verify a signature using the appropriate algorithm, with optional signature algorithm parameters.
+/// Verify a signature using the appropriate algorithm, with optional signature algorithm
+/// parameters.
 fn verify_signature_with_algorithm_params(
     data: &[u8],
     signature: &[u8],
@@ -457,7 +500,7 @@ fn verify_signature_with_algorithm_params(
                 ));
             };
 
-        // RSA verification requires the full SPKI DER, not just the key bytes
+        // RSA verification requires the full SPKI DER, not just the key bytes.
         let spki_der = spki
             .to_der()
             .map_err(|e| format!("failed to encode SPKI: {}", e))?;
@@ -487,25 +530,74 @@ fn verify_signature_with_algorithm_params(
 fn determine_rsa_pss_algorithm(
     sig_alg_params: Option<&der::Any>,
 ) -> Result<&'static dyn aws_lc_rs::signature::VerificationAlgorithm, String> {
-    if let Some(params) = sig_alg_params
-        && let Ok(params_bytes) = params.to_der()
-    {
-        let sha384_bytes = ID_SHA_384.as_bytes();
-        let sha512_bytes = ID_SHA_512.as_bytes();
+    let params = sig_alg_params.ok_or("missing RSA-PSS parameters")?;
+    let pss_params = params
+        .decode_as::<RsaPssParams>()
+        .map_err(|e| format!("failed to decode RSA-PSS parameters: {e}"))?;
 
-        if contains_subsequence(&params_bytes, sha512_bytes) {
-            return Ok(&RSA_PSS_2048_8192_SHA512);
-        } else if contains_subsequence(&params_bytes, sha384_bytes) {
-            return Ok(&RSA_PSS_2048_8192_SHA384);
-        }
+    let hash_oid = extract_pss_hash_oid(pss_params.hash_algorithm.as_ref())?;
+    let mgf_oid = extract_pss_mgf_hash_oid(pss_params.mask_gen_algorithm.as_ref())?;
+
+    if hash_oid != mgf_oid {
+        return Err("RSA-PSS parameters require matching hash and MGF1 hash".into());
     }
 
-    Ok(&RSA_PSS_2048_8192_SHA256)
+    let salt_length = pss_params
+        .salt_length
+        .ok_or("RSA-PSS parameters missing salt length")?;
+
+    let (expected_salt_len, algorithm) = if hash_oid == ID_SHA_256 {
+        (32u8, &RSA_PSS_2048_8192_SHA256)
+    } else if hash_oid == ID_SHA_384 {
+        (48u8, &RSA_PSS_2048_8192_SHA384)
+    } else if hash_oid == ID_SHA_512 {
+        (64u8, &RSA_PSS_2048_8192_SHA512)
+    } else {
+        return Err(format!("unsupported RSA-PSS hash algorithm: {}", hash_oid));
+    };
+
+    if salt_length != expected_salt_len {
+        return Err(format!("unsupported RSA-PSS salt length: {}", salt_length));
+    }
+
+    if let Some(trailer) = pss_params.trailer_field
+        && trailer != 1
+    {
+        return Err(format!("unsupported RSA-PSS trailer field: {}", trailer));
+    }
+
+    Ok(algorithm)
 }
 
-/// Check if a byte slice contains a subsequence.
-fn contains_subsequence(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
+/// Extract the hash OID from the hash algorithm in RSA-PSS.
+fn extract_pss_hash_oid(
+    hash_alg: Option<&spki::AlgorithmIdentifierOwned>,
+) -> Result<ObjectIdentifier, String> {
+    let alg = hash_alg.ok_or("RSA-PSS parameters missing hash algorithm")?;
+    let params = alg
+        .parameters
+        .as_ref()
+        .ok_or("RSA-PSS hash algorithm parameters missing")?;
+    if params.tag() != Tag::Null {
+        return Err("RSA-PSS hash algorithm parameters must be NULL".into());
+    }
+    Ok(alg.oid)
+}
+
+/// Extract the hash OID from the MGF1 parameters in RSA-PSS.
+fn extract_pss_mgf_hash_oid(
+    mgf_alg: Option<&spki::AlgorithmIdentifierOwned>,
+) -> Result<ObjectIdentifier, String> {
+    let mgf = mgf_alg.ok_or("RSA-PSS parameters missing MGF1")?;
+    if mgf.oid != const_oid::db::rfc5912::ID_MGF_1 {
+        return Err("RSA-PSS mask generation algorithm must be MGF1".into());
+    }
+    let params = mgf
+        .parameters
+        .as_ref()
+        .ok_or("RSA-PSS MGF1 parameters missing")?;
+    let hash_alg = params
+        .decode_as::<spki::AlgorithmIdentifierOwned>()
+        .map_err(|e| format!("failed to decode MGF1 hash: {e}"))?;
+    extract_pss_hash_oid(Some(&hash_alg))
 }
