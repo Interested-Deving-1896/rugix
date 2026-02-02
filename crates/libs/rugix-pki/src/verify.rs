@@ -300,7 +300,7 @@ fn validate_end_entity_key_usage(cert: &Certificate) -> PkiResult<()> {
 /// Verify the CMS signature on the content.
 ///
 /// This handles both cases:
-/// 
+///
 /// - Without signed attributes: signature is over the content directly
 /// - With signed attributes: signature is over the DER-encoded signed attributes
 fn verify_cms_signature(
