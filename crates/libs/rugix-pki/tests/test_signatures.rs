@@ -18,6 +18,13 @@ impl TestPki {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let dir = temp_dir.path();
 
+        let ee_ext_path = dir.join("ee.ext");
+        std::fs::write(
+            &ee_ext_path,
+            "basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature\n",
+        )
+        .expect("failed to write EE extensions");
+
         let root_key_path = dir.join("root.key");
         let root_cert_path = dir.join("root.crt");
 
@@ -41,6 +48,8 @@ impl TestPki {
             .args(["-out"])
             .arg(&root_cert_path)
             .args(["-days", "3650", "-subj", "/CN=Test Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
             .status()
             .expect("failed to generate root cert");
         assert!(status.success(), "failed to generate root cert");
@@ -83,6 +92,8 @@ impl TestPki {
             .args(["-CAcreateserial", "-out"])
             .arg(&signer_cert_path)
             .args(["-days", "365"])
+            .args(["-extfile"])
+            .arg(&ee_ext_path)
             .status()
             .expect("failed to generate signer cert");
         assert!(status.success(), "failed to generate signer cert");
@@ -110,6 +121,8 @@ impl TestPki {
             .args(["-out"])
             .arg(&other_root_cert_path)
             .args(["-days", "3650", "-subj", "/CN=Other Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
             .status()
             .expect("failed to generate other root cert");
         assert!(status.success(), "failed to generate other root cert");
@@ -330,6 +343,13 @@ impl TestPkiWithIntermediate {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let dir = temp_dir.path();
 
+        let ee_ext_path = dir.join("ee.ext");
+        std::fs::write(
+            &ee_ext_path,
+            "basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature\n",
+        )
+        .expect("failed to write EE extensions");
+
         let root_key_path = dir.join("root.key");
         let root_cert_path = dir.join("root.crt");
 
@@ -353,6 +373,8 @@ impl TestPkiWithIntermediate {
             .args(["-out"])
             .arg(&root_cert_path)
             .args(["-days", "3650", "-subj", "/CN=Test Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
             .status()
             .expect("failed to generate root cert");
         assert!(status.success());
@@ -449,6 +471,8 @@ keyUsage = keyCertSign, cRLSign\n",
             .args(["-CAcreateserial", "-out"])
             .arg(&signer_cert_path)
             .args(["-days", "365"])
+            .args(["-extfile"])
+            .arg(&ee_ext_path)
             .status()
             .expect("failed to generate signer cert");
         assert!(status.success());
@@ -506,6 +530,13 @@ impl TestPkiRsa {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let dir = temp_dir.path();
 
+        let ee_ext_path = dir.join("ee.ext");
+        std::fs::write(
+            &ee_ext_path,
+            "basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature\n",
+        )
+        .expect("failed to write EE extensions");
+
         let root_key_path = dir.join("root.key");
         let root_cert_path = dir.join("root.crt");
 
@@ -523,6 +554,8 @@ impl TestPkiRsa {
             .args(["-out"])
             .arg(&root_cert_path)
             .args(["-days", "3650", "-subj", "/CN=Test RSA Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
             .status()
             .expect("failed to generate RSA root cert");
         assert!(status.success());
@@ -559,6 +592,8 @@ impl TestPkiRsa {
             .args(["-CAcreateserial", "-out"])
             .arg(&signer_cert_path)
             .args(["-days", "365"])
+            .args(["-extfile"])
+            .arg(&ee_ext_path)
             .status()
             .expect("failed to generate RSA signer cert");
         assert!(status.success());
@@ -676,6 +711,13 @@ impl TestPkiEd25519 {
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let dir = temp_dir.path();
 
+        let ee_ext_path = dir.join("ee.ext");
+        std::fs::write(
+            &ee_ext_path,
+            "basicConstraints=critical,CA:FALSE\nkeyUsage=digitalSignature\n",
+        )
+        .expect("failed to write EE extensions");
+
         let root_key_path = dir.join("root.key");
         let root_cert_path = dir.join("root.crt");
 
@@ -692,6 +734,8 @@ impl TestPkiEd25519 {
             .args(["-out"])
             .arg(&root_cert_path)
             .args(["-days", "3650", "-subj", "/CN=Test Ed25519 Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
             .status()
             .expect("failed to generate Ed25519 root cert");
         assert!(status.success(), "failed to generate Ed25519 root cert");
@@ -727,6 +771,8 @@ impl TestPkiEd25519 {
             .args(["-CAcreateserial", "-out"])
             .arg(&signer_cert_path)
             .args(["-days", "365"])
+            .args(["-extfile"])
+            .arg(&ee_ext_path)
             .status()
             .expect("failed to generate Ed25519 signer cert");
         assert!(status.success(), "failed to generate Ed25519 signer cert");
