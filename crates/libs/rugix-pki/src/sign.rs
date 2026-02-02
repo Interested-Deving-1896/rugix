@@ -1,0 +1,532 @@
+//! CMS signature creation.
+
+use aws_lc_rs::signature::{
+    EcdsaKeyPair, Ed25519KeyPair, KeyPair, RsaKeyPair, ECDSA_P256_SHA256_ASN1_SIGNING,
+    ECDSA_P384_SHA384_ASN1_SIGNING,
+};
+use cms::cert::CertificateChoices;
+use cms::content_info::{CmsVersion, ContentInfo};
+use cms::signed_data::{
+    CertificateSet, EncapsulatedContentInfo, SignedData, SignerIdentifier, SignerInfo, SignerInfos,
+};
+use const_oid::db::rfc5911::{ID_DATA, ID_SIGNED_DATA};
+use const_oid::db::rfc5912::{
+    ECDSA_WITH_SHA_256, ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, ID_SHA_256, ID_SHA_384, ID_SHA_512,
+    RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION,
+};
+use const_oid::ObjectIdentifier;
+use der::asn1::{OctetString, SetOfVec};
+use der::{Any, Decode, Encode, Sequence};
+use spki::AlgorithmIdentifierOwned;
+use x509_cert::Certificate;
+
+use crate::{pem, PkiError, PkiResult, SignatureAlgorithm};
+
+/// OID for RSA-PSS signature algorithm (1.2.840.113549.1.1.10)
+const ID_RSASSA_PSS: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");
+
+/// OID for MGF1 (1.2.840.113549.1.1.8)
+const ID_MGF1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.8");
+
+/// OID for Ed25519 (1.3.101.112) - RFC 8410
+const ID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
+
+/// RSA signature mode for RSA keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RsaSignatureMode {
+    /// PKCS#1 v1.5 padding (default for compatibility).
+    #[default]
+    Pkcs1v15,
+    /// PSS padding (recommended for new applications).
+    Pss,
+}
+
+/// Hash algorithm for RSA signatures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RsaHashAlgorithm {
+    /// SHA-256.
+    #[default]
+    Sha256,
+    /// SHA-384.
+    Sha384,
+    /// SHA-512.
+    Sha512,
+}
+
+/// A builder for creating CMS signers.
+pub struct SignerBuilder {
+    signer_cert_der: Vec<u8>,
+    private_key_der: Vec<u8>,
+    intermediate_certs: Vec<Vec<u8>>,
+    rsa_mode: RsaSignatureMode,
+    rsa_hash: RsaHashAlgorithm,
+}
+
+impl SignerBuilder {
+    /// Create a new signer builder with the signer certificate and private key.
+    ///
+    /// Both the certificate and key should be PEM-encoded.
+    pub fn new(signer_cert_pem: &[u8], private_key_pem: &[u8]) -> PkiResult<Self> {
+        let signer_cert_der = pem::parse(signer_cert_pem, "CERTIFICATE")?;
+        let (_, private_key_der) = pem::parse_any(
+            private_key_pem,
+            &["PRIVATE KEY", "EC PRIVATE KEY", "RSA PRIVATE KEY"],
+        )?;
+
+        Ok(Self {
+            signer_cert_der,
+            private_key_der,
+            intermediate_certs: Vec::new(),
+            rsa_mode: RsaSignatureMode::default(),
+            rsa_hash: RsaHashAlgorithm::default(),
+        })
+    }
+
+    /// Add an intermediate certificate to include in the signature.
+    ///
+    /// The certificate should be PEM-encoded.
+    pub fn with_intermediate_cert(mut self, cert_pem: &[u8]) -> PkiResult<Self> {
+        let cert_der = pem::parse(cert_pem, "CERTIFICATE")?;
+        self.intermediate_certs.push(cert_der);
+        Ok(self)
+    }
+
+    /// Set the RSA signature mode (PKCS#1 v1.5 or PSS).
+    ///
+    /// This only affects RSA keys; ECDSA keys ignore this setting.
+    /// Default is PKCS#1 v1.5 for compatibility.
+    pub fn with_rsa_mode(mut self, mode: RsaSignatureMode) -> Self {
+        self.rsa_mode = mode;
+        self
+    }
+
+    /// Set the hash algorithm for RSA signatures.
+    ///
+    /// This only affects RSA keys; ECDSA keys use the hash algorithm
+    /// determined by the curve (SHA-256 for P-256, SHA-384 for P-384).
+    /// Default is SHA-256.
+    pub fn with_rsa_hash(mut self, hash: RsaHashAlgorithm) -> Self {
+        self.rsa_hash = hash;
+        self
+    }
+
+    /// Build the CMS signer.
+    pub fn build(self) -> PkiResult<CmsSigner> {
+        CmsSigner::from_builder(self)
+    }
+}
+
+/// Represents a signing key that can create signatures.
+enum SigningKey {
+    EcdsaP256(EcdsaKeyPair),
+    EcdsaP384(EcdsaKeyPair),
+    Rsa(RsaKeyPair, RsaSignatureMode, RsaHashAlgorithm),
+    Ed25519(Ed25519KeyPair),
+}
+
+impl SigningKey {
+    /// Get the signature algorithm for this key.
+    fn algorithm(&self) -> SignatureAlgorithm {
+        match self {
+            SigningKey::EcdsaP256(_) => SignatureAlgorithm::EcdsaP256Sha256,
+            SigningKey::EcdsaP384(_) => SignatureAlgorithm::EcdsaP384Sha384,
+            SigningKey::Rsa(_, mode, hash) => match (mode, hash) {
+                (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha256) => {
+                    SignatureAlgorithm::RsaPkcs1Sha256
+                }
+                (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha384) => {
+                    SignatureAlgorithm::RsaPkcs1Sha384
+                }
+                (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha512) => {
+                    SignatureAlgorithm::RsaPkcs1Sha512
+                }
+                (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha256) => {
+                    SignatureAlgorithm::RsaPssSha256
+                }
+                (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha384) => {
+                    SignatureAlgorithm::RsaPssSha384
+                }
+                (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha512) => {
+                    SignatureAlgorithm::RsaPssSha512
+                }
+            },
+            SigningKey::Ed25519(_) => SignatureAlgorithm::Ed25519,
+        }
+    }
+}
+
+/// A CMS signer that can create CMS SignedData structures.
+pub struct CmsSigner {
+    signing_key: SigningKey,
+    signer_cert: Certificate,
+    signer_cert_der: Vec<u8>,
+    intermediate_certs_der: Vec<Vec<u8>>,
+}
+
+impl CmsSigner {
+    /// Create a new CMS signer from PEM-encoded certificate and private key.
+    ///
+    /// For RSA keys, this defaults to PKCS#1 v1.5 with SHA-256.
+    /// Use [`SignerBuilder`] to customize the RSA signature mode.
+    pub fn new(signer_cert_pem: &[u8], private_key_pem: &[u8]) -> PkiResult<Self> {
+        SignerBuilder::new(signer_cert_pem, private_key_pem)?.build()
+    }
+
+    fn from_builder(builder: SignerBuilder) -> PkiResult<Self> {
+        let signer_cert = Certificate::from_der(&builder.signer_cert_der)
+            .map_err(|e| PkiError::CertificateParse(e.to_string()))?;
+
+        let spki = &signer_cert.tbs_certificate.subject_public_key_info;
+        let key_algorithm = &spki.algorithm.oid;
+
+        let signing_key = if *key_algorithm == ID_EC_PUBLIC_KEY {
+            let params = spki
+                .algorithm
+                .parameters
+                .as_ref()
+                .ok_or_else(|| PkiError::PrivateKeyParse("missing EC parameters".into()))?;
+
+            let curve_oid = params
+                .decode_as::<ObjectIdentifier>()
+                .map_err(|e| PkiError::PrivateKeyParse(format!("invalid EC parameters: {}", e)))?;
+
+            if curve_oid == const_oid::db::rfc5912::SECP_256_R_1 {
+                let key =
+                    try_parse_ec_key(&builder.private_key_der, &ECDSA_P256_SHA256_ASN1_SIGNING)?;
+                SigningKey::EcdsaP256(key)
+            } else if curve_oid == const_oid::db::rfc5912::SECP_384_R_1 {
+                let key =
+                    try_parse_ec_key(&builder.private_key_der, &ECDSA_P384_SHA384_ASN1_SIGNING)?;
+                SigningKey::EcdsaP384(key)
+            } else {
+                return Err(PkiError::UnsupportedKeyAlgorithm(format!(
+                    "unsupported EC curve: {}",
+                    curve_oid
+                )));
+            }
+        } else if *key_algorithm == RSA_ENCRYPTION {
+            let key = RsaKeyPair::from_der(&builder.private_key_der)
+                .or_else(|_| RsaKeyPair::from_pkcs8(&builder.private_key_der))
+                .map_err(|e| PkiError::PrivateKeyParse(e.to_string()))?;
+            SigningKey::Rsa(key, builder.rsa_mode, builder.rsa_hash)
+        } else if *key_algorithm == ID_ED25519 {
+            let key = Ed25519KeyPair::from_pkcs8(&builder.private_key_der)
+                .map_err(|e| PkiError::PrivateKeyParse(e.to_string()))?;
+            SigningKey::Ed25519(key)
+        } else {
+            return Err(PkiError::UnsupportedKeyAlgorithm(format!(
+                "unsupported key algorithm: {}",
+                key_algorithm
+            )));
+        };
+
+        Ok(Self {
+            signing_key,
+            signer_cert,
+            signer_cert_der: builder.signer_cert_der,
+            intermediate_certs_der: builder.intermediate_certs,
+        })
+    }
+
+    /// Get the signature algorithm used by this signer.
+    pub fn algorithm(&self) -> SignatureAlgorithm {
+        self.signing_key.algorithm()
+    }
+
+    /// Sign data and create a CMS SignedData structure.
+    ///
+    /// The data is embedded in the CMS structure (not detached).
+    /// Returns the DER-encoded CMS ContentInfo.
+    pub fn sign(&self, data: &[u8]) -> PkiResult<Vec<u8>> {
+        let (digest_algorithm, signature_algorithm) = self.get_algorithm_identifiers()?;
+
+        let econtent = OctetString::new(data)
+            .map_err(|e| PkiError::SigningFailed(format!("failed to create OctetString: {}", e)))?;
+        let econtent_any = Any::from_der(
+            &econtent
+                .to_der()
+                .map_err(|e| PkiError::SigningFailed(format!("failed to encode content: {}", e)))?,
+        )
+        .map_err(|e| PkiError::SigningFailed(format!("failed to create Any: {}", e)))?;
+
+        let encap_content_info = EncapsulatedContentInfo {
+            econtent_type: ID_DATA,
+            econtent: Some(econtent_any),
+        };
+
+        let signature = self.create_signature(data)?;
+
+        let issuer_and_serial = cms::cert::IssuerAndSerialNumber {
+            issuer: self.signer_cert.tbs_certificate.issuer.clone(),
+            serial_number: self.signer_cert.tbs_certificate.serial_number.clone(),
+        };
+
+        let signer_info = SignerInfo {
+            version: CmsVersion::V1,
+            sid: SignerIdentifier::IssuerAndSerialNumber(issuer_and_serial),
+            digest_alg: digest_algorithm.clone(),
+            signed_attrs: None,
+            signature_algorithm: signature_algorithm.clone(),
+            signature: OctetString::new(signature).map_err(|e| {
+                PkiError::SigningFailed(format!("failed to create signature OctetString: {}", e))
+            })?,
+            unsigned_attrs: None,
+        };
+
+        let mut certs = Vec::new();
+
+        let signer_cert_any = Any::from_der(&self.signer_cert_der)
+            .map_err(|e| PkiError::SigningFailed(format!("failed to parse signer cert: {}", e)))?;
+        certs.push(CertificateChoices::Certificate(
+            signer_cert_any
+                .decode_as()
+                .map_err(|e| PkiError::SigningFailed(format!("failed to decode cert: {}", e)))?,
+        ));
+
+        for cert_der in &self.intermediate_certs_der {
+            let cert_any = Any::from_der(cert_der)
+                .map_err(|e| PkiError::SigningFailed(format!("failed to parse cert: {}", e)))?;
+            certs.push(CertificateChoices::Certificate(
+                cert_any.decode_as().map_err(|e| {
+                    PkiError::SigningFailed(format!("failed to decode cert: {}", e))
+                })?,
+            ));
+        }
+
+        let mut digest_algorithms = SetOfVec::new();
+        digest_algorithms
+            .insert(digest_algorithm)
+            .map_err(|e| PkiError::SigningFailed(format!("failed to insert digest alg: {}", e)))?;
+
+        let mut signer_infos_set = SetOfVec::new();
+        signer_infos_set
+            .insert(signer_info)
+            .map_err(|e| PkiError::SigningFailed(format!("failed to insert signer info: {}", e)))?;
+
+        let mut certs_set: SetOfVec<CertificateChoices> = SetOfVec::new();
+        for cert in certs {
+            certs_set
+                .insert(cert)
+                .map_err(|e| PkiError::SigningFailed(format!("failed to insert cert: {}", e)))?;
+        }
+
+        let signed_data = SignedData {
+            version: CmsVersion::V1,
+            digest_algorithms,
+            encap_content_info,
+            certificates: Some(CertificateSet::from(certs_set)),
+            crls: None,
+            signer_infos: SignerInfos::from(signer_infos_set),
+        };
+
+        let signed_data_der = signed_data
+            .to_der()
+            .map_err(|e| PkiError::SigningFailed(format!("failed to encode SignedData: {}", e)))?;
+
+        let content_info = ContentInfo {
+            content_type: ID_SIGNED_DATA,
+            content: Any::from_der(&signed_data_der)
+                .map_err(|e| PkiError::SigningFailed(format!("failed to create Any: {}", e)))?,
+        };
+
+        content_info
+            .to_der()
+            .map_err(|e| PkiError::SigningFailed(format!("failed to encode ContentInfo: {}", e)))
+    }
+
+    fn get_algorithm_identifiers(
+        &self,
+    ) -> PkiResult<(AlgorithmIdentifierOwned, AlgorithmIdentifierOwned)> {
+        match &self.signing_key {
+            SigningKey::EcdsaP256(_) => Ok((
+                AlgorithmIdentifierOwned {
+                    oid: ID_SHA_256,
+                    parameters: None,
+                },
+                AlgorithmIdentifierOwned {
+                    oid: ECDSA_WITH_SHA_256,
+                    parameters: None,
+                },
+            )),
+            SigningKey::EcdsaP384(_) => Ok((
+                AlgorithmIdentifierOwned {
+                    oid: ID_SHA_384,
+                    parameters: None,
+                },
+                AlgorithmIdentifierOwned {
+                    oid: ECDSA_WITH_SHA_384,
+                    parameters: None,
+                },
+            )),
+            SigningKey::Rsa(_, mode, hash) => {
+                let (digest_oid, hash_len) = match hash {
+                    RsaHashAlgorithm::Sha256 => (ID_SHA_256, 32u8),
+                    RsaHashAlgorithm::Sha384 => (ID_SHA_384, 48u8),
+                    RsaHashAlgorithm::Sha512 => (ID_SHA_512, 64u8),
+                };
+
+                let digest_algorithm = AlgorithmIdentifierOwned {
+                    oid: digest_oid,
+                    parameters: None,
+                };
+
+                let signature_algorithm = match mode {
+                    RsaSignatureMode::Pkcs1v15 => {
+                        let sig_oid = match hash {
+                            RsaHashAlgorithm::Sha256 => SHA_256_WITH_RSA_ENCRYPTION,
+                            RsaHashAlgorithm::Sha384 => {
+                                const_oid::db::rfc5912::SHA_384_WITH_RSA_ENCRYPTION
+                            }
+                            RsaHashAlgorithm::Sha512 => {
+                                const_oid::db::rfc5912::SHA_512_WITH_RSA_ENCRYPTION
+                            }
+                        };
+                        AlgorithmIdentifierOwned {
+                            oid: sig_oid,
+                            parameters: Some(Any::null()),
+                        }
+                    }
+                    RsaSignatureMode::Pss => {
+                        let pss_params = build_rsa_pss_params(digest_oid, hash_len)?;
+                        AlgorithmIdentifierOwned {
+                            oid: ID_RSASSA_PSS,
+                            parameters: Some(pss_params),
+                        }
+                    }
+                };
+
+                Ok((digest_algorithm, signature_algorithm))
+            }
+            SigningKey::Ed25519(_) => {
+                // Ed25519 uses SHA-512 internally but for CMS, we use a placeholder
+                // digest algorithm since Ed25519 is a "pure" signature scheme
+                // that doesn't separate hashing from signing. RFC 8419 specifies
+                // using id-sha512 as the digest algorithm for EdDSA in CMS.
+                Ok((
+                    AlgorithmIdentifierOwned {
+                        oid: ID_SHA_512,
+                        parameters: None,
+                    },
+                    AlgorithmIdentifierOwned {
+                        oid: ID_ED25519,
+                        parameters: None,
+                    },
+                ))
+            }
+        }
+    }
+
+    fn create_signature(&self, data: &[u8]) -> PkiResult<Vec<u8>> {
+        let rng = aws_lc_rs::rand::SystemRandom::new();
+
+        match &self.signing_key {
+            SigningKey::EcdsaP256(key) => {
+                let sig = key
+                    .sign(&rng, data)
+                    .map_err(|e| PkiError::SigningFailed(e.to_string()))?;
+                Ok(sig.as_ref().to_vec())
+            }
+            SigningKey::EcdsaP384(key) => {
+                let sig = key
+                    .sign(&rng, data)
+                    .map_err(|e| PkiError::SigningFailed(e.to_string()))?;
+                Ok(sig.as_ref().to_vec())
+            }
+            SigningKey::Rsa(key, mode, hash) => {
+                let mut signature = vec![0u8; key.public_key().modulus_len()];
+                let padding = match (mode, hash) {
+                    (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha256) => {
+                        &aws_lc_rs::signature::RSA_PKCS1_SHA256
+                    }
+                    (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha384) => {
+                        &aws_lc_rs::signature::RSA_PKCS1_SHA384
+                    }
+                    (RsaSignatureMode::Pkcs1v15, RsaHashAlgorithm::Sha512) => {
+                        &aws_lc_rs::signature::RSA_PKCS1_SHA512
+                    }
+                    (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha256) => {
+                        &aws_lc_rs::signature::RSA_PSS_SHA256
+                    }
+                    (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha384) => {
+                        &aws_lc_rs::signature::RSA_PSS_SHA384
+                    }
+                    (RsaSignatureMode::Pss, RsaHashAlgorithm::Sha512) => {
+                        &aws_lc_rs::signature::RSA_PSS_SHA512
+                    }
+                };
+                key.sign(padding, &rng, data, &mut signature)
+                    .map_err(|e| PkiError::SigningFailed(e.to_string()))?;
+                Ok(signature)
+            }
+            SigningKey::Ed25519(key) => {
+                let sig = key.sign(data);
+                Ok(sig.as_ref().to_vec())
+            }
+        }
+    }
+}
+
+/// RSA-PSS parameters as defined in RFC 4055.
+#[derive(Clone, Debug, Eq, PartialEq, Sequence)]
+struct RsaPssParams {
+    #[asn1(context_specific = "0", tag_mode = "EXPLICIT", optional = "true")]
+    hash_algorithm: Option<AlgorithmIdentifierOwned>,
+    #[asn1(context_specific = "1", tag_mode = "EXPLICIT", optional = "true")]
+    mask_gen_algorithm: Option<AlgorithmIdentifierOwned>,
+    #[asn1(context_specific = "2", tag_mode = "EXPLICIT", optional = "true")]
+    salt_length: Option<u8>,
+    #[asn1(context_specific = "3", tag_mode = "EXPLICIT", optional = "true")]
+    trailer_field: Option<u8>,
+}
+
+/// Build RSA-PSS algorithm parameters.
+fn build_rsa_pss_params(hash_oid: ObjectIdentifier, salt_length: u8) -> PkiResult<Any> {
+    let hash_alg = AlgorithmIdentifierOwned {
+        oid: hash_oid,
+        parameters: Some(Any::null()),
+    };
+
+    // MGF1 with the same hash algorithm
+    let mgf1_params = hash_alg
+        .to_der()
+        .map_err(|e| PkiError::SigningFailed(format!("failed to encode MGF1 params: {}", e)))?;
+    let mask_gen_alg = AlgorithmIdentifierOwned {
+        oid: ID_MGF1,
+        parameters: Some(
+            Any::from_der(&mgf1_params)
+                .map_err(|e| PkiError::SigningFailed(format!("failed to create MGF1 Any: {}", e)))?,
+        ),
+    };
+
+    let pss_params = RsaPssParams {
+        hash_algorithm: Some(hash_alg),
+        mask_gen_algorithm: Some(mask_gen_alg),
+        salt_length: Some(salt_length),
+        trailer_field: Some(1),
+    };
+
+    let params_der = pss_params
+        .to_der()
+        .map_err(|e| PkiError::SigningFailed(format!("failed to encode PSS params: {}", e)))?;
+
+    Any::from_der(&params_der)
+        .map_err(|e| PkiError::SigningFailed(format!("failed to create PSS params Any: {}", e)))
+}
+
+/// Try to parse an EC private key in various formats.
+fn try_parse_ec_key(
+    key_der: &[u8],
+    algorithm: &'static aws_lc_rs::signature::EcdsaSigningAlgorithm,
+) -> PkiResult<EcdsaKeyPair> {
+    if let Ok(key) = EcdsaKeyPair::from_pkcs8(algorithm, key_der) {
+        return Ok(key);
+    }
+
+    if let Ok(key) = EcdsaKeyPair::from_private_key_der(algorithm, key_der) {
+        return Ok(key);
+    }
+
+    Err(PkiError::PrivateKeyParse(
+        "failed to parse EC private key (tried PKCS#8 and SEC1 formats)".into(),
+    ))
+}
