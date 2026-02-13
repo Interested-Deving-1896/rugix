@@ -12,8 +12,15 @@ pub struct Args {
 #[derive(Debug, Parser)]
 pub enum Task {
     Doc,
-    Build,
-    BuildBinaries { target: Option<String> },
+    Build {
+        #[clap(long)]
+        no_asm: bool,
+    },
+    BuildBinaries {
+        target: Option<String>,
+        #[clap(long)]
+        no_asm: bool,
+    },
 }
 
 pub fn project_path() -> PathBuf {
@@ -30,27 +37,51 @@ pub fn get_target_dir() -> PathBuf {
     }
 }
 
-pub fn build_binaries(target: &str) -> anyhow::Result<()> {
+pub fn build_binaries(target: &str, no_asm: bool) -> anyhow::Result<()> {
     let mut env = LocalEnv::new(project_path());
     let git_version = read_str!(env, ["git", "describe", "--tags", "--always"])?;
     env.set_var("RUGIX_GIT_VERSION", git_version.trim());
-    run!(
-        env,
-        [
-            "cargo",
-            "build",
-            "--release",
-            "--target",
-            target,
-            "--bin",
-            "rugix-*",
-            "--bin",
-            "rugix-*",
-        ]
-        .with_stdout(Out::Inherit)
-        .with_stderr(Out::Inherit)
-    )?;
-    let binaries_dir = project_path().join("build/binaries").join(target);
+    if no_asm {
+        env.set_var("AWS_LC_SYS_NO_ASM", "1");
+        run!(
+            env,
+            [
+                "cargo",
+                "build",
+                "--release",
+                "--target",
+                target,
+                "--bin",
+                "rugix-*",
+                "--bin",
+                "rugix-*",
+                "--config",
+                "profile.release.package.aws-lc-sys.opt-level=0",
+            ]
+            .with_stdout(Out::Inherit)
+            .with_stderr(Out::Inherit)
+        )?;
+    } else {
+        run!(
+            env,
+            [
+                "cargo",
+                "build",
+                "--release",
+                "--target",
+                target,
+                "--bin",
+                "rugix-*",
+                "--bin",
+                "rugix-*",
+            ]
+            .with_stdout(Out::Inherit)
+            .with_stderr(Out::Inherit)
+        )?;
+    }
+    let suffix = if no_asm { "-noasm" } else { "" };
+    let dir_name = format!("{target}{suffix}");
+    let binaries_dir = project_path().join("build/binaries").join(dir_name);
     if binaries_dir.exists() {
         std::fs::remove_dir_all(&binaries_dir)?;
     }
@@ -87,13 +118,13 @@ fn main() -> anyhow::Result<()> {
                     .with_stderr(Out::Inherit)
             )?;
         }
-        Task::BuildBinaries { target } => {
+        Task::BuildBinaries { target, no_asm } => {
             let target = target.as_deref().unwrap_or("aarch64-unknown-linux-musl");
-            build_binaries(target)?;
+            build_binaries(target, no_asm)?;
         }
-        Task::Build => {
-            build_binaries("aarch64-unknown-linux-musl")?;
-            build_binaries("x86_64-unknown-linux-musl")?;
+        Task::Build { no_asm } => {
+            build_binaries("aarch64-unknown-linux-musl", no_asm)?;
+            build_binaries("x86_64-unknown-linux-musl", no_asm)?;
         }
     }
     Ok(())
