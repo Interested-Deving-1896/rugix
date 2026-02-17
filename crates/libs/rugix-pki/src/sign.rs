@@ -91,6 +91,12 @@ impl CmsSigner {
             )));
         };
 
+        let cert_public_key = spki.subject_public_key.raw_bytes();
+        let key_public_key = signing_key.public_key_bytes();
+        if cert_public_key != key_public_key {
+            return Err(PkiError::KeyMismatch);
+        }
+
         Ok(Self {
             signing_key,
             signer_cert,
@@ -444,6 +450,16 @@ enum SigningKey {
 }
 
 impl SigningKey {
+    /// Get the public key bytes derived from the private key.
+    fn public_key_bytes(&self) -> &[u8] {
+        match self {
+            SigningKey::EcdsaP256(key) => key.public_key().as_ref(),
+            SigningKey::EcdsaP384(key) => key.public_key().as_ref(),
+            SigningKey::Rsa(key, _, _) => key.public_key().as_ref(),
+            SigningKey::Ed25519(key) => key.public_key().as_ref(),
+        }
+    }
+
     /// Get the signature algorithm for this key.
     fn algorithm(&self) -> SignatureAlgorithm {
         match self {

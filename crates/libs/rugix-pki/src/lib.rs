@@ -107,6 +107,10 @@ pub enum PkiError {
     /// No encapsulated content in CMS structure.
     #[error("no encapsulated content in CMS structure")]
     NoEncapsulatedContent,
+
+    /// The private key does not correspond to the public key in the certificate.
+    #[error("private key does not match the public key in the certificate")]
+    KeyMismatch,
 }
 
 /// Result type for PKI operations.
