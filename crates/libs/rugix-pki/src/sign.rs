@@ -38,7 +38,7 @@ pub struct CmsSigner {
 impl CmsSigner {
     /// Create a new CMS signer from PEM-encoded certificate and private key.
     ///
-    /// For RSA keys, this defaults to PKCS#1 v1.5 with SHA-256.
+    /// For RSA keys, this defaults to RSA-PSS with SHA-256.
     ///
     /// Use [`CmsSignerBuilder`] to add intermediate certificates and customize the RSA
     /// signature mode.
@@ -367,10 +367,10 @@ const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.
 /// RSA signature mode for RSA keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RsaSignatureMode {
-    /// PKCS#1 v1.5 padding (default for compatibility).
-    #[default]
+    /// PKCS#1 v1.5 padding.
     Pkcs1v15,
-    /// PSS padding (recommended for new applications).
+    /// PSS padding (default).
+    #[default]
     Pss,
 }
 
@@ -429,7 +429,7 @@ impl CmsSignerBuilder {
     ///
     /// This only affects RSA keys; ECDSA keys ignore this setting.
     ///
-    /// Default is PKCS#1 v1.5 for compatibility.
+    /// Default is PSS.
     pub fn with_rsa_mode(mut self, mode: RsaSignatureMode) -> Self {
         self.rsa_mode = mode;
         self

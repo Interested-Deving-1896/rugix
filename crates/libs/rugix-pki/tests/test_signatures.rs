@@ -728,12 +728,33 @@ fn test_rsa_pss_sha512() {
 }
 
 #[test]
-fn test_rsa_pkcs1_default() {
+fn test_rsa_pss_default() {
     let pki = TestPkiRsa::new();
-    let data = b"RSA PKCS#1 v1.5 signed data";
+    let data = b"RSA-PSS signed data (default)";
 
     let signer =
         CmsSigner::new(&pki.signer_cert_pem, &pki.signer_key_pem).expect("failed to create signer");
+    assert_eq!(
+        signer.algorithm(),
+        rugix_pki::SignatureAlgorithm::RsaPssSha256
+    );
+
+    let signature = signer.sign(data).expect("failed to sign");
+    let verifier = CmsVerifier::new(&pki.root_cert_pem).expect("failed to create verifier");
+    let result = verifier.verify(&signature).expect("failed to verify");
+    assert_eq!(result.content, data);
+}
+
+#[test]
+fn test_rsa_pkcs1v15_opt_in() {
+    let pki = TestPkiRsa::new();
+    let data = b"RSA PKCS#1 v1.5 signed data";
+
+    let signer = CmsSignerBuilder::new(&pki.signer_cert_pem, &pki.signer_key_pem)
+        .expect("failed to create builder")
+        .with_rsa_mode(RsaSignatureMode::Pkcs1v15)
+        .build()
+        .expect("failed to build signer");
     assert_eq!(
         signer.algorithm(),
         rugix_pki::SignatureAlgorithm::RsaPkcs1Sha256
