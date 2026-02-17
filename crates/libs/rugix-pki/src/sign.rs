@@ -15,11 +15,13 @@ use const_oid::db::rfc5912::{
     ECDSA_WITH_SHA_256, ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, ID_SHA_256, ID_SHA_384, ID_SHA_512,
     RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION,
 };
-use der::asn1::{OctetString, SetOfVec};
+use der::asn1::{OctetString, SetOfVec, UtcTime};
 use der::{Any, Decode, Encode, Tag};
 use spki::AlgorithmIdentifierOwned;
 use x509_cert::Certificate;
 use x509_cert::attr::Attribute;
+
+use std::time::SystemTime;
 
 use crate::{PkiError, PkiResult, RsaPssParams, SignatureAlgorithm, compute_digest, pem};
 
@@ -29,6 +31,7 @@ pub struct CmsSigner {
     signer_cert: Certificate,
     signer_cert_der: Vec<u8>,
     intermediate_certs_der: Vec<Vec<u8>>,
+    signing_time: Option<SystemTime>,
 }
 
 impl CmsSigner {
@@ -102,6 +105,7 @@ impl CmsSigner {
             signer_cert,
             signer_cert_der: builder.signer_cert_der,
             intermediate_certs_der: builder.intermediate_certs,
+            signing_time: builder.signing_time,
         })
     }
 
@@ -131,7 +135,8 @@ impl CmsSigner {
             econtent: Some(econtent_any),
         };
 
-        let signed_attrs = build_signed_attributes(data, digest_algorithm.oid)?;
+        let signing_time = self.signing_time.unwrap_or_else(SystemTime::now);
+        let signed_attrs = build_signed_attributes(data, digest_algorithm.oid, signing_time)?;
         let signed_attrs_der = encode_signed_attrs_for_signature(&signed_attrs)?;
 
         let signature = self.create_signature(&signed_attrs_der)?;
@@ -355,6 +360,9 @@ const ID_MGF1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1
 /// OID for Ed25519 (1.3.101.112).
 const ID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
 
+/// OID for signing-time attribute (1.2.840.113549.1.9.5) — RFC 5652 Section 11.3.
+const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
+
 /// RSA signature mode for RSA keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RsaSignatureMode {
@@ -384,6 +392,7 @@ pub struct CmsSignerBuilder {
     intermediate_certs: Vec<Vec<u8>>,
     rsa_mode: RsaSignatureMode,
     rsa_hash: RsaHashAlgorithm,
+    signing_time: Option<SystemTime>,
 }
 
 impl CmsSignerBuilder {
@@ -402,6 +411,7 @@ impl CmsSignerBuilder {
             intermediate_certs: Vec::new(),
             rsa_mode: RsaSignatureMode::default(),
             rsa_hash: RsaHashAlgorithm::default(),
+            signing_time: None,
         })
     }
 
@@ -432,6 +442,14 @@ impl CmsSignerBuilder {
     /// Default is SHA-256.
     pub fn with_rsa_hash(mut self, hash: RsaHashAlgorithm) -> Self {
         self.rsa_hash = hash;
+        self
+    }
+
+    /// Set a fixed signing time to include in the signed attributes.
+    ///
+    /// By default, each call to [`CmsSigner::sign`] uses the current system time.
+    pub fn with_signing_time(mut self, time: SystemTime) -> Self {
+        self.signing_time = Some(time);
         self
     }
 
@@ -507,6 +525,7 @@ fn encode_signed_attrs_for_signature(
 fn build_signed_attributes(
     content: &[u8],
     digest_oid: ObjectIdentifier,
+    signing_time: SystemTime,
 ) -> PkiResult<cms::signed_data::SignedAttributes> {
     let digest = compute_digest(content, &digest_oid).ok_or_else(|| {
         PkiError::SigningFailed(format!("unsupported digest algorithm: {}", digest_oid))
@@ -547,12 +566,35 @@ fn build_signed_attributes(
         values: digest_values,
     };
 
+    // RFC 5652 Section 11.3: signing-time attribute.
+    let utc_time = UtcTime::from_system_time(signing_time)
+        .map_err(|e| PkiError::SigningFailed(format!("failed to convert signing time: {}", e)))?;
+    let time_any = Any::from_der(
+        &utc_time
+            .to_der()
+            .map_err(|e| PkiError::SigningFailed(format!("failed to encode signing time: {}", e)))?,
+    )
+    .map_err(|e| PkiError::SigningFailed(format!("failed to create signing-time Any: {}", e)))?;
+
+    let mut time_values = SetOfVec::new();
+    time_values.insert(time_any).map_err(|e| {
+        PkiError::SigningFailed(format!("failed to insert signing-time value: {}", e))
+    })?;
+
+    let signing_time_attr = Attribute {
+        oid: ID_SIGNING_TIME,
+        values: time_values,
+    };
+
     let mut attrs = SetOfVec::new();
     attrs.insert(content_type_attr).map_err(|e| {
         PkiError::SigningFailed(format!("failed to insert content-type attribute: {}", e))
     })?;
     attrs.insert(digest_attr).map_err(|e| {
         PkiError::SigningFailed(format!("failed to insert message-digest attribute: {}", e))
+    })?;
+    attrs.insert(signing_time_attr).map_err(|e| {
+        PkiError::SigningFailed(format!("failed to insert signing-time attribute: {}", e))
     })?;
 
     Ok(attrs)

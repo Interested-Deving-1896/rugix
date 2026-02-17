@@ -1,6 +1,7 @@
 //! Integration tests for rugix-pki using OpenSSL to generate test certificates.
 
 use std::process::Command;
+use std::time::{Duration, SystemTime};
 
 use rugix_pki::{CmsSigner, CmsSignerBuilder, CmsVerifier, RsaHashAlgorithm, RsaSignatureMode};
 
@@ -155,6 +156,18 @@ fn test_sign_and_verify() {
     let verifier = CmsVerifier::new(&pki.root_cert_pem).expect("failed to create verifier");
     let result = verifier.verify(&signature).expect("failed to verify");
     assert_eq!(result.content, data);
+
+    let signing_time = result
+        .signing_time
+        .expect("signing time should be present");
+    let elapsed = SystemTime::now()
+        .duration_since(signing_time)
+        .expect("signing time should be in the past");
+    assert!(
+        elapsed < Duration::from_secs(60),
+        "signing time should be recent, got {:?} ago",
+        elapsed
+    );
 }
 
 #[test]
@@ -294,6 +307,41 @@ fn test_signer_builder() {
     let verifier = CmsVerifier::new(&pki.root_cert_pem).expect("failed to create verifier");
     let result = verifier.verify(&signature).expect("failed to verify");
     assert_eq!(result.content, data);
+}
+
+#[test]
+fn test_custom_signing_time() {
+    let pki = TestPki::new();
+    let data = b"Custom signing time test";
+
+    // Use a fixed time: 2025-01-15 12:00:00 UTC (well within UtcTime range).
+    let fixed_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1736942400);
+
+    let signer = CmsSignerBuilder::new(&pki.signer_cert_pem, &pki.signer_key_pem)
+        .expect("failed to create builder")
+        .with_signing_time(fixed_time)
+        .build()
+        .expect("failed to build signer");
+    let signature = signer.sign(data).expect("failed to sign");
+
+    let verifier = CmsVerifier::new(&pki.root_cert_pem).expect("failed to create verifier");
+    let result = verifier.verify(&signature).expect("failed to verify");
+    assert_eq!(result.content, data);
+
+    let signing_time = result
+        .signing_time
+        .expect("signing time should be present");
+    assert_eq!(
+        signing_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        fixed_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        "signing time should match the configured value"
+    );
 }
 
 #[test]

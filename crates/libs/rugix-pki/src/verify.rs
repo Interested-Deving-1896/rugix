@@ -15,12 +15,14 @@ use const_oid::db::rfc5912::{
     RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION, SHA_384_WITH_RSA_ENCRYPTION,
     SHA_512_WITH_RSA_ENCRYPTION,
 };
-use der::asn1::OctetString;
+use der::asn1::{GeneralizedTime, OctetString, UtcTime};
 use der::{Decode, Encode, Tag, Tagged};
 use rustls_pki_types::{CertificateDer, UnixTime};
 use webpki::{EndEntityCert, anchor_from_trusted_cert};
 use x509_cert::Certificate;
 use x509_cert::ext::pkix::{BasicConstraints, KeyUsage as X509KeyUsage};
+
+use std::time::SystemTime;
 
 use crate::{PkiError, PkiResult, RsaPssParams, compute_digest, pem};
 
@@ -29,6 +31,9 @@ const ID_RSASSA_PSS: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.11
 
 /// OID for Ed25519 (1.3.101.112) - RFC 8410
 const ID_ED25519: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
+
+/// OID for signing-time attribute (1.2.840.113549.1.9.5) — RFC 5652 Section 11.3.
+const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.5");
 
 /// A CMS verifier that validates signatures against a trusted root certificate.
 pub struct CmsVerifier {
@@ -138,10 +143,16 @@ impl CmsVerifier {
 
         verify_cms_signature(&content, signer_info, signer_cert)?;
 
+        let signing_time = signer_info
+            .signed_attrs
+            .as_ref()
+            .and_then(|attrs| extract_signing_time_attribute(attrs));
+
         Ok(VerificationResult {
             content,
             signer_certificate: signer_cert_der,
             certificate_chain: chain_der,
+            signing_time,
         })
     }
 
@@ -165,6 +176,8 @@ pub struct VerificationResult {
     pub signer_certificate: Vec<u8>,
     /// The certificate chain from signer to root (inclusive, DER-encoded).
     pub certificate_chain: Vec<Vec<u8>>,
+    /// The claimed signing time from the signing-time attribute, if present.
+    pub signing_time: Option<SystemTime>,
 }
 
 /// Extract all certificates from a SignedData structure.
@@ -443,6 +456,27 @@ fn verify_content_type_attribute(
     } else {
         Err("content-type attribute not found in signed attributes".into())
     }
+}
+
+/// Extract the signing-time attribute value from signed attributes, if present.
+///
+/// Handles both UTCTime and GeneralizedTime encodings per RFC 5652 Section 11.3.
+fn extract_signing_time_attribute(
+    signed_attrs: &cms::signed_data::SignedAttributes,
+) -> Option<SystemTime> {
+    for attr in signed_attrs.iter() {
+        if attr.oid == ID_SIGNING_TIME {
+            for value in attr.values.iter() {
+                if let Ok(utc_time) = value.decode_as::<UtcTime>() {
+                    return Some(utc_time.to_system_time());
+                }
+                if let Ok(gen_time) = value.decode_as::<GeneralizedTime>() {
+                    return Some(gen_time.to_system_time());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Re-encode signed attributes as a SET instead of IMPLICIT [0].
