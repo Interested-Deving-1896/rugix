@@ -400,20 +400,20 @@ fn verify_message_digest_attribute(
             if found {
                 return Err("message-digest attribute appears multiple times".to_owned());
             }
-            let mut value_found = false;
-            for value in attr.values.iter() {
-                if let Ok(digest) = value.decode_as::<OctetString>() {
-                    value_found = true;
-                    if digest.as_bytes() == expected_digest {
-                        found = true;
-                    } else {
-                        return Err("message-digest attribute does not match content".to_owned());
-                    }
-                }
+            // RFC 5652 Section 11.2: there MUST be a single attribute value.
+            if attr.values.len() != 1 {
+                return Err(format!(
+                    "message-digest attribute must have exactly one value, got {}",
+                    attr.values.len()
+                ));
             }
-            if !value_found {
-                return Err("message-digest attribute has invalid format".to_owned());
+            let digest = attr.values.iter().next().unwrap()
+                .decode_as::<OctetString>()
+                .map_err(|_| "message-digest attribute has invalid format".to_owned())?;
+            if digest.as_bytes() != expected_digest {
+                return Err("message-digest attribute does not match content".to_owned());
             }
+            found = true;
         }
     }
     if found {
@@ -434,21 +434,20 @@ fn verify_content_type_attribute(
             if found {
                 return Err("content-type attribute appears multiple times".into());
             }
-            let mut value_found = false;
-            for value in attr.values.iter() {
-                let oid = value
-                    .decode_as::<ObjectIdentifier>()
-                    .map_err(|_| "content-type attribute has invalid format")?;
-                value_found = true;
-                if oid == expected_content_type {
-                    found = true;
-                } else {
-                    return Err("content-type attribute does not match".into());
-                }
+            // RFC 5652 Section 11.1: there MUST be a single attribute value.
+            if attr.values.len() != 1 {
+                return Err(format!(
+                    "content-type attribute must have exactly one value, got {}",
+                    attr.values.len()
+                ));
             }
-            if !value_found {
-                return Err("content-type attribute has no values".into());
+            let oid = attr.values.iter().next().unwrap()
+                .decode_as::<ObjectIdentifier>()
+                .map_err(|_| "content-type attribute has invalid format".to_owned())?;
+            if oid != expected_content_type {
+                return Err("content-type attribute does not match".into());
             }
+            found = true;
         }
     }
     if found {
