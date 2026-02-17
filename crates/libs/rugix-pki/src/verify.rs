@@ -118,6 +118,24 @@ impl CmsVerifier {
             ));
         }
 
+        if let Some(signed_attrs) = &signer_info.signed_attrs {
+            // RFC 5652 Section 5.6: if signed attributes are present, the content-type
+            // attribute value MUST match SignedData encapContentInfo eContentType.
+            verify_content_type_attribute(
+                signed_attrs,
+                signed_data.encap_content_info.econtent_type,
+            )
+            .map_err(PkiError::InvalidCms)?;
+        } else {
+            // RFC 5652 Section 5.3: signed attributes MUST be present if
+            // eContentType is anything other than id-data.
+            if signed_data.encap_content_info.econtent_type != ID_DATA {
+                return Err(PkiError::InvalidCms(
+                    "signed attributes are required when eContentType is not id-data".to_owned(),
+                ));
+            }
+        }
+
         verify_cms_signature(&content, signer_info, signer_cert)?;
 
         Ok(VerificationResult {
@@ -338,9 +356,6 @@ fn verify_cms_signature(
         })?;
 
         verify_message_digest_attribute(signed_attrs, &content_digest)
-            .map_err(PkiError::SignatureVerification)?;
-
-        verify_content_type_attribute(signed_attrs, ID_DATA)
             .map_err(PkiError::SignatureVerification)?;
 
         encode_signed_attrs_as_set(signed_attrs).map_err(PkiError::SignatureVerification)?
