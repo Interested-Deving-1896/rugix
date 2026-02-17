@@ -1530,6 +1530,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.17",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]

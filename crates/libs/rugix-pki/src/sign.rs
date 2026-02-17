@@ -22,6 +22,7 @@ use x509_cert::Certificate;
 use x509_cert::attr::Attribute;
 
 use std::time::SystemTime;
+use zeroize::Zeroizing;
 
 use crate::{PkiError, PkiResult, RsaPssParams, SignatureAlgorithm, compute_digest, pem};
 
@@ -388,7 +389,7 @@ pub enum RsaHashAlgorithm {
 /// A builder for creating CMS signers.
 pub struct CmsSignerBuilder {
     signer_cert_der: Vec<u8>,
-    private_key_der: Vec<u8>,
+    private_key_der: Zeroizing<Vec<u8>>,
     intermediate_certs: Vec<Vec<u8>>,
     rsa_mode: RsaSignatureMode,
     rsa_hash: RsaHashAlgorithm,
