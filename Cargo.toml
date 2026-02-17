@@ -60,6 +60,7 @@ rugix-fs = { path = "crates/libs/rugix-fs" }
 rugix-hooks = { path = "crates/libs/rugix-hooks" }
 rugix-tasks = { path = "crates/libs/rugix-tasks" }
 rugix-version = { path = "crates/libs/rugix-version" }
+rugix-pki = { path = "crates/libs/rugix-pki" }
 
 [workspace.lints.clippy]
 needless_borrows_for_generic_args = "allow"
