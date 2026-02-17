@@ -106,6 +106,18 @@ impl CmsVerifier {
         let chain_der =
             validate_certificate_chain(&signer_cert_der, &embedded_certs, &self.root_cert)?;
 
+        // RFC 5652 Section 5.3: The digest algorithm used by the signer should be
+        // among those listed in the SignedData digestAlgorithms set.
+        if !signed_data
+            .digest_algorithms
+            .iter()
+            .any(|alg| alg.oid == signer_info.digest_alg.oid)
+        {
+            return Err(PkiError::InvalidCms(
+                "signer digest algorithm not listed in SignedData digestAlgorithms".to_owned(),
+            ));
+        }
+
         verify_cms_signature(&content, signer_info, signer_cert)?;
 
         Ok(VerificationResult {
