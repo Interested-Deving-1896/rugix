@@ -157,9 +157,7 @@ fn test_sign_and_verify() {
     let result = verifier.verify(&signature).expect("failed to verify");
     assert_eq!(result.content, data);
 
-    let signing_time = result
-        .signing_time
-        .expect("signing time should be present");
+    let signing_time = result.signing_time.expect("signing time should be present");
     let elapsed = SystemTime::now()
         .duration_since(signing_time)
         .expect("signing time should be in the past");
@@ -328,9 +326,7 @@ fn test_custom_signing_time() {
     let result = verifier.verify(&signature).expect("failed to verify");
     assert_eq!(result.content, data);
 
-    let signing_time = result
-        .signing_time
-        .expect("signing time should be present");
+    let signing_time = result.signing_time.expect("signing time should be present");
     assert_eq!(
         signing_time
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -891,66 +887,99 @@ fn test_ec_key_mismatch() {
     // Generate a root CA.
     let root_key_path = dir.join("root.key");
     let root_cert_path = dir.join("root.crt");
-    assert!(Command::new("openssl")
-        .args(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out"])
-        .arg(&root_key_path)
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-x509", "-new", "-key"])
-        .arg(&root_key_path)
-        .args(["-out"])
-        .arg(&root_cert_path)
-        .args(["-days", "3650", "-subj", "/CN=Test Root CA"])
-        .args(["-addext", "basicConstraints=critical,CA:TRUE"])
-        .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args([
+                "ecparam",
+                "-name",
+                "prime256v1",
+                "-genkey",
+                "-noout",
+                "-out"
+            ])
+            .arg(&root_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-x509", "-new", "-key"])
+            .arg(&root_key_path)
+            .args(["-out"])
+            .arg(&root_cert_path)
+            .args(["-days", "3650", "-subj", "/CN=Test Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate the signer key and certificate.
     let signer_key_path = dir.join("signer.key");
     let signer_csr_path = dir.join("signer.csr");
     let signer_cert_path = dir.join("signer.crt");
-    assert!(Command::new("openssl")
-        .args(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out"])
-        .arg(&signer_key_path)
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-new", "-key"])
-        .arg(&signer_key_path)
-        .args(["-out"])
-        .arg(&signer_csr_path)
-        .args(["-subj", "/CN=Test Signer"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["x509", "-req", "-in"])
-        .arg(&signer_csr_path)
-        .args(["-CA"])
-        .arg(&root_cert_path)
-        .args(["-CAkey"])
-        .arg(&root_key_path)
-        .args(["-CAcreateserial", "-out"])
-        .arg(&signer_cert_path)
-        .args(["-days", "365", "-extfile"])
-        .arg(&ee_ext_path)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args([
+                "ecparam",
+                "-name",
+                "prime256v1",
+                "-genkey",
+                "-noout",
+                "-out"
+            ])
+            .arg(&signer_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-new", "-key"])
+            .arg(&signer_key_path)
+            .args(["-out"])
+            .arg(&signer_csr_path)
+            .args(["-subj", "/CN=Test Signer"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["x509", "-req", "-in"])
+            .arg(&signer_csr_path)
+            .args(["-CA"])
+            .arg(&root_cert_path)
+            .args(["-CAkey"])
+            .arg(&root_key_path)
+            .args(["-CAcreateserial", "-out"])
+            .arg(&signer_cert_path)
+            .args(["-days", "365", "-extfile"])
+            .arg(&ee_ext_path)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate a different EC key (same curve, different key pair).
     let wrong_key_path = dir.join("wrong.key");
-    assert!(Command::new("openssl")
-        .args(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out"])
-        .arg(&wrong_key_path)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args([
+                "ecparam",
+                "-name",
+                "prime256v1",
+                "-genkey",
+                "-noout",
+                "-out"
+            ])
+            .arg(&wrong_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let signer_cert_pem = std::fs::read(&signer_cert_path).unwrap();
     let wrong_key_pem = std::fs::read(&wrong_key_path).unwrap();
@@ -980,69 +1009,81 @@ fn test_rsa_key_mismatch() {
     // Generate a root CA.
     let root_key_path = dir.join("root.key");
     let root_cert_path = dir.join("root.crt");
-    assert!(Command::new("openssl")
-        .args(["genrsa", "-out"])
-        .arg(&root_key_path)
-        .args(["2048"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-x509", "-new", "-key"])
-        .arg(&root_key_path)
-        .args(["-out"])
-        .arg(&root_cert_path)
-        .args(["-days", "3650", "-subj", "/CN=Test RSA Root CA"])
-        .args(["-addext", "basicConstraints=critical,CA:TRUE"])
-        .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genrsa", "-out"])
+            .arg(&root_key_path)
+            .args(["2048"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-x509", "-new", "-key"])
+            .arg(&root_key_path)
+            .args(["-out"])
+            .arg(&root_cert_path)
+            .args(["-days", "3650", "-subj", "/CN=Test RSA Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate the signer key and certificate.
     let signer_key_path = dir.join("signer.key");
     let signer_csr_path = dir.join("signer.csr");
     let signer_cert_path = dir.join("signer.crt");
-    assert!(Command::new("openssl")
-        .args(["genrsa", "-out"])
-        .arg(&signer_key_path)
-        .args(["2048"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-new", "-key"])
-        .arg(&signer_key_path)
-        .args(["-out"])
-        .arg(&signer_csr_path)
-        .args(["-subj", "/CN=Test RSA Signer"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["x509", "-req", "-in"])
-        .arg(&signer_csr_path)
-        .args(["-CA"])
-        .arg(&root_cert_path)
-        .args(["-CAkey"])
-        .arg(&root_key_path)
-        .args(["-CAcreateserial", "-out"])
-        .arg(&signer_cert_path)
-        .args(["-days", "365", "-extfile"])
-        .arg(&ee_ext_path)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genrsa", "-out"])
+            .arg(&signer_key_path)
+            .args(["2048"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-new", "-key"])
+            .arg(&signer_key_path)
+            .args(["-out"])
+            .arg(&signer_csr_path)
+            .args(["-subj", "/CN=Test RSA Signer"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["x509", "-req", "-in"])
+            .arg(&signer_csr_path)
+            .args(["-CA"])
+            .arg(&root_cert_path)
+            .args(["-CAkey"])
+            .arg(&root_key_path)
+            .args(["-CAcreateserial", "-out"])
+            .arg(&signer_cert_path)
+            .args(["-days", "365", "-extfile"])
+            .arg(&ee_ext_path)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate a different RSA key.
     let wrong_key_path = dir.join("wrong.key");
-    assert!(Command::new("openssl")
-        .args(["genrsa", "-out"])
-        .arg(&wrong_key_path)
-        .args(["2048"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genrsa", "-out"])
+            .arg(&wrong_key_path)
+            .args(["2048"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let signer_cert_pem = std::fs::read(&signer_cert_path).unwrap();
     let wrong_key_pem = std::fs::read(&wrong_key_path).unwrap();
@@ -1072,66 +1113,78 @@ fn test_ed25519_key_mismatch() {
     // Generate a root CA.
     let root_key_path = dir.join("root.key");
     let root_cert_path = dir.join("root.crt");
-    assert!(Command::new("openssl")
-        .args(["genpkey", "-algorithm", "ED25519", "-out"])
-        .arg(&root_key_path)
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-x509", "-new", "-key"])
-        .arg(&root_key_path)
-        .args(["-out"])
-        .arg(&root_cert_path)
-        .args(["-days", "3650", "-subj", "/CN=Test Ed25519 Root CA"])
-        .args(["-addext", "basicConstraints=critical,CA:TRUE"])
-        .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genpkey", "-algorithm", "ED25519", "-out"])
+            .arg(&root_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-x509", "-new", "-key"])
+            .arg(&root_key_path)
+            .args(["-out"])
+            .arg(&root_cert_path)
+            .args(["-days", "3650", "-subj", "/CN=Test Ed25519 Root CA"])
+            .args(["-addext", "basicConstraints=critical,CA:TRUE"])
+            .args(["-addext", "keyUsage=keyCertSign,cRLSign"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate the signer key and certificate.
     let signer_key_path = dir.join("signer.key");
     let signer_csr_path = dir.join("signer.csr");
     let signer_cert_path = dir.join("signer.crt");
-    assert!(Command::new("openssl")
-        .args(["genpkey", "-algorithm", "ED25519", "-out"])
-        .arg(&signer_key_path)
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["req", "-new", "-key"])
-        .arg(&signer_key_path)
-        .args(["-out"])
-        .arg(&signer_csr_path)
-        .args(["-subj", "/CN=Test Ed25519 Signer"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(Command::new("openssl")
-        .args(["x509", "-req", "-in"])
-        .arg(&signer_csr_path)
-        .args(["-CA"])
-        .arg(&root_cert_path)
-        .args(["-CAkey"])
-        .arg(&root_key_path)
-        .args(["-CAcreateserial", "-out"])
-        .arg(&signer_cert_path)
-        .args(["-days", "365", "-extfile"])
-        .arg(&ee_ext_path)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genpkey", "-algorithm", "ED25519", "-out"])
+            .arg(&signer_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["req", "-new", "-key"])
+            .arg(&signer_key_path)
+            .args(["-out"])
+            .arg(&signer_csr_path)
+            .args(["-subj", "/CN=Test Ed25519 Signer"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new("openssl")
+            .args(["x509", "-req", "-in"])
+            .arg(&signer_csr_path)
+            .args(["-CA"])
+            .arg(&root_cert_path)
+            .args(["-CAkey"])
+            .arg(&root_key_path)
+            .args(["-CAcreateserial", "-out"])
+            .arg(&signer_cert_path)
+            .args(["-days", "365", "-extfile"])
+            .arg(&ee_ext_path)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Generate a different Ed25519 key.
     let wrong_key_path = dir.join("wrong.key");
-    assert!(Command::new("openssl")
-        .args(["genpkey", "-algorithm", "ED25519", "-out"])
-        .arg(&wrong_key_path)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        Command::new("openssl")
+            .args(["genpkey", "-algorithm", "ED25519", "-out"])
+            .arg(&wrong_key_path)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let signer_cert_pem = std::fs::read(&signer_cert_path).unwrap();
     let wrong_key_pem = std::fs::read(&wrong_key_path).unwrap();

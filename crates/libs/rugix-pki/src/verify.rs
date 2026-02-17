@@ -407,7 +407,11 @@ fn verify_message_digest_attribute(
                     attr.values.len()
                 ));
             }
-            let digest = attr.values.iter().next().unwrap()
+            let digest = attr
+                .values
+                .iter()
+                .next()
+                .unwrap()
                 .decode_as::<OctetString>()
                 .map_err(|_| "message-digest attribute has invalid format".to_owned())?;
             if digest.as_bytes() != expected_digest {
@@ -441,7 +445,11 @@ fn verify_content_type_attribute(
                     attr.values.len()
                 ));
             }
-            let oid = attr.values.iter().next().unwrap()
+            let oid = attr
+                .values
+                .iter()
+                .next()
+                .unwrap()
                 .decode_as::<ObjectIdentifier>()
                 .map_err(|_| "content-type attribute has invalid format".to_owned())?;
             if oid != expected_content_type {

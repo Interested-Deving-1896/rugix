@@ -570,12 +570,13 @@ fn build_signed_attributes(
     // RFC 5652 Section 11.3: signing-time attribute.
     let utc_time = UtcTime::from_system_time(signing_time)
         .map_err(|e| PkiError::SigningFailed(format!("failed to convert signing time: {}", e)))?;
-    let time_any = Any::from_der(
-        &utc_time
-            .to_der()
-            .map_err(|e| PkiError::SigningFailed(format!("failed to encode signing time: {}", e)))?,
-    )
-    .map_err(|e| PkiError::SigningFailed(format!("failed to create signing-time Any: {}", e)))?;
+    let time_any =
+        Any::from_der(&utc_time.to_der().map_err(|e| {
+            PkiError::SigningFailed(format!("failed to encode signing time: {}", e))
+        })?)
+        .map_err(|e| {
+            PkiError::SigningFailed(format!("failed to create signing-time Any: {}", e))
+        })?;
 
     let mut time_values = SetOfVec::new();
     time_values.insert(time_any).map_err(|e| {
