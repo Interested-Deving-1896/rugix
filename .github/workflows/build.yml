@@ -155,7 +155,7 @@ jobs:
           ./generate-test-keys.sh
           export RUGIX_BAKERY_IMAGE="ghcr.io/rugix/rugix-bakery:nightly"
           export RUGIX_BINARIES_DIR="$(pwd)/../build/binaries"
-          docker pull $RUGIX_BAKERY_IMAGE
+          podman pull $RUGIX_BAKERY_IMAGE
           ./run-all-tests.sh
 
   upload_release_assets:
