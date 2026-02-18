@@ -1409,6 +1409,7 @@ dependencies = [
  "rugix-chunker",
  "rugix-cli",
  "rugix-compression",
+ "rugix-pki",
  "rugix-version",
  "serde",
  "serde_json",
@@ -1418,7 +1419,6 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "tracing",
- "xscript 0.4.0",
 ]
 
 [[package]]
@@ -1500,6 +1500,7 @@ dependencies = [
  "rugix-common",
  "rugix-fs",
  "rugix-hooks",
+ "rugix-pki",
  "rugix-tasks",
  "rugix-version",
  "rustls",
