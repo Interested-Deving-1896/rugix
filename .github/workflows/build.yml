@@ -157,6 +157,13 @@ jobs:
           export RUGIX_BINARIES_DIR="$(pwd)/../build/binaries"
           podman pull $RUGIX_BAKERY_IMAGE
           ./run-all-tests.sh
+      - name: Upload Test Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: tests/.rugix/test.log
+          if-no-files-found: ignore
 
   upload_release_assets:
     name: "Upload Release Assets"
