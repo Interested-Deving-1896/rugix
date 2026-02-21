@@ -37,12 +37,25 @@ rugix-fs.workspace = true
 si-crypto-hashes.workspace = true
 rugix-hooks.workspace = true
 hashbrown.workspace = true
-ureq = { version = "3.0.3", default-features = false, features = ["rustls-no-provider", "rustls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "logging", "std", "tls12"] }
 rugix-version.workspace = true
-jiff = { version = "0.2.14", default-features = false, features = ["std", "serde"] }
+jiff = { version = "0.2.14", default-features = false, features = [
+    "std",
+    "serde",
+] }
 rugix-tasks.workspace = true
+
+# HTTP and TLS: The version of `rustls` must match the version used by `ureq`.
+ureq = { version = "3.0.3", default-features = false, features = [
+    "rustls-no-provider",
+    "rustls-webpki-roots",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "aws_lc_rs",
+    "logging",
+    "std",
+    "tls12",
+] }
+
 
 [lints]
 workspace = true
-
