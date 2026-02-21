@@ -20,7 +20,6 @@ use rugix_bundle::{add_bundle_signature, bundle_hash, format, signed_metadata, B
 use rugix_chunker::ChunkerAlgorithm;
 use si_crypto_hashes::HashDigest;
 use tracing::{info, Level};
-use xscript::{cmd_os, run, ParentEnv, Run};
 
 mod simulation;
 
@@ -384,39 +383,22 @@ fn main() -> BundleResult<()> {
                 key,
                 out,
             } => {
-                let tempdir =
-                    tempfile::tempdir().whatever("unable to create temporary directory")?;
-                let tempdir_path = tempdir.path();
-                let signed_metadata_raw = tempdir_path.join("signed-metadata.raw");
-                let signed_metadata_cms = tempdir_path.join("signed-metadata.cms");
                 let metadata = signed_metadata(&bundle)?;
-                std::fs::write(&signed_metadata_raw, metadata)
-                    .whatever("unable to write metadata")?;
-                let mut cmd = cmd_os!(
-                    "openssl",
-                    "cms",
-                    "-sign",
-                    "-in",
-                    &signed_metadata_raw,
-                    "-signer",
-                    &cert,
-                    "-inkey",
-                    &key,
-                    "-out",
-                    &signed_metadata_cms,
-                    "-outform",
-                    "DER",
-                    "-nosmimecap",
-                    "-nodetach",
-                    "-binary"
-                );
+                let cert_pem =
+                    std::fs::read(&cert).whatever("unable to read signer certificate")?;
+                let key_pem = std::fs::read(&key).whatever("unable to read private key")?;
+                let mut builder = rugix_pki::CmsSignerBuilder::new(&cert_pem, &key_pem)
+                    .whatever("unable to create CMS signer")?
+                    .with_rsa_mode(rugix_pki::RsaSignatureMode::Pkcs1v15);
                 for cert in certs {
-                    cmd.add_arg("-certfile");
-                    cmd.add_arg(cert);
+                    let cert_pem =
+                        std::fs::read(&cert).whatever("unable to read intermediate certificate")?;
+                    builder = builder
+                        .with_intermediate_cert(&cert_pem)
+                        .whatever("unable to add intermediate certificate")?;
                 }
-                ParentEnv.run(cmd).whatever("unable to sign bundle")?;
-                let signature =
-                    std::fs::read(&signed_metadata_cms).whatever("unable to read signature")?;
+                let signer = builder.build().whatever("unable to build CMS signer")?;
+                let signature = signer.sign(&metadata).whatever("unable to sign bundle")?;
                 add_bundle_signature(&bundle, signature, &out)?;
             }
             SignaturesCmd::Verify { bundle, cert } => {
@@ -425,41 +407,19 @@ fn main() -> BundleResult<()> {
                 let Some(signatures) = reader.signatures() else {
                     bail!("no signatures found");
                 };
+                let cert_pem = std::fs::read(&cert).whatever("unable to read root certificate")?;
+                let verifier = rugix_pki::CmsVerifier::new(&cert_pem)
+                    .whatever("unable to create CMS verifier")?;
                 let mut found_valid_signature = false;
                 for signature in signatures.cms_signatures.iter() {
-                    let tempdir =
-                        tempfile::tempdir().whatever("unable to create temporary directory")?;
-                    let tempdir_path = tempdir.path();
-                    let signed_metadata_raw = tempdir_path.join("signed-metadata.raw");
-                    let signed_metadata_cms = tempdir_path.join("signed-metadata.cms");
-                    std::fs::write(&signed_metadata_cms, &signature.raw)
-                        .whatever("unable to write CMS signature")?;
-                    if let Err(error) = run!([
-                        "openssl",
-                        "cms",
-                        "-verify",
-                        "-in",
-                        &signed_metadata_cms,
-                        "-inform",
-                        "DER",
-                        "-out",
-                        &signed_metadata_raw,
-                        // Do not load OS default certificates.
-                        "-no-CAfile",
-                        "-no-CApath",
-                        "-no-CAstore",
-                        // Non-zero exit code on verification failure.
-                        "-verify_retcode",
-                        // Load provided certificate.
-                        "-CAfile",
-                        &cert,
-                    ]) {
-                        println!("{error}");
-                        continue;
-                    }
-                    let signed_metadata = std::fs::read(&signed_metadata_raw)
-                        .whatever("unable to read signed metadata")?;
-                    let signed_metadata = decode_slice::<format::SignedMetadata>(&signed_metadata)
+                    let result = match verifier.verify(&signature.raw) {
+                        Ok(result) => result,
+                        Err(error) => {
+                            println!("{error}");
+                            continue;
+                        }
+                    };
+                    let signed_metadata = decode_slice::<format::SignedMetadata>(&result.content)
                         .whatever("unable to decode signed metadata")?;
                     if signed_metadata.header_hash
                         == reader.header_hash(signed_metadata.header_hash.algorithm())

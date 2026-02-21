@@ -32,7 +32,7 @@ use reportify::{bail, whatever, ErrorExt, ResultExt};
 use rugix_common::disk::stream::ImgStream;
 use rugix_common::maybe_compressed::{MaybeCompressed, PeekReader};
 use rugix_common::stream_hasher::StreamHasher;
-use xscript::{cmd_os, vars, ParentEnv, Run, Vars};
+use xscript::{vars, Vars};
 
 use crate::config::output::BlockDeviceInfo;
 use crate::http_source::HttpSource;
@@ -775,48 +775,20 @@ fn install_update_bundle<R: BundleSource>(
         if root_certs.len() > 1 {
             bail!("multiple root certificates are not yet supported");
         }
+        let cert_pem = std::fs::read(&root_certs[0]).whatever("unable to read root certificate")?;
+        let verifier =
+            rugix_pki::CmsVerifier::new(&cert_pem).whatever("unable to create CMS verifier")?;
         let mut found_valid_signature = false;
         info!("checking bundle signatures");
         for signature in signatures.cms_signatures.iter() {
-            let tempdir = tempfile::tempdir().whatever("unable to create temporary directory")?;
-            let tempdir_path = tempdir.path();
-            let signed_metadata_raw = tempdir_path.join("signed-metadata.raw");
-            let signed_metadata_cms = tempdir_path.join("signed-metadata.cms");
-            std::fs::write(&signed_metadata_cms, &signature.raw)
-                .whatever("unable to write CMS signature")?;
-            let mut cmd = cmd_os!(
-                "openssl",
-                "cms",
-                "-verify",
-                "-in",
-                &signed_metadata_cms,
-                "-inform",
-                "DER",
-                "-out",
-                &signed_metadata_raw,
-                // Do not load OS default certificates.
-                "-no-CAfile",
-                "-no-CApath",
-                "-no-CAstore",
-                // Non-zero exit code on verification failure.
-                "-verify_retcode",
-            );
-            for cert in root_certs {
-                if cert.is_dir() {
-                    cmd.add_arg("-CApath");
-                    cmd.add_arg(cert);
-                } else {
-                    cmd.add_arg("-CAfile");
-                    cmd.add_arg(cert);
+            let result = match verifier.verify(&signature.raw) {
+                Ok(result) => result,
+                Err(error) => {
+                    info!("signature verification failed: {error}");
+                    continue;
                 }
-            }
-            if let Err(error) = ParentEnv.run(cmd) {
-                println!("{error}");
-                continue;
-            }
-            let signed_metadata =
-                std::fs::read(&signed_metadata_raw).whatever("unable to read signed metadata")?;
-            let signed_metadata = decode_slice::<format::SignedMetadata>(&signed_metadata)
+            };
+            let signed_metadata = decode_slice::<format::SignedMetadata>(&result.content)
                 .whatever("unable to decode signed metadata")?;
             if signed_metadata.header_hash
                 == bundle_reader.header_hash(signed_metadata.header_hash.algorithm())
