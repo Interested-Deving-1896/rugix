@@ -384,22 +384,21 @@ fn main() -> BundleResult<()> {
                 out,
             } => {
                 let metadata = signed_metadata(&bundle)?;
-                let cert_pem = std::fs::read(&cert).whatever("unable to read signer certificate")?;
+                let cert_pem =
+                    std::fs::read(&cert).whatever("unable to read signer certificate")?;
                 let key_pem = std::fs::read(&key).whatever("unable to read private key")?;
                 let mut builder = rugix_pki::CmsSignerBuilder::new(&cert_pem, &key_pem)
                     .whatever("unable to create CMS signer")?
                     .with_rsa_mode(rugix_pki::RsaSignatureMode::Pkcs1v15);
                 for cert in certs {
-                    let cert_pem = std::fs::read(&cert)
-                        .whatever("unable to read intermediate certificate")?;
+                    let cert_pem =
+                        std::fs::read(&cert).whatever("unable to read intermediate certificate")?;
                     builder = builder
                         .with_intermediate_cert(&cert_pem)
                         .whatever("unable to add intermediate certificate")?;
                 }
                 let signer = builder.build().whatever("unable to build CMS signer")?;
-                let signature = signer
-                    .sign(&metadata)
-                    .whatever("unable to sign bundle")?;
+                let signature = signer.sign(&metadata).whatever("unable to sign bundle")?;
                 add_bundle_signature(&bundle, signature, &out)?;
             }
             SignaturesCmd::Verify { bundle, cert } => {
@@ -408,8 +407,7 @@ fn main() -> BundleResult<()> {
                 let Some(signatures) = reader.signatures() else {
                     bail!("no signatures found");
                 };
-                let cert_pem =
-                    std::fs::read(&cert).whatever("unable to read root certificate")?;
+                let cert_pem = std::fs::read(&cert).whatever("unable to read root certificate")?;
                 let verifier = rugix_pki::CmsVerifier::new(&cert_pem)
                     .whatever("unable to create CMS verifier")?;
                 let mut found_valid_signature = false;
@@ -421,9 +419,8 @@ fn main() -> BundleResult<()> {
                             continue;
                         }
                     };
-                    let signed_metadata =
-                        decode_slice::<format::SignedMetadata>(&result.content)
-                            .whatever("unable to decode signed metadata")?;
+                    let signed_metadata = decode_slice::<format::SignedMetadata>(&result.content)
+                        .whatever("unable to decode signed metadata")?;
                     if signed_metadata.header_hash
                         == reader.header_hash(signed_metadata.header_hash.algorithm())
                     {

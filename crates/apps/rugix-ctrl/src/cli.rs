@@ -775,10 +775,9 @@ fn install_update_bundle<R: BundleSource>(
         if root_certs.len() > 1 {
             bail!("multiple root certificates are not yet supported");
         }
-        let cert_pem = std::fs::read(&root_certs[0])
-            .whatever("unable to read root certificate")?;
-        let verifier = rugix_pki::CmsVerifier::new(&cert_pem)
-            .whatever("unable to create CMS verifier")?;
+        let cert_pem = std::fs::read(&root_certs[0]).whatever("unable to read root certificate")?;
+        let verifier =
+            rugix_pki::CmsVerifier::new(&cert_pem).whatever("unable to create CMS verifier")?;
         let mut found_valid_signature = false;
         info!("checking bundle signatures");
         for signature in signatures.cms_signatures.iter() {
