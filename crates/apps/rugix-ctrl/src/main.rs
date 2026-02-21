@@ -1,6 +1,7 @@
 pub mod boot;
 pub mod cli;
 pub mod config;
+pub mod http;
 pub mod http_source;
 pub mod init;
 pub mod overlay;
@@ -11,6 +12,7 @@ pub mod system_state;
 pub mod utils;
 
 pub fn main() {
+    http::setup();
     let result = rugix_tasks::run(|| {
         if utils::is_init_process() {
             init::main()
