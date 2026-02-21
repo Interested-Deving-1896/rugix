@@ -1,6 +1,9 @@
 /// Install the process-wide TLS configuration.
 pub fn setup() {
-    if rustls::crypto::aws_lc_rs::default_provider().install_default().is_err() {
+    if rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .is_err()
+    {
         // This should never happen as there is no pre-installed provider at this
         // point, so the installation should always succeed.
         eprintln!("unable to install default crypto provider, continuing anyway");
