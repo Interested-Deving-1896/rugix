@@ -15,7 +15,8 @@ pub mod devices;
 pub mod disk;
 #[cfg(target_os = "linux")]
 pub mod fsutils;
-pub mod loop_dev;
+#[cfg(target_os = "linux")]
+pub mod img_extract;
 pub mod maybe_compressed;
 #[cfg(target_os = "linux")]
 pub mod mount;
