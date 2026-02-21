@@ -1,5 +1,2 @@
 [build.env]
-passthrough = [
-    "RUGIX_GIT_VERSION",
-    "AWS_LC_SYS_NO_ASM",
-]
+passthrough = ["RUGIX_GIT_VERSION"]
