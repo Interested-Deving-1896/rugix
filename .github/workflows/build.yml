@@ -19,19 +19,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: aarch64-unknown-linux-musl
-          - target: aarch64-unknown-linux-gnu
-          - target: armv7-unknown-linux-musleabihf
-          - target: armv7-unknown-linux-gnueabihf
-          - target: arm-unknown-linux-musleabihf
-          - target: arm-unknown-linux-gnueabihf
-          - target: arm-unknown-linux-musleabi
-          - target: arm-unknown-linux-gnueabi
-          - target: x86_64-unknown-linux-musl
-          - target: x86_64-unknown-linux-gnu
-          - target: i686-unknown-linux-musl
-          - target: riscv64gc-unknown-linux-gnu
+        target:
+          - aarch64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-musleabihf
+          - armv7-unknown-linux-gnueabihf
+          - arm-unknown-linux-musleabihf
+          - arm-unknown-linux-gnueabihf
+          - arm-unknown-linux-musleabi
+          - arm-unknown-linux-gnueabi
+          - x86_64-unknown-linux-musl
+          - x86_64-unknown-linux-gnu
+          - i686-unknown-linux-musl
+          - riscv64gc-unknown-linux-gnu
     env:
       CROSS_VERSION: "0.2.5"
     steps:
@@ -50,12 +50,7 @@ jobs:
       - name: Build Binaries
         run: |
           export RUGIX_GIT_VERSION=$(git describe --tags --always)
-          EXTRA_ARGS=""
-          if [ "${{ matrix.no_asm }}" = "true" ]; then
-            export AWS_LC_SYS_NO_ASM=1
-            EXTRA_ARGS="--config profile.release.package.aws-lc-sys.opt-level=0"
-          fi
-          ./cross build --frozen --release --target ${{ matrix.target }} $EXTRA_ARGS
+          ./cross build --frozen --release --target ${{ matrix.target }}
       - name: Generate SBOMs
         run: |
           wget "https://github.com/CycloneDX/cyclonedx-rust-cargo/releases/download/cargo-cyclonedx-0.5.7/cargo-cyclonedx-x86_64-unknown-linux-musl.tar.xz"
