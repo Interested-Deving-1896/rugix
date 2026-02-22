@@ -57,8 +57,9 @@ build_target() {
     git_version="$(git -C "${PROJECT_DIR}" describe --tags --always)"
     export RUGIX_GIT_VERSION="${git_version}"
 
-    "${CROSS_BIN}" build --frozen --release --target "${target}" \
-        --manifest-path "${PROJECT_DIR}/Cargo.toml"
+    # Cross must be run from the project directory — it maps the working
+    # directory into the Docker container rather than using --manifest-path.
+    (cd "${PROJECT_DIR}" && "${CROSS_BIN}" build --frozen --release --target "${target}")
 
     # Determine the target directory (respect CARGO_TARGET_DIR).
     local target_dir="${CARGO_TARGET_DIR:-${PROJECT_DIR}/target}"
@@ -66,8 +67,7 @@ build_target() {
 
     # Generate SBOMs.
     echo "==> Generating SBOMs for ${target}"
-    "${CARGO_CYCLONEDX_BIN}" cyclonedx -f json --target "${target}" \
-        --manifest-path "${PROJECT_DIR}/Cargo.toml"
+    (cd "${PROJECT_DIR}" && "${CARGO_CYCLONEDX_BIN}" cyclonedx -f json --target "${target}")
 
     # Collect binaries and SBOMs into build/binaries/<target>/.
     local binaries_dir="${OUTPUT_DIR}/${target}"
