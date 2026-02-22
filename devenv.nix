@@ -16,6 +16,8 @@
       cmake
       go
 
+      dpkg
+
       cargo-deny
 
       openssl
