@@ -388,8 +388,7 @@ fn main() -> BundleResult<()> {
                     std::fs::read(&cert).whatever("unable to read signer certificate")?;
                 let key_pem = std::fs::read(&key).whatever("unable to read private key")?;
                 let mut builder = rugix_pki::CmsSignerBuilder::new(&cert_pem, &key_pem)
-                    .whatever("unable to create CMS signer")?
-                    .with_rsa_mode(rugix_pki::RsaSignatureMode::Pkcs1v15);
+                    .whatever("unable to create CMS signer")?;
                 for cert in certs {
                     let cert_pem =
                         std::fs::read(&cert).whatever("unable to read intermediate certificate")?;
