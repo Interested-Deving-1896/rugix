@@ -105,6 +105,32 @@ build_deb() {
     # Install the binary.
     install -Dm755 "${binary_path}" "${staging_dir}/usr/bin/${binary_name}"
 
+    # Install the copyright file (required by Debian Policy 12.5).
+    local doc_dir="${staging_dir}/usr/share/doc/${package_name}"
+    mkdir -p "${doc_dir}"
+    cat > "${doc_dir}/copyright" <<COPY
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ${binary_name}
+Upstream-Contact: Silitics GmbH <info@silitics.com>
+Source: https://github.com/rugix/rugix/
+Comment: This binary statically links third-party Rust crates. A full
+ machine-readable Software Bill of Materials (SBOM) in CycloneDX format
+ is available in the upstream release tarballs at
+ https://github.com/rugix/rugix/releases
+
+Files: *
+Copyright: Silitics GmbH <info@silitics.com>
+License: MIT or Apache-2.0
+
+License: MIT
+ On Debian systems, the full text of the MIT license
+ can be found in /usr/share/common-licenses/MIT.
+
+License: Apache-2.0
+ On Debian systems, the full text of the Apache License Version 2.0
+ can be found in /usr/share/common-licenses/Apache-2.0.
+COPY
+
     # Compute installed size in KiB (as Debian expects).
     local installed_size
     installed_size="$(du -sk "${staging_dir}" | cut -f1)"
