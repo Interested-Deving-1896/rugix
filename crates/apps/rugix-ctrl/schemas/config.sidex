@@ -1,0 +1,12 @@
+/// Rugix Ctrl configuration.
+record Config {
+    /// Signature check configuration.
+    signatures?: SignaturesConfig,
+}
+
+record SignaturesConfig {
+    /// Paths to root certificates.
+    /// 
+    /// Currently, only a single root certificate is supported.
+    roots: [string],
+}

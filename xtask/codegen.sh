@@ -12,4 +12,4 @@ sidex generate rust src/manifest/generated
 ./generate-json-schema.sh
 popd
 
-cargo +nightly fmt
+cargo fmt

@@ -216,6 +216,35 @@
         }
       ]
     },
+    "rugix_ctrl.config.Config": {
+      "$id": "rugix_ctrl.config.Config",
+      "type": "object",
+      "description": "Rugix Ctrl configuration.",
+      "properties": {
+        "signatures": {
+          "$ref": "#/$defs/rugix_ctrl.config.SignaturesConfig"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.config.SignaturesConfig": {
+      "$id": "rugix_ctrl.config.SignaturesConfig",
+      "type": "object",
+      "description": "",
+      "properties": {
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "roots"
+      ],
+      "unevaluatedProperties": false
+    },
     "rugix_ctrl.events.Event": {
       "$id": "rugix_ctrl.events.Event",
       "description": "Events emitted by CLI tools.",

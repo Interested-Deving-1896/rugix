@@ -1,26 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "rugix_ctrl.output.SystemInfoOutput",
+  "$id": "rugix_ctrl.config.Config",
   "type": "object",
-  "description": "Information about the system.",
+  "description": "Rugix Ctrl configuration.",
   "properties": {
-    "slots": {
-      "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/rugix_ctrl.output.SlotInfoOutput"
-      }
-    },
-    "boot": {
-      "$ref": "#/$defs/rugix_ctrl.output.BootInfoOutput"
-    },
-    "state": {
-      "$ref": "#/$defs/rugix_ctrl.output.StateInfoOutput"
+    "signatures": {
+      "$ref": "#/$defs/rugix_ctrl.config.SignaturesConfig"
     }
   },
-  "required": [
-    "slots",
-    "state"
-  ],
+  "required": [],
   "unevaluatedProperties": false,
   "$defs": {
     "rugix_ctrl.bootstrapping.BootstrappingConfig": {
@@ -210,18 +198,6 @@
         }
       ]
     },
-    "rugix_ctrl.config.Config": {
-      "$id": "rugix_ctrl.config.Config",
-      "type": "object",
-      "description": "Rugix Ctrl configuration.",
-      "properties": {
-        "signatures": {
-          "$ref": "#/$defs/rugix_ctrl.config.SignaturesConfig"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
     "rugix_ctrl.config.SignaturesConfig": {
       "$id": "rugix_ctrl.config.SignaturesConfig",
       "type": "object",
@@ -408,6 +384,30 @@
           ]
         }
       ]
+    },
+    "rugix_ctrl.output.SystemInfoOutput": {
+      "$id": "rugix_ctrl.output.SystemInfoOutput",
+      "type": "object",
+      "description": "Information about the system.",
+      "properties": {
+        "slots": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/rugix_ctrl.output.SlotInfoOutput"
+          }
+        },
+        "boot": {
+          "$ref": "#/$defs/rugix_ctrl.output.BootInfoOutput"
+        },
+        "state": {
+          "$ref": "#/$defs/rugix_ctrl.output.StateInfoOutput"
+        }
+      },
+      "required": [
+        "slots",
+        "state"
+      ],
+      "unevaluatedProperties": false
     },
     "rugix_ctrl.state.OverlayConfig": {
       "$id": "rugix_ctrl.state.OverlayConfig",
