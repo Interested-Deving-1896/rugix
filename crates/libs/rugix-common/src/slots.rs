@@ -5,6 +5,7 @@ use si_crypto_hashes::{HashAlgorithm, HashDigest};
 
 /// Slot state.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SlotState {
     /// Hashes of the slot's contents.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
