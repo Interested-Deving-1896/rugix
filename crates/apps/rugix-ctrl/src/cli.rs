@@ -194,7 +194,6 @@ pub fn main() -> SystemResult<()> {
                     let should_reboot = install_update_stream(
                         &system,
                         image,
-                        check_hash,
                         verify_bundle,
                         boot_group.as_ref(),
                         *verify_signature,
@@ -537,7 +536,6 @@ impl<R: Read> Read for MaybeStreamHasher<R> {
 fn install_update_stream(
     system: &System,
     image: &String,
-    check_hash: Option<ImageHash>,
     verify_bundle: &Option<HashDigest>,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
     verify_signature: bool,
@@ -545,10 +543,6 @@ fn install_update_stream(
     disable_range_queries: bool,
 ) -> SystemResult<UpdateRebootType> {
     if image.starts_with("http") {
-        if check_hash.is_some() {
-            bail!("--check-hash is not supported for update bundles, use --verify-bundle");
-        }
-
         let mut has_indices = false;
         for (_, slot) in system.slots().iter() {
             has_indices |= slot_db::get_stored_indices(slot.name())
@@ -582,155 +576,16 @@ fn install_update_stream(
     } else {
         &mut File::open(image).whatever("error opening image")?
     };
-    let reader = match check_hash.clone() {
-        Some(ImageHash::Sha256(expected)) => MaybeStreamHasher::Sha256 {
-            hasher: StreamHasher::new(reader),
-            expected,
-        },
-        None => MaybeStreamHasher::NoHash { reader },
-    };
-    let mut update_stream = PeekReader::new(reader);
-
-    let magic = update_stream
-        .peek(BUNDLE_MAGIC.len())
-        .whatever("error reading bundle magic")?;
-
-    if magic == BUNDLE_MAGIC {
-        if check_hash.is_some() {
-            bail!("--check-hash is not supported for update bundles, use --verify-bundle");
-        }
-        let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(update_stream);
-        return install_update_bundle(
-            system,
-            bundle_source,
-            verify_bundle,
-            boot_group,
-            verify_signature,
-            root_cert,
-        );
-    }
-    if verify_bundle.is_some() {
-        bail!("--verify-bundle is not supported on images, use --check-hash");
-    }
-    if verify_signature {
-        bail!("--verify-signature is not supported on images");
-    }
-
-    let Some((entry_idx, entry)) = boot_group else {
-        bail!("for image updates, you need to specify a boot group");
-    };
-
-    let update_stream =
-        MaybeCompressed::new(update_stream).whatever("error decompressing stream")?;
-
-    system
-        .boot_flow()
-        .pre_install(system, *entry_idx)
-        .whatever("error executing pre-install step")?;
-
-    let boot_slot = entry.get_slot("boot").unwrap();
-    let system_slot = entry.get_slot("system").unwrap();
-
-    let boot_slot = &system.slots()[boot_slot];
-    let system_slot = &system.slots()[system_slot];
-
-    slot_db::erase(boot_slot.name())?;
-    slot_db::erase(system_slot.name())?;
-
-    let SlotKind::Block(raw_boot_slot) = boot_slot.kind() else {
-        bail!("boot slot must be a block device");
-    };
-    let SlotKind::Block(raw_system_slot) = system_slot.kind() else {
-        bail!("system slot must be a block device");
-    };
-
-    let mut img_stream =
-        ImgStream::new(update_stream).whatever("error reading image partitions")?;
-    let mut partition_idx = 0;
-    while let Some(mut partition) = img_stream
-        .next_partition()
-        .whatever("error reading next partition")?
-    {
-        let partition_name = match partition_idx {
-            0 => "CONFIG",
-            1 => "BOOT-A",
-            2 => "BOOT-B",
-            3 => "system-a",
-            4 => "system-b",
-            5 => "data",
-            _ => "<unknown>",
-        };
-        println!(
-            "Found {partition_idx},{partition_name} {}",
-            partition.entry()
-        );
-        match partition_idx {
-            1 => {
-                io::copy(
-                    &mut partition,
-                    &mut fs::File::create(raw_boot_slot.device())
-                        .whatever("error opening boot partition file")?,
-                )
-                .whatever("error copying boot partition")?;
-            }
-            3 => {
-                io::copy(
-                    &mut partition,
-                    &mut fs::File::create(raw_system_slot.device())
-                        .whatever("error opening system partition file")?,
-                )
-                .whatever("error copying system partition")?;
-            }
-            _ => { /* Nothing to do! */ }
-        }
-
-        partition_idx += 1;
-    }
-
-    let mut hashed_stream = img_stream.into_inner().into_inner().into_inner();
-    // Make sure that the entire stream has been consumed. Otherwise, the hash
-    // may not be match the file.
-    loop {
-        let mut buffer = vec![0; 4096];
-        if hashed_stream
-            .read_to_end(&mut buffer)
-            .whatever("error reading image")?
-            == 0
-        {
-            break;
-        }
-    }
-
-    if let Err(error) = hashed_stream.verify() {
-        error!("hash verification failed");
-        if let Err(error) =
-            rugix_fs::File::open_write(raw_boot_slot.device().path()).and_then(|mut device| {
-                device.write_zeros(
-                    byte_calc::NumBytes::new(0),
-                    byte_calc::NumBytes::mebibytes(1),
-                )
-            })
-        {
-            error!("error overwriting boot partition: {error:?}");
-        }
-        if let Err(error) =
-            rugix_fs::File::open_write(raw_system_slot.device().path()).and_then(|mut device| {
-                device.write_zeros(
-                    byte_calc::NumBytes::new(0),
-                    byte_calc::NumBytes::mebibytes(1),
-                )
-            })
-        {
-            error!("error overwriting system partition: {error:?}");
-        }
-        return Err(error);
-    }
-
-    system
-        .boot_flow()
-        .post_install(system, *entry_idx)
-        .whatever("error running post-install step")?;
-    Ok(UpdateRebootType::Yes)
+    let update_stream = PeekReader::new(reader);
+    let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(update_stream);
+    install_update_bundle(
+        system,
+        bundle_source,
+        verify_bundle,
+        boot_group,
+        verify_signature,
+        root_cert,
+    )
 }
 
 pub struct UpdateState {
