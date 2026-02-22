@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Mutex;
 
+use rugix_bundle::format;
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::manifest::ChunkerAlgorithm;
 use rugix_bundle::reader::block_provider::StoredBlockProvider;
-use rugix_bundle::reader::{DecodedPayloadInfo, PayloadTarget};
+use rugix_bundle::reader::{BundleReader, DecodedPayloadInfo, PayloadTarget};
 use rugix_bundle::source::{BundleSource, ReaderSource, SkipRead};
 use rugix_bundle::xdelta::xdelta_decompress;
-use rugix_bundle::{format, BUNDLE_MAGIC};
 use rugix_cli::widgets::{ProgressBar, ProgressSpinner, Widget};
 use rugix_cli::StatusSegment;
 use rugix_common::disk::blkdev::{find_block_device, BlockDevice};
@@ -23,14 +23,14 @@ use rugix_hooks::{HooksLoader, RunOptions};
 use si_crypto_hashes::{HashAlgorithm, HashDigest, Hasher};
 use tracing::{debug, error, info, trace, warn};
 
+use crate::config::config::Config;
 use crate::config::events::{Event, UpdateProgressEvent};
+use crate::config::load_ctrl_config;
 use crate::system::boot_groups::{BootGroup, BootGroupIdx};
 use crate::system::slots::SlotKind;
 use crate::system::{System, SystemResult};
 use clap::{Parser, ValueEnum};
 use reportify::{bail, whatever, ErrorExt, ResultExt};
-use rugix_common::disk::stream::ImgStream;
-use rugix_common::maybe_compressed::{MaybeCompressed, PeekReader};
 use rugix_common::stream_hasher::StreamHasher;
 use xscript::{vars, Vars};
 
@@ -74,6 +74,8 @@ pub fn main() -> SystemResult<()> {
 
     let args = Args::parse();
     let system = System::initialize()?;
+    let config = load_ctrl_config()?;
+
     match &args.command {
         Command::State(state_cmd) => match state_cmd {
             StateCommand::Reset {
@@ -118,32 +120,17 @@ pub fn main() -> SystemResult<()> {
         Command::Update(update_cmd) => {
             match update_cmd {
                 UpdateCommand::Install {
-                    bundle: image,
+                    bundle,
+                    insecure_skip_bundle_verification,
+                    root_cert,
+                    bundle_hash,
                     reboot: reboot_type,
                     keep_overlay,
-                    check_hash,
-                    verify_bundle,
                     boot_group,
-                    verify_signature,
-                    root_cert,
                     disable_range_queries,
                 } => {
-                    let check_hash = check_hash.as_deref()
-                            .map(|encoded_hash| -> SystemResult<ImageHash> {
-                                let (algorithm, hash) = encoded_hash
-                                    .split_once(':')
-                                    .ok_or_else(||
-                                        whatever!("Invalid format of hash. Format must be `sha256:<HEX-ENCODED-HASH>`.")
-                                    )?;
-                                if algorithm != "sha256" {
-                                    bail!("Algorithm must be SHA256.");
-                                }
-                                let decoded_hash = hex::decode(hash).whatever("unable to decode image hash")?;
-                                Ok(ImageHash::Sha256(decoded_hash))
-                        }).transpose()?;
-
                     if system.needs_commit()? {
-                        bail!("System needs to be committed before installing an update.");
+                        bail!("system needs to be committed before installing an update");
                     }
 
                     // Find the entry where we are going to install the update to.
@@ -193,11 +180,12 @@ pub fn main() -> SystemResult<()> {
 
                     let should_reboot = install_update_stream(
                         &system,
-                        image,
-                        verify_bundle,
+                        &config,
+                        bundle,
                         boot_group.as_ref(),
-                        *verify_signature,
-                        root_cert,
+                        bundle_hash,
+                        root_cert.as_deref(),
+                        *insecure_skip_bundle_verification,
                         *disable_range_queries,
                     )?;
 
@@ -535,14 +523,15 @@ impl<R: Read> Read for MaybeStreamHasher<R> {
 
 fn install_update_stream(
     system: &System,
-    image: &String,
-    verify_bundle: &Option<HashDigest>,
+    config: &Config,
+    bundle: &String,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
-    verify_signature: bool,
-    root_cert: &[PathBuf],
+    bundle_hash: &Option<HashDigest>,
+    root_cert: Option<&Path>,
+    insecure_skip_bundle_verification: bool,
     disable_range_queries: bool,
 ) -> SystemResult<UpdateRebootType> {
-    if image.starts_with("http") {
+    if bundle.starts_with("http") {
         let mut has_indices = false;
         for (_, slot) in system.slots().iter() {
             has_indices |= slot_db::get_stored_indices(slot.name())
@@ -553,14 +542,15 @@ fn install_update_stream(
             }
         }
 
-        let mut bundle_source = HttpSource::new(image, !disable_range_queries && has_indices)?;
+        let mut bundle_source = HttpSource::new(bundle, !disable_range_queries && has_indices)?;
         let should_reboot = install_update_bundle(
             system,
+            config,
             &mut bundle_source,
-            verify_bundle,
             boot_group,
-            verify_signature,
+            bundle_hash,
             root_cert,
+            insecure_skip_bundle_verification,
         )?;
         let stats = bundle_source.get_download_stats();
         info!(
@@ -571,20 +561,20 @@ fn install_update_stream(
         );
         return Ok(should_reboot);
     }
-    let reader: &mut dyn io::Read = if image == "-" {
+    let reader: &mut dyn io::Read = if bundle == "-" {
         &mut io::stdin()
     } else {
-        &mut File::open(image).whatever("error opening image")?
+        &mut File::open(bundle).whatever("error opening image")?
     };
-    let update_stream = PeekReader::new(reader);
-    let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(update_stream);
+    let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(reader);
     install_update_bundle(
         system,
+        config,
         bundle_source,
-        verify_bundle,
         boot_group,
-        verify_signature,
+        bundle_hash,
         root_cert,
+        insecure_skip_bundle_verification,
     )
 }
 
@@ -608,54 +598,70 @@ impl StatusSegment for UpdateStatus {
     }
 }
 
+fn verify_bundle_signature<S: BundleSource>(
+    root_cert: Option<&Path>,
+    bundle_reader: &BundleReader<S>,
+) -> SystemResult<bool> {
+    let Some(root_cert) = root_cert else {
+        return Ok(false);
+    };
+    let Some(signatures) = bundle_reader.signatures() else {
+        warn!("root certificate configured but no signatures found");
+        return Ok(false);
+    };
+    let cert_pem = std::fs::read(root_cert).whatever("unable to read root certificate")?;
+    let verifier =
+        rugix_pki::CmsVerifier::new(&cert_pem).whatever("unable to create CMS verifier")?;
+    info!("checking bundle signatures");
+    for signature in signatures.cms_signatures.iter() {
+        let result = match verifier.verify(&signature.raw) {
+            Ok(result) => result,
+            Err(error) => {
+                info!("signature verification failed: {error}");
+                continue;
+            }
+        };
+        let signed_metadata = decode_slice::<format::SignedMetadata>(&result.content)
+            .whatever("unable to decode signed metadata")?;
+        if signed_metadata.header_hash
+            == bundle_reader.header_hash(signed_metadata.header_hash.algorithm())
+        {
+            info!("found valid signature");
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn install_update_bundle<R: BundleSource>(
     system: &System,
+    config: &Config,
     bundle_source: R,
-    verify_bundle: &Option<HashDigest>,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
-    verify_signature: bool,
-    root_certs: &[PathBuf],
+    bundle_hash: &Option<HashDigest>,
+    root_cert: Option<&Path>,
+    insecure_skip_bundle_verification: bool,
 ) -> SystemResult<UpdateRebootType> {
     let mut bundle_reader =
-        rugix_bundle::reader::BundleReader::start(bundle_source, verify_bundle.clone())
+        rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
             .whatever("unable to read bundle")?;
 
-    if verify_signature {
-        let Some(signatures) = bundle_reader.signatures() else {
-            bail!("no signatures found in bundle");
-        };
-        if root_certs.is_empty() {
-            bail!("no root certificates provided for signature verification");
-        }
-        if root_certs.len() > 1 {
-            bail!("multiple root certificates are not yet supported");
-        }
-        let cert_pem = std::fs::read(&root_certs[0]).whatever("unable to read root certificate")?;
-        let verifier =
-            rugix_pki::CmsVerifier::new(&cert_pem).whatever("unable to create CMS verifier")?;
-        let mut found_valid_signature = false;
-        info!("checking bundle signatures");
-        for signature in signatures.cms_signatures.iter() {
-            let result = match verifier.verify(&signature.raw) {
-                Ok(result) => result,
-                Err(error) => {
-                    info!("signature verification failed: {error}");
-                    continue;
-                }
+    let root_cert = root_cert.or_else(|| {
+        config.signatures.as_ref().and_then(|c| {
+            if c.roots.len() > 1 {
+                warn!("multiple root certificates in config, using only the first")
             };
-            let signed_metadata = decode_slice::<format::SignedMetadata>(&result.content)
-                .whatever("unable to decode signed metadata")?;
-            if signed_metadata.header_hash
-                == bundle_reader.header_hash(signed_metadata.header_hash.algorithm())
-            {
-                found_valid_signature = true;
-                info!("found valid signature");
-                break;
-            }
-        }
-        if !found_valid_signature {
-            bail!("no valid signature found");
-        }
+            c.roots.get(0).map(|p| Path::new(p))
+        })
+    });
+
+    // If a bundle hash has been specified, then the bundle will be verified against that hash
+    // by the reader.
+    let bundle_verified =
+        bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
+
+    if !bundle_verified && !insecure_skip_bundle_verification {
+        bail!("bundle verification failed, refusing to install update");
     }
 
     if !bundle_reader.header().is_incremental {
@@ -1141,26 +1147,31 @@ pub enum OverlayCommand {
 pub enum UpdateCommand {
     /// Install an update.
     Install {
-        /// Path to the update bundle.
+        /// Path to the update bundle ot install.
         bundle: String,
-        /// Check whether the (streamed) image matches the given hash.
+        /// Skip bundle verification (insecure, do not use in production).
+        ///
+        /// By default, either a valid signature is required or a bundle hash has to be
+        /// specified with `--bundle-hash`. This flag allows the installation of update
+        /// bundles without neither of those.
         #[clap(long)]
-        check_hash: Option<String>,
-        /// Verify the signatures of the bundle.
-        #[clap(long)]
-        verify_signature: bool,
+        insecure_skip_bundle_verification: bool,
         /// Root certificate to use for signature verification.
-        #[clap(long = "root-cert")]
-        root_cert: Vec<PathBuf>,
-        /// Verify a bundle based on the provided hash.
+        ///
+        /// This overrides the configured default certificate.
         #[clap(long)]
-        verify_bundle: Option<HashDigest>,
-        /// Do not delete an existing overlay.
+        root_cert: Option<PathBuf>,
+        /// Expected bundle hash.
         #[clap(long)]
-        keep_overlay: bool,
+        bundle_hash: Option<HashDigest>,
         /// Control how to reboot the system.
         #[clap(long)]
         reboot: Option<UpdateRebootType>,
+        /// Do not delete the overlay of the target slot (if any).
+        ///
+        /// Only effective when using Rugix's state management mechanism.
+        #[clap(long)]
+        keep_overlay: bool,
         /// Boot group to install the update to.
         #[clap(long)]
         boot_group: Option<String>,

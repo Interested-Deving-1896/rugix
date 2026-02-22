@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Remove functionality for installing images.
+- Make signatures mandatory unless opted out.
+- Consolidate split of Rugix Ctrl and Rugix Bakery.
+
 ## Version 0.8.17
 
 - Re-release of v0.8.16 due to immutable release preventing CI from publishing assets.
@@ -146,13 +152,13 @@ Breaking changes to the image building pipeline:
 - The `boot_flow` option has been superseded by `target`.
 - The `include_firmware` option has been removed. To include a firmware update for Raspberry Pi, use the `core/rpi-include-firmware` recipe.
 - The following recipes have been renamed:
-    - `core/raspberrypi` => `core/rpi-raspios-setup`
-    - `core/pi-cleanup` => `core/rpi-raspios-cleanup`
-    - `core/apt-cleanup` => `core/pkg-cleanup` (also supports `apk` now)
-    - `core/apt-update` => `core/pkg-cleanup` (also supports `apk` now)
-    - `core/apt-upgrade` => `core/pkg-upgrade` (also supports `apk` now)
+  - `core/raspberrypi` => `core/rpi-raspios-setup`
+  - `core/pi-cleanup` => `core/rpi-raspios-cleanup`
+  - `core/apt-cleanup` => `core/pkg-cleanup` (also supports `apk` now)
+  - `core/apt-update` => `core/pkg-cleanup` (also supports `apk` now)
+  - `core/apt-upgrade` => `core/pkg-upgrade` (also supports `apk` now)
 - The following recipes have been removed:
-    - `core/disable-swap` (now part of `rpi-raspios-cleanup` via parameter)
+  - `core/disable-swap` (now part of `rpi-raspios-cleanup` via parameter)
 
 ## Version 0.6.6
 
@@ -190,9 +196,9 @@ Breaking changes to the image building pipeline:
 - Introduction of layers.
 - Introduction of repositories.
 - Backwards-incompatible changes to image building pipeline:
-    + Layers instead of recipes in `rugpi-bakery.toml`.
-    + Removal of default recipes. Recipes must be explicitly enabled.
-    + Separate `images` sections in `rugpi-bakery.toml`.
+  - Layers instead of recipes in `rugpi-bakery.toml`.
+  - Removal of default recipes. Recipes must be explicitly enabled.
+  - Separate `images` sections in `rugpi-bakery.toml`.
 
 ## Version 0.5.0
 
