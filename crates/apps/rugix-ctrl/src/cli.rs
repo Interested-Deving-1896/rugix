@@ -666,7 +666,7 @@ fn install_update_bundle<R: BundleSource>(
 
     if !bundle_reader.header().is_incremental {
         let Some((entry_idx, _)) = boot_group else {
-            bail!("full system updates require teh specification of a boot group");
+            bail!("full system updates require the specification of a boot group");
         };
         system
             .boot_flow()
@@ -1147,13 +1147,13 @@ pub enum OverlayCommand {
 pub enum UpdateCommand {
     /// Install an update.
     Install {
-        /// Path to the update bundle ot install.
+        /// Path to the update bundle to install.
         bundle: String,
         /// Skip bundle verification (insecure, do not use in production).
         ///
         /// By default, either a valid signature is required or a bundle hash has to be
         /// specified with `--bundle-hash`. This flag allows the installation of update
-        /// bundles without neither of those.
+        /// bundles without either of those.
         #[clap(long)]
         insecure_skip_bundle_verification: bool,
         /// Root certificate to use for signature verification.

@@ -243,14 +243,14 @@ fn main() -> BundleResult<()> {
             info!(directory = ?old_dir.path(), "unpacking old update bundle");
             unpack(&cmd.old, old_dir.path())?;
             let new_dir = tempfile::TempDir::new().unwrap();
-            info!(direction = ?new_dir.path(), "unpacking new update bundle");
+            info!(directory = ?new_dir.path(), "unpacking new update bundle");
             unpack(&cmd.new, new_dir.path())?;
             let old_manifest = toml::from_str::<BundleManifest>(
                 &std::fs::read_to_string(old_dir.path().join("rugix-bundle.toml")).unwrap(),
             )
             .unwrap();
             let mut new_manifest = toml::from_str::<BundleManifest>(
-                &std::fs::read_to_string(old_dir.path().join("rugix-bundle.toml")).unwrap(),
+                &std::fs::read_to_string(new_dir.path().join("rugix-bundle.toml")).unwrap(),
             )
             .unwrap();
             let slots = if cmd.slots.is_empty() {
