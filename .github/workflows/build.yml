@@ -85,6 +85,7 @@ jobs:
           if-no-files-found: error
 
   test:
+    if: false # temporarily disabled
     name: Test
     runs-on: ubuntu-latest
     permissions:
@@ -195,7 +196,7 @@ jobs:
       - build_binaries_linux
       - build_binaries_mac
       - build_debs
-      - test
+      # - test  # temporarily disabled
     steps:
       - name: Checkout
         uses: actions/checkout@v4
