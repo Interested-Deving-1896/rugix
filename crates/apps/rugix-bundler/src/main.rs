@@ -105,6 +105,7 @@ pub enum SignaturesCmd {
 
 #[derive(Debug, Parser)]
 pub struct PrintCmd {
+    /// Path to the update bundle.
     bundle: PathBuf,
 }
 
@@ -117,16 +118,15 @@ pub struct BundleCmd {
 }
 
 #[derive(Debug, Parser)]
-pub struct ListCmd {
-    bundle: PathBuf,
-}
-
-#[derive(Debug, Parser)]
 pub struct ExtractCmd {
+    /// Expected bundle hash to verify while reading.
     #[clap(long)]
-    verify_bundle: Option<HashDigest>,
+    bundle_hash: Option<HashDigest>,
+    /// Path to the update bundle.
     bundle: PathBuf,
+    /// Index of the payload to extract.
     payload: usize,
+    /// Output file path.
     dst: PathBuf,
 }
 
@@ -143,7 +143,7 @@ pub struct DeltaCmd {
     out: PathBuf,
     /// Disable compression of individual patch blocks.
     #[clap(long)]
-    without_compression: bool,
+    disable_compression: bool,
 }
 
 #[derive(Debug, Parser)]
@@ -156,13 +156,16 @@ pub struct UnpackCmd {
 
 #[derive(Debug, Parser)]
 pub struct InspectCmd {
+    /// Expected bundle hash to verify while reading.
     #[clap(long)]
-    verify_bundle: Option<HashDigest>,
+    bundle_hash: Option<HashDigest>,
+    /// Path to the update bundle.
     bundle: PathBuf,
 }
 
 #[derive(Debug, Parser)]
 pub struct HashCmd {
+    /// Path to the update bundle.
     bundle: PathBuf,
 }
 
@@ -180,7 +183,7 @@ fn main() -> BundleResult<()> {
         }
         Cmd::Extract(unpack_cmd) => {
             let source = FileSource::from_unbuffered(File::open(&unpack_cmd.bundle).unwrap());
-            let mut reader = BundleReader::start(source, unpack_cmd.verify_bundle)?;
+            let mut reader = BundleReader::start(source, unpack_cmd.bundle_hash)?;
             let mut did_read = false;
             while let Some(payload_reader) = reader.next_payload()? {
                 if payload_reader.idx() != unpack_cmd.payload {
@@ -213,7 +216,7 @@ fn main() -> BundleResult<()> {
         }
         Cmd::Inspect(inspect_cmd) => {
             let source = FileSource::from_unbuffered(File::open(&inspect_cmd.bundle).unwrap());
-            let reader = BundleReader::start(source, inspect_cmd.verify_bundle)?;
+            let reader = BundleReader::start(source, inspect_cmd.bundle_hash)?;
             println!("Payloads:");
             for (idx, entry) in reader.header().payload_index.iter().enumerate() {
                 if let Some(slot_type) = &entry.type_slot {
@@ -305,7 +308,7 @@ fn main() -> BundleResult<()> {
                     BlockEncoding::new(ChunkerAlgorithm::Fixed {
                         block_size_kib: 256,
                     })
-                    .with_compression(if cmd.without_compression {
+                    .with_compression(if cmd.disable_compression {
                         None
                     } else {
                         Some(Compression::Xz(XzCompression::new()))

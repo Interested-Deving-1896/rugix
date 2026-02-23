@@ -137,7 +137,7 @@ pub fn main() -> SystemResult<()> {
                     let boot_group = match boot_group {
                         Some(entry_name) => {
                             let Some(entry) = system.boot_entries().find_by_name(entry_name) else {
-                                bail!("unable to find entry {entry_name}")
+                                bail!("unable to find boot group {entry_name}")
                             };
                             Some(entry)
                         }
@@ -155,7 +155,7 @@ pub fn main() -> SystemResult<()> {
                     if let Some((_, boot_group)) = boot_group {
                         info!("installing update to boot group {:?}", boot_group.name());
                         if boot_group.active() {
-                            bail!("selected entry {} is active", boot_group.name());
+                            bail!("selected boot group {} is active", boot_group.name());
                         }
                     }
 
@@ -387,7 +387,7 @@ pub fn main() -> SystemResult<()> {
                     Some(entry_name) => {
                         let Some((group, _)) = system.boot_entries().find_by_name(entry_name)
                         else {
-                            bail!("unable to find entry {entry_name}")
+                            bail!("unable to find boot group {entry_name}")
                         };
                         group
                     }
@@ -404,10 +404,10 @@ pub fn main() -> SystemResult<()> {
             }
             BootCommand::MarkBad { group } => {
                 let Some((group, _)) = system.boot_entries().find_by_name(group) else {
-                    bail!("unable to find entry {group}")
+                    bail!("unable to find boot group {group}")
                 };
                 info!(
-                    "marking boot group {} as good",
+                    "marking boot group {} as bad",
                     system.boot_entries()[group].name()
                 );
                 system
@@ -1190,6 +1190,7 @@ pub enum UpdateRebootType {
 
 #[derive(Debug, Parser)]
 pub enum SystemCommand {
+    /// Print information about the system.
     Info {
         /// Output system information as JSON.
         #[clap(long)]

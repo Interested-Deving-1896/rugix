@@ -1,5 +1,6 @@
 [package]
 name = "rugix-bundler"
+description = "Create, inspect, and manipulate Rugix update bundles."
 edition = "2021"
 authors.workspace = true
 version.workspace = true
