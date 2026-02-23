@@ -13,6 +13,8 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 ctrlc.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 rugix-tasks.workspace = true
 flume.workspace = true

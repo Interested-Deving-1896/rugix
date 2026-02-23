@@ -219,35 +219,8 @@ pub fn main() -> SystemResult<()> {
         Command::System(sys_cmd) => match sys_cmd {
             SystemCommand::Info { json } => {
                 let output = system_state::state_from_system(&system);
-                if let Some(boot) = &output.boot {
-                    eprintln!("Boot Flow: {}", boot.boot_flow);
-                    eprintln!(
-                        "Active Boot Group: {}",
-                        boot.active_group.as_deref().unwrap_or("<unknown>")
-                    );
-                    eprintln!(
-                        "Default Boot Group: {}",
-                        boot.default_group.as_deref().unwrap_or("<unknown>")
-                    );
-                }
-                for (name, info) in &output.slots {
-                    eprintln!(
-                        "Slot {name:?}: {}",
-                        if let Some(active) = info.active {
-                            if active {
-                                "active"
-                            } else {
-                                "inactive"
-                            }
-                        } else {
-                            "<unknown>"
-                        }
-                    );
-                }
-                if rugix_cli::stdout_is_piped() || *json {
-                    serde_json::to_writer(std::io::stdout(), &output)
-                        .whatever("unable to write system info to stdout")?;
-                }
+                rugix_cli::json::print_json(&output, *json)
+                    .whatever("unable to write system info to stdout")?;
             }
             SystemCommand::Commit => {
                 if system.needs_commit()? {
@@ -262,7 +235,7 @@ pub fn main() -> SystemResult<()> {
                         .run_hooks("post-commit", Vars::new(), &Default::default())
                         .whatever("unable to run `post-commit` hooks")?;
                 } else {
-                    println!("Active boot group is already the default!");
+                    info!("active boot group is already the default");
                 }
             }
             SystemCommand::Reboot { spare } => {
@@ -283,28 +256,27 @@ pub fn main() -> SystemResult<()> {
                 Boolean::False => clear_flag(DEFERRED_SPARE_REBOOT_FLAG)?,
             },
             UnstableCommand::PrintSystemInfo => {
-                println!("Config:");
-                println!("{:#?}", system.config());
-                println!("Root:");
-                println!("{:#?}", system.root());
-                println!("Slots:");
+                eprintln!("Config:");
+                eprintln!("{:#?}", system.config());
+                eprintln!("Root:");
+                eprintln!("{:#?}", system.root());
+                eprintln!("Slots:");
                 for (_, slot) in system.slots().iter() {
-                    println!("{:#?}", slot)
+                    eprintln!("{:#?}", slot)
                 }
-                println!("Boot Entries");
-                println!("{:#?}", system.boot_entries());
+                eprintln!("Boot Entries");
+                eprintln!("{:#?}", system.boot_entries());
             }
         },
         Command::Slots(slots_command) => match slots_command {
             SlotsCommand::Inspect { slot } => {
                 let indices = slot_db::get_stored_indices(slot)?;
-                if indices.is_empty() {
-                    eprintln!("No indices for slot {slot}")
-                } else {
-                    for index in &indices {
-                        eprintln!("Found index {:?}", &index.index_file);
-                    }
+                #[derive(serde::Serialize)]
+                struct SlotInspectOutput<'a> {
+                    indices: &'a [slot_db::StoredBlockIndex],
                 }
+                rugix_cli::json::print_json(&SlotInspectOutput { indices: &indices }, false)
+                    .whatever("unable to write slot info to stdout")?;
             }
             SlotsCommand::CreateIndex {
                 slot,
@@ -423,8 +395,7 @@ pub fn main() -> SystemResult<()> {
                 else {
                     bail!("unable to find block device");
                 };
-                serde_json::to_writer(
-                    std::io::stdout(),
+                rugix_cli::json::print_json(
                     &BlockDeviceInfo {
                         device: device.path().to_string_lossy().into_owned(),
                         parent: device
@@ -434,13 +405,13 @@ pub fn main() -> SystemResult<()> {
                             .map(|parent| parent.path().to_string_lossy().into_owned()),
                         partition: device.is_partition().ok().flatten(),
                     },
+                    false,
                 )
-                .ok();
-                println!("");
+                .whatever("unable to write block device info to stdout")?;
             }
             UtilsCommand::IsMountPoint { path } => {
-                serde_json::to_writer(std::io::stdout(), &is_mount_point(path)).ok();
-                println!("");
+                rugix_cli::json::print_json(&is_mount_point(path), false)
+                    .whatever("unable to write mount point info to stdout")?;
             }
             UtilsCommand::ResolvePartition { disk, partition } => {
                 let disk = if let Some(disk) = disk {
@@ -454,8 +425,7 @@ pub fn main() -> SystemResult<()> {
                 else {
                     bail!("partition not found");
                 };
-                serde_json::to_writer(
-                    std::io::stdout(),
+                rugix_cli::json::print_json(
                     &BlockDeviceInfo {
                         device: device.path().to_string_lossy().into_owned(),
                         parent: device
@@ -465,9 +435,9 @@ pub fn main() -> SystemResult<()> {
                             .map(|parent| parent.path().to_string_lossy().into_owned()),
                         partition: device.is_partition().ok().flatten(),
                     },
+                    false,
                 )
-                .ok();
-                println!("");
+                .whatever("unable to write partition info to stdout")?;
             }
         },
     }
@@ -1192,7 +1162,7 @@ pub enum UpdateRebootType {
 pub enum SystemCommand {
     /// Print information about the system.
     Info {
-        /// Output system information as JSON.
+        /// Output compact JSON instead of pretty-printed JSON.
         #[clap(long)]
         json: bool,
     },

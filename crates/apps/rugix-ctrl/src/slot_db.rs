@@ -19,7 +19,8 @@ use si_crypto_hashes::HashAlgorithm;
 use tracing::warn;
 
 /// Stored block index.
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StoredBlockIndex {
     /// Chunker algorithm.
     pub chunker_algorithm: ChunkerAlgorithm,

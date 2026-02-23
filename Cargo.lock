@@ -1439,6 +1439,8 @@ dependencies = [
  "ctrlc",
  "flume",
  "rugix-tasks",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
