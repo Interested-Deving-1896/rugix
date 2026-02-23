@@ -121,7 +121,6 @@ impl Drop for Mounted {
         if let Err(error) = nix::mount::umount(&self.path) {
             // If EBUSY, try lazy unmount (MNT_DETACH) to avoid mount accumulation
             if error == nix::errno::Errno::EBUSY {
-                eprintln!("Mount {:?} is busy, trying lazy unmount", self.path);
                 if let Err(error) =
                     nix::mount::umount2(&self.path, nix::mount::MntFlags::MNT_DETACH)
                 {
