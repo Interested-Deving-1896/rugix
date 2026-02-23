@@ -89,7 +89,7 @@ build_target() {
     done
 
     # Create a tarball alongside the target directory.
-    tar -cf "${OUTPUT_DIR}/${target}.tar" -C "${binaries_dir}" .
+    tar -cf "${OUTPUT_DIR}/binaries-${target}.tar" -C "${binaries_dir}" .
 
     echo "==> Built ${target} -> ${binaries_dir}"
 }

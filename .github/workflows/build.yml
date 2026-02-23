@@ -47,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.target }}
-          path: build/binaries/${{ matrix.target }}.tar
+          path: build/binaries/binaries-${{ matrix.target }}.tar
           if-no-files-found: error
 
   build_binaries_mac:
@@ -76,12 +76,12 @@ jobs:
       - name: Create Artifact
         run: |
           cd target/${{ matrix.target }}/release
-          tar -cf ../../../${{ matrix.target }}.tar rugix-bundler
+          tar -cf ../../../binaries-${{ matrix.target }}.tar rugix-bundler
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.target }}
-          path: ${{ matrix.target }}.tar
+          path: binaries-${{ matrix.target }}.tar
           if-no-files-found: error
 
   test:
@@ -111,6 +111,7 @@ jobs:
           for tar_file in *.tar; do
             if [ -f "${tar_file}" ]; then
               target_name="${tar_file%.tar}"
+              target_name="${target_name#binaries-}"
               mkdir -p "$target_name"
               tar -xf "$tar_file" -C "$target_name"
               rm -f "$tar_file"
@@ -174,8 +175,8 @@ jobs:
         run: |
           cd build/binaries
           mkdir -p ${{ matrix.target }}
-          tar -xf ${{ matrix.target }}.tar -C ${{ matrix.target }}
-          rm -f ${{ matrix.target }}.tar
+          tar -xf binaries-${{ matrix.target }}.tar -C ${{ matrix.target }}
+          rm -f binaries-${{ matrix.target }}.tar
       - name: Build Debian Packages
         run: ./scripts/build-debs.sh ${{ matrix.target }}
       - name: Upload Artifact
@@ -210,14 +211,14 @@ jobs:
           pattern: debs-*
           path: build/debs
           merge-multiple: true
+      - name: Remove Packages Not Intended for Release
+        run: rm -f build/debs/rugix-admin-*.deb build/debs/rugix-util-*.deb
       - name: List Assets
         run: |
           find build/binaries
           find build/debs
       - name: Release
-        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            build/binaries/*
-            build/debs/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload ${{ github.ref_name }} build/binaries/* build/debs/* --clobber
