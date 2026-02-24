@@ -1179,12 +1179,12 @@ pub enum UpdateRebootType {
     /// Do nothing.
     No,
     /// Just set the flags without rebooting.
-    /// 
+    ///
     /// This will tell the bootloader integration to boot into the new system next without
     /// actually triggering a reboot.
     Set,
     /// Set the deferred spare reboot marker.
-    /// 
+    ///
     /// Rugix will itself remember that an update has been installed. On the next boot,
     /// it will remove the marker and reboot into the new system. This allows the system
     /// to be shutoff after installing the update. On the next boot, Rugix will then try
