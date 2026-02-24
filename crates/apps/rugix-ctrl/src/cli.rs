@@ -206,9 +206,21 @@ pub fn main() -> SystemResult<()> {
                                 .boot_flow()
                                 .set_try_next(&system, entry_idx)
                                 .whatever("unable to set next boot group")?;
+                            info!("rebooting");
                             reboot()?;
                         }
                         UpdateRebootType::No => { /* nothing to do */ }
+                        UpdateRebootType::Set => {
+                            let (entry_idx, boot_group) = boot_group.unwrap();
+                            info!(
+                                "instructing boot flow to try booting into {:?}",
+                                boot_group.name()
+                            );
+                            system
+                                .boot_flow()
+                                .set_try_next(&system, entry_idx)
+                                .whatever("unable to set next boot group")?;
+                        }
                         UpdateRebootType::Deferred => {
                             set_flag(DEFERRED_SPARE_REBOOT_FLAG)?;
                         }
@@ -1162,8 +1174,21 @@ pub enum UpdateCommand {
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum UpdateRebootType {
+    /// Reboot into the newly installed system.
     Yes,
+    /// Do nothing.
     No,
+    /// Just set the flags without rebooting.
+    /// 
+    /// This will tell the bootloader integration to boot into the new system next without
+    /// actually triggering a reboot.
+    Set,
+    /// Set the deferred spare reboot marker.
+    /// 
+    /// Rugix will itself remember that an update has been installed. On the next boot,
+    /// it will remove the marker and reboot into the new system. This allows the system
+    /// to be shutoff after installing the update. On the next boot, Rugix will then try
+    /// to boot into the new version.
     Deferred,
 }
 
