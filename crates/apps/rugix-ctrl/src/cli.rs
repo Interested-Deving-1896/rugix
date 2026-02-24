@@ -11,7 +11,7 @@ use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::manifest::ChunkerAlgorithm;
 use rugix_bundle::reader::block_provider::StoredBlockProvider;
 use rugix_bundle::reader::{BundleReader, DecodedPayloadInfo, PayloadTarget};
-use rugix_bundle::source::{BundleSource, ReaderSource, SkipRead};
+use rugix_bundle::source::{BundleSource, ReaderSource, SkipRead, SkipSeek};
 use rugix_bundle::xdelta::xdelta_decompress;
 use rugix_cli::widgets::{ProgressBar, ProgressSpinner, Widget};
 use rugix_cli::StatusSegment;
@@ -531,21 +531,30 @@ fn install_update_stream(
         );
         return Ok(should_reboot);
     }
-    let reader: &mut dyn io::Read = if bundle == "-" {
-        &mut io::stdin()
+    if bundle == "-" {
+        let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(io::stdin());
+        install_update_bundle(
+            system,
+            config,
+            bundle_source,
+            boot_group,
+            bundle_hash,
+            root_cert,
+            insecure_skip_bundle_verification,
+        )
     } else {
-        &mut File::open(bundle).whatever("error opening image")?
-    };
-    let bundle_source = ReaderSource::<_, SkipRead>::from_unbuffered(reader);
-    install_update_bundle(
-        system,
-        config,
-        bundle_source,
-        boot_group,
-        bundle_hash,
-        root_cert,
-        insecure_skip_bundle_verification,
-    )
+        let file = File::open(bundle).whatever("error opening image")?;
+        let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
+        install_update_bundle(
+            system,
+            config,
+            bundle_source,
+            boot_group,
+            bundle_hash,
+            root_cert,
+            insecure_skip_bundle_verification,
+        )
+    }
 }
 
 pub struct UpdateState {
