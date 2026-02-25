@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Version 1.0.0
 
 - Remove functionality for installing images.
 - Make signatures mandatory unless opted out.

@@ -16,7 +16,8 @@ Only the latest minor version branch receives security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.8.x   | :white_check_mark: |
+| 1.0.0   | :white_check_mark: |
+| 0.8.x   | :x:                |
 | 0.7.x   | :x:                |
 | 0.6.x   | :x:                |
 
