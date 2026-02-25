@@ -51,6 +51,7 @@ pub fn punch_hole(fd: RawFd, offset: off64_t, size: off64_t) -> Result<(), Repor
     Ok(())
 }
 
+#[expect(unused_assignments, reason = "unfinished implementation")]
 pub fn copy_sparse(
     src: &mut File,
     dst: &mut File,
