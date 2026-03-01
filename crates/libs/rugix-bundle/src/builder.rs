@@ -11,7 +11,7 @@ use crate::format::stlv::{write_atom_head, write_segment_end, write_segment_star
 use crate::format::{self, Bytes, PayloadEntry, PayloadHeader};
 use crate::manifest::{self, BundleManifest, HashAlgorithm, UpdateType};
 
-pub fn pack(path: &Path, dst: &Path) -> BundleResult<()> {
+pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
     let manifest = toml::from_str::<BundleManifest>(
         &std::fs::read_to_string(path.join("rugix-bundle.toml"))
             .whatever("unable to read bundle manifest")?,
@@ -94,7 +94,7 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<()> {
         BufWriter::new(std::fs::File::create(dst).whatever("unable to create bundle file")?);
     write_segment_start(&mut bundle_file, format::tags::BUNDLE).unwrap();
     let bundle_header = format::encode::to_vec(&bundle_header, format::tags::BUNDLE_HEADER);
-    let header_hash = hash_algorithm.hash::<Box<[u8]>>(&bundle_header);
+    let header_hash = hash_algorithm.hash(&bundle_header);
     bundle_file.write_all(&bundle_header).unwrap();
     write_segment_start(&mut bundle_file, format::tags::PAYLOADS).unwrap();
     for prepared in prepared_payloads.into_iter() {
@@ -116,7 +116,7 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<()> {
     write_segment_end(&mut bundle_file, format::tags::PAYLOADS).unwrap();
     write_segment_end(&mut bundle_file, format::tags::BUNDLE).unwrap();
     println!("{header_hash}");
-    Ok(())
+    Ok(header_hash)
 }
 
 struct PreparedPayload {
