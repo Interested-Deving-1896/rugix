@@ -5,6 +5,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use rugix_bundle::format;
 use rugix_bundle::format::decode::decode_slice;
@@ -35,7 +36,7 @@ use rugix_common::stream_hasher::StreamHasher;
 use xscript::{vars, Vars};
 
 use crate::config::output::BlockDeviceInfo;
-use crate::http_source::HttpSource;
+use crate::http_source::{HttpSource, RetryConfig};
 use crate::overlay::overlay_dir;
 use crate::slot_db::{self, BlockProvider};
 use crate::system_state;
@@ -128,6 +129,9 @@ pub fn main() -> SystemResult<()> {
                     keep_overlay,
                     boot_group,
                     disable_range_queries,
+                    http_max_retries,
+                    http_retry_initial_backoff,
+                    http_retry_max_backoff,
                 } => {
                     if system.needs_commit()? {
                         bail!("system needs to be committed before installing an update");
@@ -178,6 +182,11 @@ pub fn main() -> SystemResult<()> {
                         }
                     }
 
+                    let retry_config = RetryConfig {
+                        max_retries: *http_max_retries,
+                        initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
+                        max_backoff: Duration::from_secs(*http_retry_max_backoff),
+                    };
                     let should_reboot = install_update_stream(
                         &system,
                         &config,
@@ -187,6 +196,7 @@ pub fn main() -> SystemResult<()> {
                         root_cert.as_deref(),
                         *insecure_skip_bundle_verification,
                         *disable_range_queries,
+                        retry_config,
                     )?;
 
                     hooks
@@ -512,6 +522,7 @@ fn install_update_stream(
     root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
     disable_range_queries: bool,
+    retry_config: RetryConfig,
 ) -> SystemResult<UpdateRebootType> {
     if bundle.starts_with("http") {
         let mut has_indices = false;
@@ -524,7 +535,8 @@ fn install_update_stream(
             }
         }
 
-        let mut bundle_source = HttpSource::new(bundle, !disable_range_queries && has_indices)?;
+        let mut bundle_source =
+            HttpSource::new(bundle, !disable_range_queries && has_indices, retry_config)?;
         let should_reboot = install_update_bundle(
             system,
             config,
@@ -1169,6 +1181,15 @@ pub enum UpdateCommand {
         /// Disable the use of range queries for HTTP sources.
         #[clap(long)]
         disable_range_queries: bool,
+        /// Maximum number of retry attempts for transient HTTP errors.
+        #[clap(long, default_value_t = 5)]
+        http_max_retries: u32,
+        /// Initial HTTP retry backoff duration in seconds.
+        #[clap(long, default_value_t = 1)]
+        http_retry_initial_backoff: u64,
+        /// Maximum HTTP retry backoff duration in seconds.
+        #[clap(long, default_value_t = 30)]
+        http_retry_max_backoff: u64,
     },
 }
 
