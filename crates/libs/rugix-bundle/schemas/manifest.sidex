@@ -64,6 +64,8 @@ record DeltaEncodingInput {
 variant DeliveryConfig {
     Slot: SlotDeliveryConfig,
     Execute: ExecuteDeliveryConfig,
+    AppFile: AppFileDeliveryConfig,
+    AppArchive: AppArchiveDeliveryConfig,
 }
 
 record SlotDeliveryConfig {
@@ -73,6 +75,18 @@ record SlotDeliveryConfig {
 
 record ExecuteDeliveryConfig {
     handler: [string]
+}
+
+record AppFileDeliveryConfig {
+    /// App name.
+    app: string,
+    /// Relative path within the generation directory.
+    path: string,
+}
+
+record AppArchiveDeliveryConfig {
+    /// App name.
+    app: string,
 }
 
 #[json(rename_all="kebab-case")]

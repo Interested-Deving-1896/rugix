@@ -239,6 +239,27 @@ fn main() -> BundleResult<()> {
                         )
                     );
                 }
+                if let Some(type_app_file) = &entry.type_app_file {
+                    println!(
+                        "  {idx}: app-file app={:?} path={:?} file={}",
+                        type_app_file.app,
+                        type_app_file.path,
+                        HashDigest::new_unchecked(
+                            reader.header().hash_algorithm,
+                            &entry.file_hash.raw
+                        )
+                    );
+                }
+                if let Some(type_app_archive) = &entry.type_app_archive {
+                    println!(
+                        "  {idx}: app-archive app={:?} file={}",
+                        type_app_archive.app,
+                        HashDigest::new_unchecked(
+                            reader.header().hash_algorithm,
+                            &entry.file_hash.raw
+                        )
+                    );
+                }
             }
         }
         Cmd::Delta(cmd) => {

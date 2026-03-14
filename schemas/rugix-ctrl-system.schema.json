@@ -29,6 +29,32 @@
   "required": [],
   "unevaluatedProperties": false,
   "$defs": {
+    "rugix_ctrl.apps.AppManifest": {
+      "$id": "rugix_ctrl.apps.AppManifest",
+      "type": "object",
+      "description": "App manifest (`app.toml`) inside a generation directory.",
+      "properties": {
+        "orchestrator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "orchestrator"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppsConfig": {
+      "$id": "rugix_ctrl.apps.AppsConfig",
+      "type": "object",
+      "description": "Rugix Apps configuration.",
+      "properties": {
+        "service-manager": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
     "rugix_ctrl.bootstrapping.BootstrappingConfig": {
       "$id": "rugix_ctrl.bootstrapping.BootstrappingConfig",
       "type": "object",
@@ -280,6 +306,211 @@
       ],
       "unevaluatedProperties": false
     },
+    "rugix_ctrl.output.AppGcOutput": {
+      "$id": "rugix_ctrl.output.AppGcOutput",
+      "type": "object",
+      "description": "Output of the garbage collection command (`apps gc`).",
+      "properties": {
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64"
+          }
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppInfoOutput": {
+      "$id": "rugix_ctrl.output.AppInfoOutput",
+      "type": "object",
+      "description": "Output of the app info command (`apps info`).",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/rugix_ctrl.output.AppStateOutput"
+        },
+        "generations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rugix_ctrl.output.GenerationInfoOutput"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "state",
+        "generations"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppListEntryOutput": {
+      "$id": "rugix_ctrl.output.AppListEntryOutput",
+      "type": "object",
+      "description": "Entry in the app list output.",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppListOutput": {
+      "$id": "rugix_ctrl.output.AppListOutput",
+      "type": "object",
+      "description": "Output of the app list command (`apps list`).",
+      "properties": {
+        "apps": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/rugix_ctrl.output.AppListEntryOutput"
+          }
+        }
+      },
+      "required": [
+        "apps"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppStateActiveOutput": {
+      "$id": "rugix_ctrl.output.AppStateActiveOutput",
+      "type": "object",
+      "description": "Details of an active state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppStateErrorOutput": {
+      "$id": "rugix_ctrl.output.AppStateErrorOutput",
+      "type": "object",
+      "description": "Details of an error state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation",
+        "message"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppStateOutput": {
+      "$id": "rugix_ctrl.output.AppStateOutput",
+      "description": "Persisted app state.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "inactive"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "switching"
+            },
+            "from": {
+              "type": "integer",
+              "format": "uint64"
+            },
+            "to": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "active"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "error"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "generation",
+            "message"
+          ]
+        }
+      ]
+    },
+    "rugix_ctrl.output.AppStateSwitchingOutput": {
+      "$id": "rugix_ctrl.output.AppStateSwitchingOutput",
+      "type": "object",
+      "description": "Details of a switching state.",
+      "properties": {
+        "from": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "to": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
     "rugix_ctrl.output.BlockDeviceInfo": {
       "$id": "rugix_ctrl.output.BlockDeviceInfo",
       "type": "object",
@@ -333,6 +564,36 @@
       "required": [
         "bootFlow",
         "groups"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.GenerationInfoOutput": {
+      "$id": "rugix_ctrl.output.GenerationInfoOutput",
+      "type": "object",
+      "description": "Information about a generation.",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "lastActivated": {
+          "type": "string"
+        },
+        "current": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "number",
+        "createdAt",
+        "complete",
+        "current"
       ],
       "unevaluatedProperties": false
     },

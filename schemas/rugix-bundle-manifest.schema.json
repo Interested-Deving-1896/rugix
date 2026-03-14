@@ -23,6 +23,38 @@
   ],
   "unevaluatedProperties": false,
   "$defs": {
+    "rugix_bundle.manifest.AppArchiveDeliveryConfig": {
+      "$id": "rugix_bundle.manifest.AppArchiveDeliveryConfig",
+      "type": "object",
+      "description": "",
+      "properties": {
+        "app": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "app"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_bundle.manifest.AppFileDeliveryConfig": {
+      "$id": "rugix_bundle.manifest.AppFileDeliveryConfig",
+      "type": "object",
+      "description": "",
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "app",
+        "path"
+      ],
+      "unevaluatedProperties": false
+    },
     "rugix_bundle.manifest.BlockEncoding": {
       "$id": "rugix_bundle.manifest.BlockEncoding",
       "type": "object",
@@ -103,6 +135,40 @@
           "required": [
             "type",
             "handler"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "app-file"
+            },
+            "app": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "app",
+            "path"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "app-archive"
+            },
+            "app": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "app"
           ]
         }
       ]

@@ -61,6 +61,23 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
             } else {
                 None
             },
+            type_app_file: if let manifest::DeliveryConfig::AppFile(config) = &payload.delivery {
+                Some(format::AppFilePayloadType {
+                    app: config.app.clone(),
+                    path: config.path.clone(),
+                })
+            } else {
+                None
+            },
+            type_app_archive: if let manifest::DeliveryConfig::AppArchive(config) =
+                &payload.delivery
+            {
+                Some(format::AppArchivePayloadType {
+                    app: config.app.clone(),
+                })
+            } else {
+                None
+            },
             header_hash: Bytes {
                 raw: hash_algorithm
                     .hash::<Box<[u8]>>(&payload_header)

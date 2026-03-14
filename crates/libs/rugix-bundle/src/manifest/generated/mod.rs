@@ -1616,6 +1616,10 @@ pub mod manifest {
         Slot(SlotDeliveryConfig),
         #[doc = ""]
         Execute(ExecuteDeliveryConfig),
+        #[doc = ""]
+        AppFile(AppFileDeliveryConfig),
+        #[doc = ""]
+        AppArchive(AppArchiveDeliveryConfig),
     }
     #[automatically_derived]
     impl __serde::Serialize for DeliveryConfig {
@@ -1632,6 +1636,12 @@ pub mod manifest {
                 Self::Execute(__value) => {
                     __serializer.serialize_internally_tagged("type", "execute", 1u32, __value)
                 }
+                Self::AppFile(__value) => {
+                    __serializer.serialize_internally_tagged("type", "app-file", 2u32, __value)
+                }
+                Self::AppArchive(__value) => {
+                    __serializer.serialize_internally_tagged("type", "app-archive", 3u32, __value)
+                }
             }
         }
     }
@@ -1641,15 +1651,18 @@ pub mod manifest {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &'static [&'static str] = &["slot", "execute"];
+            const __IDENTIFIERS: &'static [&'static str] =
+                &["slot", "execute", "app-file", "app-archive"];
             #[doc(hidden)]
             const __EXPECTING_IDENTIFIERS: &'static str =
-                "an identifier in [\"slot\", \"execute\"]";
+                "an identifier in [\"slot\", \"execute\", \"app-file\", \"app-archive\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
                 __Identifier0,
                 __Identifier1,
+                __Identifier2,
+                __Identifier3,
             }
             #[doc(hidden)]
             struct __IdentifierVisitor;
@@ -1668,6 +1681,8 @@ pub mod manifest {
                     match __value {
                         0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                         1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Unsigned(__variant),
@@ -1683,6 +1698,8 @@ pub mod manifest {
                     match __value {
                         "slot" => ::core::result::Result::Ok(__Identifier::__Identifier0),
                         "execute" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        "app-file" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        "app-archive" => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => ::core::result::Result::Err(
                             __serde::de::Error::unknown_variant(__variant, __IDENTIFIERS),
                         ),
@@ -1698,6 +1715,8 @@ pub mod manifest {
                     match __value {
                         b"slot" => ::core::result::Result::Ok(__Identifier::__Identifier0),
                         b"execute" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        b"app-file" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        b"app-archive" => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Bytes(__variant),
@@ -1720,28 +1739,14 @@ pub mod manifest {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &'static [&'static str] = &["slot", "execute"];
+            const __VARIANTS: &'static [&'static str] =
+                &["slot", "execute", "app-file", "app-archive"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
                     __D,
                 >(__deserializer, "type")?;
-                match __tagged.tag {
-                    __Identifier::__Identifier0 => {
-                        ::core::result::Result::Ok(DeliveryConfig::Slot(
-                            __tagged
-                                .deserialize_internally_tagged::<SlotDeliveryConfig, __D::Error>(
-                                )?,
-                        ))
-                    }
-                    __Identifier::__Identifier1 => {
-                        ::core::result::Result::Ok(DeliveryConfig::Execute(
-                            __tagged
-                                .deserialize_internally_tagged::<ExecuteDeliveryConfig, __D::Error>(
-                                )?,
-                        ))
-                    }
-                }
+                match __tagged . tag { __Identifier :: __Identifier0 => { :: core :: result :: Result :: Ok (DeliveryConfig :: Slot (__tagged . deserialize_internally_tagged :: < SlotDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier1 => { :: core :: result :: Result :: Ok (DeliveryConfig :: Execute (__tagged . deserialize_internally_tagged :: < ExecuteDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier2 => { :: core :: result :: Result :: Ok (DeliveryConfig :: AppFile (__tagged . deserialize_internally_tagged :: < AppFileDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier3 => { :: core :: result :: Result :: Ok (DeliveryConfig :: AppArchive (__tagged . deserialize_internally_tagged :: < AppArchiveDeliveryConfig < > , __D :: Error > () ?)) } , }
             } else {
                 #[doc(hidden)]
                 struct __Visitor {
@@ -1792,6 +1797,18 @@ pub mod manifest {
                                     ExecuteDeliveryConfig,
                                 >(__variant)?;
                                 ::core::result::Result::Ok(DeliveryConfig::Execute(__value))
+                            }
+                            (__Identifier::__Identifier2, __variant) => {
+                                let __value = __serde::de::VariantAccess::newtype_variant::<
+                                    AppFileDeliveryConfig,
+                                >(__variant)?;
+                                ::core::result::Result::Ok(DeliveryConfig::AppFile(__value))
+                            }
+                            (__Identifier::__Identifier3, __variant) => {
+                                let __value = __serde::de::VariantAccess::newtype_variant::<
+                                    AppArchiveDeliveryConfig,
+                                >(__variant)?;
+                                ::core::result::Result::Ok(DeliveryConfig::AppArchive(__value))
                             }
                         }
                     }
@@ -2214,6 +2231,470 @@ pub mod manifest {
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "ExecuteDeliveryConfig",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = ""]
+    #[derive(Clone, Debug)]
+    pub struct AppFileDeliveryConfig {
+        #[doc = "App name.\n"]
+        pub app: ::std::string::String,
+        #[doc = "Relative path within the generation directory.\n"]
+        pub path: ::std::string::String,
+    }
+    impl AppFileDeliveryConfig {
+        #[doc = "Creates a new [`AppFileDeliveryConfig`]."]
+        pub fn new(app: ::std::string::String, path: ::std::string::String) -> Self {
+            Self { app, path }
+        }
+        #[doc = "Sets the value of `app`."]
+        pub fn set_app(&mut self, app: ::std::string::String) -> &mut Self {
+            self.app = app;
+            self
+        }
+        #[doc = "Sets the value of `app`."]
+        pub fn with_app(mut self, app: ::std::string::String) -> Self {
+            self.app = app;
+            self
+        }
+        #[doc = "Sets the value of `path`."]
+        pub fn set_path(&mut self, path: ::std::string::String) -> &mut Self {
+            self.path = path;
+            self
+        }
+        #[doc = "Sets the value of `path`."]
+        pub fn with_path(mut self, path: ::std::string::String) -> Self {
+            self.path = path;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppFileDeliveryConfig {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record = __sidex_serde::ser::RecordSerializer::new(
+                __serializer,
+                "AppFileDeliveryConfig",
+                2usize,
+            )?;
+            __record.serialize_field("app", &self.app)?;
+            __record.serialize_field("path", &self.path)?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppFileDeliveryConfig {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppFileDeliveryConfig;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "record AppFileDeliveryConfig")
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        ::std::string::String,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        ::std::string::String,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppFileDeliveryConfig {
+                        app: __field0,
+                        path: __field1,
+                    })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["app", "path"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"app\", \"path\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Identifier1,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                "path" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                b"path" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    let mut __field1: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("app"),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            __Identifier::__Identifier1 => {
+                                if ::core::option::Option::is_some(&__field1) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("path"),
+                                    );
+                                }
+                                __field1 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("app"),
+                            );
+                        }
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("path"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppFileDeliveryConfig {
+                        app: __field0,
+                        path: __field1,
+                    })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["app", "path"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppFileDeliveryConfig",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = ""]
+    #[derive(Clone, Debug)]
+    pub struct AppArchiveDeliveryConfig {
+        #[doc = "App name.\n"]
+        pub app: ::std::string::String,
+    }
+    impl AppArchiveDeliveryConfig {
+        #[doc = "Creates a new [`AppArchiveDeliveryConfig`]."]
+        pub fn new(app: ::std::string::String) -> Self {
+            Self { app }
+        }
+        #[doc = "Sets the value of `app`."]
+        pub fn set_app(&mut self, app: ::std::string::String) -> &mut Self {
+            self.app = app;
+            self
+        }
+        #[doc = "Sets the value of `app`."]
+        pub fn with_app(mut self, app: ::std::string::String) -> Self {
+            self.app = app;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppArchiveDeliveryConfig {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record = __sidex_serde::ser::RecordSerializer::new(
+                __serializer,
+                "AppArchiveDeliveryConfig",
+                1usize,
+            )?;
+            __record.serialize_field("app", &self.app)?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppArchiveDeliveryConfig {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppArchiveDeliveryConfig;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(
+                        __formatter,
+                        "record AppArchiveDeliveryConfig",
+                    )
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        ::std::string::String,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppArchiveDeliveryConfig { app: __field0 })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["app"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"app\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("app"),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("app"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppArchiveDeliveryConfig { app: __field0 })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["app"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppArchiveDeliveryConfig",
                 __FIELDS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,

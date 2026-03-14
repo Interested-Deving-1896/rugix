@@ -158,6 +158,15 @@ define_tags! {
 
     PAYLOAD_TYPE_EXECUTE_HANDLER = 0x4b3836a2,
 
+    /// App file payload: a single file written to a generation directory.
+    PAYLOAD_ENTRY_TYPE_APP_FILE = 0x214c6e2b,
+    PAYLOAD_TYPE_APP_FILE_APP = 0x6b42b4a2,
+    PAYLOAD_TYPE_APP_FILE_PATH = 0x2c4e33b4,
+
+    /// App archive payload: a tar archive extracted into a generation directory.
+    PAYLOAD_ENTRY_TYPE_APP_ARCHIVE = 0x40a88630,
+    PAYLOAD_TYPE_APP_ARCHIVE_APP = 0x3fa221ce,
+
     BLOCK_INDEX = 0x1ae50c8e,
 
     BUNDLE_HEADER_IS_INCREMENTAL = 0x20f3d16b,
