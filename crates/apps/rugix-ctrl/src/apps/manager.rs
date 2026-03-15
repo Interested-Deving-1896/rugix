@@ -286,8 +286,8 @@ impl AppManager {
         recovery: bool,
     ) -> AppsResult<()> {
         // Phase 1: deactivate the old generation.
-        if from.is_some() {
-            self.run_deactivate(app_name, recovery)?;
+        if let Some(from_gen) = from {
+            self.run_deactivate(app_name, from_gen, recovery)?;
         }
 
         // Phase 2: activate the new generation.
@@ -398,11 +398,12 @@ impl AppManager {
         Ok(())
     }
 
-    /// Run the orchestrator's deactivate hook for the current generation.
-    fn run_deactivate(&self, app_name: &str, recovery: bool) -> AppsResult<()> {
-        let Some(gen_dir) = self.resolve_current(app_name) else {
+    /// Run the orchestrator's deactivate hook for a specific generation.
+    fn run_deactivate(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
+        let gen_dir = self.generation_dir(app_name, gen_number);
+        if !gen_dir.exists() {
             return Ok(());
-        };
+        }
         let manifest = load_manifest(&gen_dir)?;
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
@@ -507,6 +508,21 @@ impl AppManager {
             AppState::Active { generation } => Some(generation),
             _ => None,
         }
+    }
+
+    /// Find the most recently activated generation (by `lastActivated` timestamp).
+    pub fn last_activated_generation(&self, app_name: &str) -> AppsResult<Option<u64>> {
+        let generations = self.list_generations(app_name)?;
+        let best = generations
+            .iter()
+            .filter_map(|g| {
+                g.meta
+                    .last_activated
+                    .as_deref()
+                    .map(|ts| (g.meta.number, ts))
+            })
+            .max_by_key(|(_num, ts)| ts.to_owned());
+        Ok(best.map(|(num, _)| num))
     }
 
     /// Rollback: deactivate the current generation and activate the most recent

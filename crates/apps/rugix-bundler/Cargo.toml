@@ -27,6 +27,7 @@ rugix-chunker.workspace = true
 rugix-compression.workspace = true
 serde.workspace = true
 cms = "0.2.3"
+saphyr = "0.0.6"
 rugix-pki.workspace = true
 
 [lints]

@@ -143,6 +143,12 @@ record GenerationInfoOutput {
 
 /// Output of the garbage collection command (`apps gc`).
 record AppGcOutput {
+    /// Map from app name to the generation numbers that were removed.
+    apps: [string: AppGcAppOutput],
+}
+
+/// Garbage collection result for a single app.
+record AppGcAppOutput {
     /// Generation numbers that were removed.
     removed: [u64],
 }

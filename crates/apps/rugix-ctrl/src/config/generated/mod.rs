@@ -7391,22 +7391,28 @@ pub mod output {
     #[doc = "Output of the garbage collection command (`apps gc`).\n"]
     #[derive(Clone, Debug)]
     pub struct AppGcOutput {
-        #[doc = "Generation numbers that were removed.\n"]
-        pub removed: ::std::vec::Vec<u64>,
+        #[doc = "Map from app name to the generation numbers that were removed.\n"]
+        pub apps: indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
     }
     impl AppGcOutput {
         #[doc = "Creates a new [`AppGcOutput`]."]
-        pub fn new(removed: ::std::vec::Vec<u64>) -> Self {
-            Self { removed }
+        pub fn new(apps: indexmap::IndexMap<::std::string::String, AppGcAppOutput>) -> Self {
+            Self { apps }
         }
-        #[doc = "Sets the value of `removed`."]
-        pub fn set_removed(&mut self, removed: ::std::vec::Vec<u64>) -> &mut Self {
-            self.removed = removed;
+        #[doc = "Sets the value of `apps`."]
+        pub fn set_apps(
+            &mut self,
+            apps: indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
+        ) -> &mut Self {
+            self.apps = apps;
             self
         }
-        #[doc = "Sets the value of `removed`."]
-        pub fn with_removed(mut self, removed: ::std::vec::Vec<u64>) -> Self {
-            self.removed = removed;
+        #[doc = "Sets the value of `apps`."]
+        pub fn with_apps(
+            mut self,
+            apps: indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
+        ) -> Self {
+            self.apps = apps;
             self
         }
     }
@@ -7418,7 +7424,7 @@ pub mod output {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "AppGcOutput", 1usize)?;
-            __record.serialize_field("removed", &self.removed)?;
+            __record.serialize_field("apps", &self.apps)?;
             __record.end()
         }
     }
@@ -7447,6 +7453,206 @@ pub mod output {
                 where
                     __A: __serde::de::SeqAccess<'de>,
                 {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppGcOutput { apps: __field0 })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["apps"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"apps\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "apps" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"apps" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<
+                        indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
+                    > = ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("apps"),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        indexmap::IndexMap<::std::string::String, AppGcAppOutput>,
+                                    >(&mut __map)?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("apps"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppGcOutput { apps: __field0 })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["apps"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppGcOutput",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Garbage collection result for a single app.\n"]
+    #[derive(Clone, Debug)]
+    pub struct AppGcAppOutput {
+        #[doc = "Generation numbers that were removed.\n"]
+        pub removed: ::std::vec::Vec<u64>,
+    }
+    impl AppGcAppOutput {
+        #[doc = "Creates a new [`AppGcAppOutput`]."]
+        pub fn new(removed: ::std::vec::Vec<u64>) -> Self {
+            Self { removed }
+        }
+        #[doc = "Sets the value of `removed`."]
+        pub fn set_removed(&mut self, removed: ::std::vec::Vec<u64>) -> &mut Self {
+            self.removed = removed;
+            self
+        }
+        #[doc = "Sets the value of `removed`."]
+        pub fn with_removed(mut self, removed: ::std::vec::Vec<u64>) -> Self {
+            self.removed = removed;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppGcAppOutput {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record =
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "AppGcAppOutput", 1usize)?;
+            __record.serialize_field("removed", &self.removed)?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppGcAppOutput {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppGcAppOutput;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "record AppGcAppOutput")
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
                     let __field0 = match __serde::de::SeqAccess::next_element::<::std::vec::Vec<u64>>(
                         &mut __seq,
                     )? {
@@ -7457,7 +7663,7 @@ pub mod output {
                             );
                         }
                     };
-                    ::core::result::Result::Ok(AppGcOutput { removed: __field0 })
+                    ::core::result::Result::Ok(AppGcAppOutput { removed: __field0 })
                 }
                 #[inline]
                 fn visit_map<__A>(
@@ -7577,14 +7783,14 @@ pub mod output {
                             );
                         }
                     };
-                    ::core::result::Result::Ok(AppGcOutput { removed: __field0 })
+                    ::core::result::Result::Ok(AppGcAppOutput { removed: __field0 })
                 }
             }
             #[doc(hidden)]
             const __FIELDS: &'static [&'static str] = &["removed"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
-                "AppGcOutput",
+                "AppGcAppOutput",
                 __FIELDS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,

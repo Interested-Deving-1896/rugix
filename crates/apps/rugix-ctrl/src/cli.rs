@@ -74,7 +74,6 @@ pub fn main() -> SystemResult<()> {
     rugix_cli::CliBuilder::new().init();
 
     let args = Args::parse();
-    let system = System::initialize()?;
     let config = load_ctrl_config()?;
 
     match &args.command {
@@ -133,6 +132,8 @@ pub fn main() -> SystemResult<()> {
                     http_retry_initial_backoff,
                     http_retry_max_backoff,
                 } => {
+                    let system = System::initialize()?;
+
                     if system.needs_commit()? {
                         bail!("system needs to be committed before installing an update");
                     }
@@ -240,11 +241,14 @@ pub fn main() -> SystemResult<()> {
         }
         Command::System(sys_cmd) => match sys_cmd {
             SystemCommand::Info { json } => {
+                let system = System::initialize()?;
                 let output = system_state::state_from_system(&system);
                 rugix_cli::json::print_json(&output, *json)
                     .whatever("unable to write system info to stdout")?;
             }
             SystemCommand::Commit => {
+                let system = System::initialize()?;
+
                 if system.needs_commit()? {
                     let hooks = HooksLoader::default()
                         .load_hooks("system-commit")
@@ -261,6 +265,7 @@ pub fn main() -> SystemResult<()> {
                 }
             }
             SystemCommand::Reboot { spare } => {
+                let system = System::initialize()?;
                 if *spare {
                     if let Some((spare, _)) = system.spare_entry()? {
                         system
@@ -278,6 +283,7 @@ pub fn main() -> SystemResult<()> {
                 Boolean::False => clear_flag(DEFERRED_SPARE_REBOOT_FLAG)?,
             },
             UnstableCommand::PrintSystemInfo => {
+                let system = System::initialize()?;
                 eprintln!("Config:");
                 eprintln!("{:#?}", system.config());
                 eprintln!("Root:");
@@ -305,6 +311,7 @@ pub fn main() -> SystemResult<()> {
                 chunker: chunker_algorithm,
                 hash_algorithm,
             } => {
+                let system = System::initialize()?;
                 let Some((_, slot)) = system.slots().find_by_name(slot) else {
                     bail!("slot {slot} not found")
                 };
@@ -326,6 +333,7 @@ pub fn main() -> SystemResult<()> {
                 }
             }
             SlotsCommand::Verify { slot } => {
+                let system = System::initialize()?;
                 let Some((_, slot)) = system.slots().find_by_name(slot) else {
                     bail!("slot {slot} not found")
                 };
@@ -377,6 +385,7 @@ pub fn main() -> SystemResult<()> {
         },
         Command::Boot(cmd) => match cmd {
             BootCommand::MarkGood { group } => {
+                let system = System::initialize()?;
                 let boot_group = match group {
                     Some(entry_name) => {
                         let Some((group, _)) = system.boot_entries().find_by_name(entry_name)
@@ -397,6 +406,7 @@ pub fn main() -> SystemResult<()> {
                     .whatever("unable to mark boot group as good")?;
             }
             BootCommand::MarkBad { group } => {
+                let system = System::initialize()?;
                 let Some((group, _)) = system.boot_entries().find_by_name(group) else {
                     bail!("unable to find boot group {group}")
                 };
@@ -436,6 +446,7 @@ pub fn main() -> SystemResult<()> {
                     .whatever("unable to write mount point info to stdout")?;
             }
             UtilsCommand::ResolvePartition { disk, partition } => {
+                let system = System::initialize()?;
                 let disk = if let Some(disk) = disk {
                     BlockDevice::new(disk).whatever("unable to open disk")?
                 } else {
@@ -547,8 +558,20 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write app info to stdout")?;
                 }
                 AppsCommand::Activate { app, generation } => {
+                    let gen = match generation {
+                        Some(n) => *n,
+                        None => {
+                            let Some(n) = manager
+                                .last_activated_generation(app)
+                                .whatever("unable to find last activated generation")?
+                            else {
+                                bail!("no previously activated generation found for {app}");
+                            };
+                            n
+                        }
+                    };
                     manager
-                        .activate_generation(app, *generation)
+                        .activate_generation(app, gen)
                         .whatever("unable to activate generation")?;
                 }
                 AppsCommand::Deactivate { app } => {
@@ -584,11 +607,21 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write generations to stdout")?;
                 }
                 AppsCommand::Gc { app, keep } => {
-                    use crate::config::output::AppGcOutput;
-                    let removed = manager
-                        .gc(app, *keep)
-                        .whatever("unable to garbage collect")?;
-                    rugix_cli::json::print_json(&AppGcOutput::new(removed), false)
+                    use crate::config::output::{AppGcAppOutput, AppGcOutput};
+                    let app_names = match app {
+                        Some(name) => vec![name.clone()],
+                        None => manager
+                            .list_apps()
+                            .whatever("unable to list apps")?,
+                    };
+                    let mut results = indexmap::IndexMap::new();
+                    for name in &app_names {
+                        let removed = manager
+                            .gc(name, *keep)
+                            .whatever("unable to garbage collect")?;
+                        results.insert(name.clone(), AppGcAppOutput::new(removed));
+                    }
+                    rugix_cli::json::print_json(&AppGcOutput::new(results), false)
                         .whatever("unable to write gc output to stdout")?;
                 }
                 AppsCommand::Recover => {
@@ -1548,12 +1581,13 @@ pub enum AppsCommand {
         /// App name.
         app: String,
     },
-    /// Activate a specific generation.
+    /// Activate a generation. If no generation is specified, activates the
+    /// most recently activated generation (useful for re-activating after deactivation).
     Activate {
         /// App name.
         app: String,
-        /// Generation number.
-        generation: u64,
+        /// Generation number (defaults to the most recently activated generation).
+        generation: Option<u64>,
     },
     /// Deactivate the current generation of an app.
     Deactivate {
@@ -1575,12 +1609,13 @@ pub enum AppsCommand {
         /// App name.
         app: String,
     },
-    /// Garbage collect old generations.
+    /// Garbage collect old generations. If no app is specified, runs for all apps.
     Gc {
-        /// App name.
-        app: String,
-        /// Number of generations to keep.
-        #[clap(long, default_value_t = 2)]
+        /// App name (if omitted, runs for all apps).
+        app: Option<String>,
+        /// Number of previously activated generations to keep (in addition to the
+        /// currently active generation, which is always kept).
+        #[clap(long, default_value_t = 1)]
         keep: usize,
     },
     /// Recover any interrupted app transitions.

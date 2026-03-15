@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -10,8 +10,9 @@ use reportify::{bail, ResultExt};
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::format::tags::TagNameResolver;
 use rugix_bundle::manifest::{
-    BlockEncoding, BundleManifest, Compression, DeliveryConfig, DeltaEncoding, DeltaEncodingFormat,
-    DeltaEncodingInput, HashAlgorithm, XzCompression,
+    AppArchiveDeliveryConfig, AppFileDeliveryConfig, BlockEncoding, BundleManifest, Compression,
+    DeliveryConfig, DeltaEncoding, DeltaEncodingFormat, DeltaEncodingInput, HashAlgorithm, Payload,
+    UpdateType, XzCompression,
 };
 use rugix_bundle::reader::BundleReader;
 use rugix_bundle::source::FileSource;
@@ -46,6 +47,9 @@ pub enum Cmd {
     Delta(DeltaCmd),
     /// Inspect an update bundle.
     Inspect(InspectCmd),
+    /// App bundle commands.
+    #[clap(subcommand)]
+    Apps(AppsCmd),
     /// Manipulate and inspect signatures.
     #[clap(subcommand)]
     Signatures(SignaturesCmd),
@@ -55,6 +59,46 @@ pub enum Cmd {
     /// Print the low-level structure of a bundle.
     #[clap(hide(true))]
     PrintStructure(PrintCmd),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppsCmd {
+    /// Pack an app into a bundle.
+    #[clap(subcommand)]
+    Pack(AppsPackCmd),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AppsPackCmd {
+    /// Pack a Docker Compose app into an app bundle.
+    DockerCompose(PackDockerComposeCmd),
+}
+
+#[derive(Debug, Parser)]
+pub struct PackDockerComposeCmd {
+    /// App name.
+    #[clap(long)]
+    app: String,
+    /// Target platform for Docker images (e.g., `linux/arm64`, `linux/amd64`).
+    /// If not specified, images are saved for the host platform.
+    #[clap(long)]
+    platform: Option<String>,
+    /// Pull images before saving (useful to ensure the latest version or
+    /// a specific `--platform` is cached locally).
+    #[clap(long)]
+    pull: bool,
+    /// Skip saving Docker images (by default, images referenced in the compose
+    /// file are saved via `docker save` and included in the bundle).
+    #[clap(long)]
+    no_images: bool,
+    /// Extra files or directories to include in the archive.
+    /// Each entry is added at the same relative path inside the generation directory.
+    #[clap(long = "include")]
+    includes: Vec<PathBuf>,
+    /// Path to the Docker Compose file.
+    compose_file: PathBuf,
+    /// Output bundle file.
+    output: PathBuf,
 }
 
 #[derive(Debug, Subcommand)]
@@ -262,6 +306,13 @@ fn main() -> BundleResult<()> {
                 }
             }
         }
+        Cmd::Apps(apps_cmd) => match apps_cmd {
+            AppsCmd::Pack(pack_cmd) => match pack_cmd {
+                AppsPackCmd::DockerCompose(cmd) => {
+                    pack_docker_compose(&cmd)?;
+                }
+            },
+        },
         Cmd::Delta(cmd) => {
             let old_dir = tempfile::TempDir::new().unwrap();
             info!(directory = ?old_dir.path(), "unpacking old update bundle");
@@ -505,4 +556,186 @@ pub fn hash_file(algorithm: HashAlgorithm, path: &Path) -> HashDigest {
         }
     }
     hasher.finalize()
+}
+
+/// Extract the string representation from a saphyr YAML node.
+fn yaml_as_str<'a>(node: &'a saphyr::Yaml<'a>) -> Option<&'a str> {
+    match node {
+        saphyr::Yaml::Representation(cow, _, _) => Some(cow.as_ref()),
+        saphyr::Yaml::Value(saphyr::Scalar::String(cow)) => Some(cow.as_ref()),
+        _ => None,
+    }
+}
+
+/// Look up a key in a saphyr YAML mapping node.
+fn yaml_mapping_get<'a, 'b>(node: &'a saphyr::Yaml<'b>, key: &str) -> Option<&'a saphyr::Yaml<'b>> {
+    if let saphyr::Yaml::Mapping(mapping) = node {
+        for (k, v) in mapping.iter() {
+            if yaml_as_str(k) == Some(key) {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// Extract image references from a Docker Compose file.
+fn extract_compose_images(compose_path: &Path) -> BundleResult<Vec<String>> {
+    let content =
+        fs::read_to_string(compose_path).whatever("unable to read Docker Compose file")?;
+    use saphyr::LoadableYamlNode;
+    let docs =
+        saphyr::Yaml::load_from_str(&content).whatever("unable to parse Docker Compose file")?;
+    let mut images = Vec::new();
+    if let Some(doc) = docs.first() {
+        if let Some(saphyr::Yaml::Mapping(services)) = yaml_mapping_get(doc, "services") {
+            for (_key, service) in services.iter() {
+                if let Some(image_node) = yaml_mapping_get(service, "image") {
+                    if let Some(image) = yaml_as_str(image_node) {
+                        images.push(image.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    Ok(images)
+}
+
+/// Save Docker images via `docker save`.
+///
+/// When `pull` is true, each image is pulled first (with the specified platform if given).
+fn docker_save(
+    images: &[String],
+    platform: Option<&str>,
+    pull: bool,
+    output: &Path,
+) -> BundleResult<()> {
+    if pull {
+        for image in images {
+            let mut cmd = std::process::Command::new("docker");
+            cmd.arg("pull");
+            if let Some(platform) = platform {
+                cmd.arg("--platform").arg(platform);
+            }
+            cmd.arg(image);
+            info!(image, ?platform, "pulling docker image");
+            let status = cmd.status().whatever("unable to run docker pull")?;
+            if !status.success() {
+                bail!("docker pull failed for {image}");
+            }
+        }
+    }
+
+    info!(?images, "saving docker images");
+    let mut save_cmd = std::process::Command::new("docker");
+    save_cmd.arg("save").arg("-o").arg(output);
+    if let Some(platform) = platform {
+        save_cmd.arg("--platform").arg(platform);
+    }
+    save_cmd.args(images);
+    let status = save_cmd.status().whatever("unable to run docker save")?;
+    if !status.success() {
+        bail!("docker save failed");
+    }
+    Ok(())
+}
+
+/// Pack a Docker Compose app into an app bundle.
+///
+/// Creates a bundle with:
+/// - An `app-archive` payload containing `app.toml`, `docker-compose.yml`, and any extra
+///   included files/directories.
+/// - An `app-file` payload for the Docker images (saved via `docker save`), placed at
+///   `images/images.tar` inside the generation directory.
+fn pack_docker_compose(cmd: &PackDockerComposeCmd) -> BundleResult<()> {
+    let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
+    let payloads_dir = bundle_dir.path().join("payloads");
+    fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
+
+    // Build the base tar archive: app.toml + docker-compose.yml + includes.
+    let archive_path = payloads_dir.join("base.tar");
+    {
+        let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
+        let mut archive = tar::Builder::new(archive_file);
+
+        // app.toml
+        let app_toml = b"orchestrator = \"docker-compose\"\n";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(app_toml.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        archive
+            .append_data(&mut header, "app.toml", &app_toml[..])
+            .whatever("unable to add app.toml to archive")?;
+
+        // docker-compose.yml
+        archive
+            .append_path_with_name(&cmd.compose_file, "docker-compose.yml")
+            .whatever("unable to add docker-compose.yml to archive")?;
+
+        // Extra files and directories.
+        for include in &cmd.includes {
+            let Some(name) = include.file_name().and_then(|n| n.to_str()) else {
+                bail!(
+                    "unable to determine name for include path: {}",
+                    include.display()
+                );
+            };
+            if include.is_dir() {
+                archive
+                    .append_dir_all(name, include)
+                    .whatever("unable to add directory to archive")?;
+            } else {
+                archive
+                    .append_path_with_name(include, name)
+                    .whatever("unable to add file to archive")?;
+            }
+        }
+
+        archive.finish().whatever("unable to finish archive")?;
+    }
+
+    let block_encoding = Some(
+        BlockEncoding::new(ChunkerAlgorithm::Casync {
+            avg_block_size_kib: 64,
+        })
+        .with_compression(Some(Compression::Xz(XzCompression::new()))),
+    );
+
+    // Build the manifest.
+    let mut payloads = vec![Payload {
+        delivery: DeliveryConfig::AppArchive(AppArchiveDeliveryConfig::new(cmd.app.clone())),
+        filename: "base.tar".to_owned(),
+        block_encoding: block_encoding.clone(),
+        delta_encoding: None,
+    }];
+
+    // Save and add Docker images.
+    if !cmd.no_images {
+        let images = extract_compose_images(&cmd.compose_file)?;
+        if !images.is_empty() {
+            let image_payload = payloads_dir.join("images.tar");
+            docker_save(&images, cmd.platform.as_deref(), cmd.pull, &image_payload)?;
+            payloads.push(Payload {
+                delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
+                    cmd.app.clone(),
+                    "images/images.tar".to_owned(),
+                )),
+                filename: "images.tar".to_owned(),
+                block_encoding: block_encoding.clone(),
+                delta_encoding: None,
+            });
+        }
+    }
+
+    let manifest = BundleManifest::new(UpdateType::Full, payloads);
+    fs::write(
+        bundle_dir.path().join("rugix-bundle.toml"),
+        toml::to_string_pretty(&manifest).whatever("unable to serialize manifest")?,
+    )
+    .whatever("unable to write manifest")?;
+
+    rugix_bundle::builder::pack(bundle_dir.path(), &cmd.output)?;
+    info!(app = %cmd.app, output = ?cmd.output, "packed compose app bundle");
+    Ok(())
 }
