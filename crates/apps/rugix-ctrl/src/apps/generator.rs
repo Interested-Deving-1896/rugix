@@ -1,0 +1,92 @@
+//! Sync pre-rendered app unit files into the systemd runtime directory.
+//!
+//! Orchestrators persist rendered unit files in the app directory under
+//! `<app_dir>/systemd/units/`. This module copies them into `/run/systemd/system/` so
+//! systemd can manage them, then triggers a `daemon-reload`.
+//!
+//! Only apps in the `active` state are synced.  Apps that are inactive, switching, or in
+//! an error state are skipped.
+//!
+//! Intended to be called from a oneshot service (`rugix-app-sync.service`) that runs
+//! early in boot, after the data partition is mounted.
+
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+use reportify::ResultExt;
+use tracing::info;
+
+use super::manager::AppState;
+use super::AppsResult;
+
+use super::config;
+
+/// Runtime directory where systemd picks up transient units.
+const RUNTIME_UNITS_DIR: &str = "/run/systemd/system";
+
+/// Read the persisted app state for a given app directory.
+fn read_app_state(app_dir: &Path) -> AppState {
+    let state_path = app_dir.join(".rugix/state.json");
+    let Ok(content) = fs::read_to_string(&state_path) else {
+        return AppState::Inactive;
+    };
+    serde_json::from_str(&content).unwrap_or(AppState::Inactive)
+}
+
+/// Sync all persisted app units into the systemd runtime directory.
+///
+/// Only syncs units for apps that are in the `active` state.
+pub fn sync_units() -> AppsResult<()> {
+    let apps_dir = config::apps_dir();
+    if !apps_dir.exists() {
+        info!("no apps directory, nothing to sync");
+        return Ok(());
+    }
+    let runtime_dir = Path::new(RUNTIME_UNITS_DIR);
+    let mut synced = 0u32;
+    let entries = fs::read_dir(apps_dir).whatever("unable to read apps directory")?;
+    for entry in entries {
+        let entry = entry.whatever("unable to read directory entry")?;
+        if !entry
+            .file_type()
+            .whatever("unable to get file type")?
+            .is_dir()
+        {
+            continue;
+        }
+
+        // Only sync units for active apps.
+        if !matches!(read_app_state(&entry.path()), AppState::Active { .. }) {
+            continue;
+        }
+
+        let unit_dir = entry.path().join("systemd/units");
+        if !unit_dir.is_dir() {
+            continue;
+        }
+        let units = fs::read_dir(&unit_dir).whatever("unable to read units directory")?;
+        for unit_entry in units {
+            let unit_entry = unit_entry.whatever("unable to read unit entry")?;
+            let unit_path = unit_entry.path();
+            let Some(file_name) = unit_path.file_name() else {
+                continue;
+            };
+            let dest = runtime_dir.join(file_name);
+            fs::copy(&unit_path, &dest).whatever("unable to copy unit file")?;
+            info!(unit = ?file_name, "synced app unit");
+            synced += 1;
+        }
+    }
+    if synced > 0 {
+        let status = Command::new("systemctl")
+            .arg("daemon-reload")
+            .status()
+            .whatever("unable to run systemctl daemon-reload")?;
+        if !status.success() {
+            reportify::bail!("systemctl daemon-reload failed");
+        }
+        info!(count = synced, "daemon-reload after syncing app units");
+    }
+    Ok(())
+}

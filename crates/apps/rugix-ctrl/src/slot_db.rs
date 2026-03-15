@@ -1,7 +1,6 @@
 //! Slot database.
 
 use std::hash::BuildHasher;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::system::SystemResult;
@@ -211,18 +210,12 @@ pub fn get_stored_state(slot: &str) -> SystemResult<Option<SlotState>> {
 
 /// Save the slot state.
 pub fn save_slot_state(slot: &str, state: &SlotState) -> SystemResult<()> {
-    let slot_dir = db_dir().join(slot);
-    std::fs::create_dir_all(&slot_dir).whatever("unable to create slot directory")?;
-    let state_file_tmp = slot_dir.join("state.json.tmp");
     let state_json = serde_json::to_string(state).whatever("unable to encode slot state")?;
-    let mut file =
-        std::fs::File::create(&state_file_tmp).whatever("unable to create slot state file")?;
-    file.write_all(state_json.as_bytes())
-        .whatever("unable to write slot state file")?;
-    file.sync_all().whatever("unable to sync slot state file")?;
-    drop(file);
-    std::fs::rename(&state_file_tmp, slot_dir.join("state.json"))
-        .whatever("unable to rename slot state file")?;
+    rugix_common::fsutils::atomic_write(
+        &db_dir().join(slot).join("state.json"),
+        state_json.as_bytes(),
+    )
+    .whatever("unable to write slot state")?;
     Ok(())
 }
 

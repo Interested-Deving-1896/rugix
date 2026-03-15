@@ -16,6 +16,25 @@ reportify::new_whatever_type! {
     FsError
 }
 
+/// Atomically write `data` to `path` using a write-fsync-rename pattern.
+///
+/// Writes to a temporary file next to `path`, fsyncs it, then atomically
+/// renames it to the final path. This ensures that the file is never
+/// partially written, even if the system crashes mid-write.
+pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Report<FsError>> {
+    let tmp_path = path.with_extension("tmp");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).whatever("unable to create parent directory")?;
+    }
+    let mut file = File::create(&tmp_path).whatever("unable to create temporary file")?;
+    file.write_all(data)
+        .whatever("unable to write temporary file")?;
+    file.sync_all().whatever("unable to sync temporary file")?;
+    drop(file);
+    fs::rename(&tmp_path, path).whatever("unable to rename temporary file")?;
+    Ok(())
+}
+
 pub fn copy_recursive(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<(), Report<FsError>> {
     let dst = dst.as_ref();
     let src = src.as_ref();

@@ -74,7 +74,6 @@ pub fn main() -> SystemResult<()> {
     rugix_cli::CliBuilder::new().init();
 
     let args = Args::parse();
-    let system = System::initialize()?;
     let config = load_ctrl_config()?;
 
     match &args.command {
@@ -133,6 +132,8 @@ pub fn main() -> SystemResult<()> {
                     http_retry_initial_backoff,
                     http_retry_max_backoff,
                 } => {
+                    let system = System::initialize()?;
+
                     if system.needs_commit()? {
                         bail!("system needs to be committed before installing an update");
                     }
@@ -240,11 +241,14 @@ pub fn main() -> SystemResult<()> {
         }
         Command::System(sys_cmd) => match sys_cmd {
             SystemCommand::Info { json } => {
+                let system = System::initialize()?;
                 let output = system_state::state_from_system(&system);
                 rugix_cli::json::print_json(&output, *json)
                     .whatever("unable to write system info to stdout")?;
             }
             SystemCommand::Commit => {
+                let system = System::initialize()?;
+
                 if system.needs_commit()? {
                     let hooks = HooksLoader::default()
                         .load_hooks("system-commit")
@@ -261,6 +265,7 @@ pub fn main() -> SystemResult<()> {
                 }
             }
             SystemCommand::Reboot { spare } => {
+                let system = System::initialize()?;
                 if *spare {
                     if let Some((spare, _)) = system.spare_entry()? {
                         system
@@ -278,6 +283,7 @@ pub fn main() -> SystemResult<()> {
                 Boolean::False => clear_flag(DEFERRED_SPARE_REBOOT_FLAG)?,
             },
             UnstableCommand::PrintSystemInfo => {
+                let system = System::initialize()?;
                 eprintln!("Config:");
                 eprintln!("{:#?}", system.config());
                 eprintln!("Root:");
@@ -305,6 +311,7 @@ pub fn main() -> SystemResult<()> {
                 chunker: chunker_algorithm,
                 hash_algorithm,
             } => {
+                let system = System::initialize()?;
                 let Some((_, slot)) = system.slots().find_by_name(slot) else {
                     bail!("slot {slot} not found")
                 };
@@ -326,6 +333,7 @@ pub fn main() -> SystemResult<()> {
                 }
             }
             SlotsCommand::Verify { slot } => {
+                let system = System::initialize()?;
                 let Some((_, slot)) = system.slots().find_by_name(slot) else {
                     bail!("slot {slot} not found")
                 };
@@ -377,6 +385,7 @@ pub fn main() -> SystemResult<()> {
         },
         Command::Boot(cmd) => match cmd {
             BootCommand::MarkGood { group } => {
+                let system = System::initialize()?;
                 let boot_group = match group {
                     Some(entry_name) => {
                         let Some((group, _)) = system.boot_entries().find_by_name(entry_name)
@@ -397,6 +406,7 @@ pub fn main() -> SystemResult<()> {
                     .whatever("unable to mark boot group as good")?;
             }
             BootCommand::MarkBad { group } => {
+                let system = System::initialize()?;
                 let Some((group, _)) = system.boot_entries().find_by_name(group) else {
                     bail!("unable to find boot group {group}")
                 };
@@ -436,6 +446,7 @@ pub fn main() -> SystemResult<()> {
                     .whatever("unable to write mount point info to stdout")?;
             }
             UtilsCommand::ResolvePartition { disk, partition } => {
+                let system = System::initialize()?;
                 let disk = if let Some(disk) = disk {
                     BlockDevice::new(disk).whatever("unable to open disk")?
                 } else {
@@ -462,6 +473,166 @@ pub fn main() -> SystemResult<()> {
                 .whatever("unable to write partition info to stdout")?;
             }
         },
+        Command::Apps(cmd) => {
+            warn!("edge application orchestration is experimental");
+            let apps_config =
+                crate::apps::config::load_apps_config().whatever("unable to load apps config")?;
+            let service_manager = crate::apps::config::effective_service_manager(&apps_config);
+            let apps_dir = crate::apps::config::apps_dir().to_owned();
+            let manager = crate::apps::manager::AppManager::new(apps_dir, service_manager);
+            match cmd {
+                AppsCommand::Install {
+                    bundle,
+                    insecure_skip_bundle_verification,
+                } => {
+                    install_app_bundle(
+                        &config,
+                        &manager,
+                        bundle,
+                        *insecure_skip_bundle_verification,
+                    )?;
+                }
+                AppsCommand::List => {
+                    use crate::config::output::{AppListEntryOutput, AppListOutput};
+                    let apps = manager.list_apps().whatever("unable to list apps")?;
+                    let entries = apps
+                        .iter()
+                        .map(|app| {
+                            let status = manager
+                                .app_status(app)
+                                .map(|s| format!("{s}"))
+                                .unwrap_or_else(|_| "unknown".to_owned());
+                            let generation = manager.current_generation(app);
+                            (
+                                app.clone(),
+                                AppListEntryOutput::new(status).with_generation(generation),
+                            )
+                        })
+                        .collect();
+                    rugix_cli::json::print_json(&AppListOutput::new(entries), false)
+                        .whatever("unable to write apps list to stdout")?;
+                }
+                AppsCommand::Info { app } => {
+                    use crate::config::output::{
+                        AppInfoOutput, AppStateActiveOutput, AppStateErrorOutput, AppStateOutput,
+                        AppStateSwitchingOutput, GenerationInfoOutput,
+                    };
+                    let status = manager
+                        .app_status(app)
+                        .map(|s| format!("{s}"))
+                        .unwrap_or_else(|_| "unknown".to_owned());
+                    let generations = manager
+                        .list_generations(app)
+                        .whatever("unable to list generations")?;
+                    let current = manager.current_generation(app);
+                    let state = manager.read_state(app);
+                    let state_output = match state {
+                        crate::apps::manager::AppState::Inactive => AppStateOutput::Inactive,
+                        crate::apps::manager::AppState::Switching { from, to } => {
+                            AppStateOutput::Switching(
+                                AppStateSwitchingOutput::new().with_from(from).with_to(to),
+                            )
+                        }
+                        crate::apps::manager::AppState::Active { generation } => {
+                            AppStateOutput::Active(AppStateActiveOutput::new(generation))
+                        }
+                        crate::apps::manager::AppState::Error {
+                            generation,
+                            message,
+                        } => AppStateOutput::Error(AppStateErrorOutput::new(generation, message)),
+                    };
+                    let gen_entries: Vec<_> = generations
+                        .iter()
+                        .map(|gen| {
+                            GenerationInfoOutput::new(
+                                gen.meta.number,
+                                gen.meta.created_at.clone(),
+                                gen.complete,
+                                Some(gen.meta.number) == current,
+                            )
+                            .with_last_activated(gen.meta.last_activated.clone())
+                        })
+                        .collect();
+                    let output = AppInfoOutput::new(app.clone(), status, state_output, gen_entries);
+                    rugix_cli::json::print_json(&output, false)
+                        .whatever("unable to write app info to stdout")?;
+                }
+                AppsCommand::Activate { app, generation } => {
+                    let gen = match generation {
+                        Some(n) => *n,
+                        None => {
+                            let Some(n) = manager
+                                .last_activated_generation(app)
+                                .whatever("unable to find last activated generation")?
+                            else {
+                                bail!("no previously activated generation found for {app}");
+                            };
+                            n
+                        }
+                    };
+                    manager
+                        .activate_generation(app, gen)
+                        .whatever("unable to activate generation")?;
+                }
+                AppsCommand::Deactivate { app } => {
+                    manager
+                        .deactivate(app)
+                        .whatever("unable to deactivate app")?;
+                }
+                AppsCommand::Rollback { app } => {
+                    manager.rollback(app).whatever("unable to rollback app")?;
+                }
+                AppsCommand::Remove { app } => {
+                    manager.remove_app(app).whatever("unable to remove app")?;
+                }
+                AppsCommand::Generations { app } => {
+                    use crate::config::output::GenerationInfoOutput;
+                    let generations = manager
+                        .list_generations(app)
+                        .whatever("unable to list generations")?;
+                    let current = manager.current_generation(app);
+                    let entries: Vec<_> = generations
+                        .iter()
+                        .map(|gen| {
+                            GenerationInfoOutput::new(
+                                gen.meta.number,
+                                gen.meta.created_at.clone(),
+                                gen.complete,
+                                Some(gen.meta.number) == current,
+                            )
+                            .with_last_activated(gen.meta.last_activated.clone())
+                        })
+                        .collect();
+                    rugix_cli::json::print_json(&entries, false)
+                        .whatever("unable to write generations to stdout")?;
+                }
+                AppsCommand::Gc { app, keep } => {
+                    use crate::config::output::{AppGcAppOutput, AppGcOutput};
+                    let app_names = match app {
+                        Some(name) => vec![name.clone()],
+                        None => manager.list_apps().whatever("unable to list apps")?,
+                    };
+                    let mut results = indexmap::IndexMap::new();
+                    for name in &app_names {
+                        let removed = manager
+                            .gc(name, *keep)
+                            .whatever("unable to garbage collect")?;
+                        results.insert(name.clone(), AppGcAppOutput::new(removed));
+                    }
+                    rugix_cli::json::print_json(&AppGcOutput::new(results), false)
+                        .whatever("unable to write gc output to stdout")?;
+                }
+                AppsCommand::Recover => {
+                    manager.recover_all().whatever("recovery failed")?;
+                }
+                AppsCommand::Systemd(systemd_cmd) => match systemd_cmd {
+                    AppsSystemdCommand::SyncUnits => {
+                        crate::apps::generator::sync_units()
+                            .whatever("failed to sync app units")?;
+                    }
+                },
+            }
+        }
     }
     Ok(())
 }
@@ -511,6 +682,132 @@ impl<R: Read> Read for MaybeStreamHasher<R> {
             MaybeStreamHasher::Sha256 { hasher, .. } => hasher.read(buf),
         }
     }
+}
+
+fn install_app_bundle(
+    config: &Config,
+    app_manager: &crate::apps::manager::AppManager,
+    bundle: &str,
+    insecure_skip_bundle_verification: bool,
+) -> SystemResult<()> {
+    let file = File::open(bundle).whatever("unable to open app bundle")?;
+    let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
+    let mut bundle_reader = rugix_bundle::reader::BundleReader::start(bundle_source, None)
+        .whatever("unable to read app bundle")?;
+
+    let root_cert = config.signatures.as_ref().and_then(|c| {
+        if c.roots.len() > 1 {
+            warn!("multiple root certificates in config, using only the first")
+        };
+        c.roots.first().map(|p| Path::new(p))
+    });
+
+    let bundle_verified = verify_bundle_signature(root_cert, &bundle_reader)?;
+    if !bundle_verified && !insecure_skip_bundle_verification {
+        bail!("bundle verification failed, refusing to install app bundle");
+    }
+
+    let mut app_generations: std::collections::HashMap<String, (u64, PathBuf)> =
+        std::collections::HashMap::new();
+
+    let mut progress = |_source: &_| {};
+
+    // Phase 1: extract all app payloads into generation directories.
+    while let Some(payload) = bundle_reader
+        .next_payload()
+        .whatever("unable to read payload")?
+    {
+        let payload_entry = payload.entry();
+        if let Some(type_app_file) = &payload_entry.type_app_file {
+            let (_, gen_dir) = app_generations
+                .entry(type_app_file.app.clone())
+                .or_insert_with(|| {
+                    app_manager
+                        .create_generation(&type_app_file.app)
+                        .expect("unable to create app generation")
+                });
+            let file_path = gen_dir.join(&type_app_file.path);
+            if let Some(parent) = file_path.parent() {
+                fs::create_dir_all(parent).whatever("unable to create parent directory")?;
+            }
+            info!(
+                app = type_app_file.app,
+                path = type_app_file.path,
+                "extracting app file payload {}",
+                payload.idx()
+            );
+            let target = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .read(true)
+                .write(true)
+                .open(&file_path)
+                .whatever("unable to open app file target")?;
+            payload
+                .decode_into(target, None, &mut progress)
+                .whatever("unable to decode app payload")?;
+            continue;
+        }
+        if let Some(type_app_archive) = &payload_entry.type_app_archive {
+            let (_, gen_dir) = app_generations
+                .entry(type_app_archive.app.clone())
+                .or_insert_with(|| {
+                    app_manager
+                        .create_generation(&type_app_archive.app)
+                        .expect("unable to create app generation")
+                });
+            info!(
+                app = type_app_archive.app,
+                "extracting app archive payload {}",
+                payload.idx()
+            );
+            let tmp_tar = tempfile::NamedTempFile::new()
+                .whatever("unable to create temporary file for archive")?;
+            let tmp_file = tmp_tar
+                .as_file()
+                .try_clone()
+                .whatever("unable to clone temp file handle")?;
+            payload
+                .decode_into(tmp_file, None, &mut progress)
+                .whatever("unable to decode app archive payload")?;
+            // Extract the tar archive into the generation directory.
+            let tar_file = std::fs::File::open(tmp_tar.path())
+                .whatever("unable to reopen archive for extraction")?;
+            let mut archive = tar::Archive::new(tar_file);
+            archive
+                .unpack(gen_dir)
+                .whatever("unable to extract app archive")?;
+            continue;
+        }
+        payload.skip().whatever("unable to skip payload")?;
+    }
+
+    if app_generations.is_empty() {
+        warn!("bundle contained no app payloads");
+        return Ok(());
+    }
+
+    // Phase 2: finalize and activate.
+    for (app_name, (gen_number, gen_dir)) in &app_generations {
+        info!(app = %app_name, generation = gen_number, "finalizing app generation");
+        app_manager
+            .write_generation_metadata(
+                gen_dir,
+                &crate::apps::manager::AppGeneration {
+                    number: *gen_number,
+                    created_at: jiff::Timestamp::now().to_string(),
+                    last_activated: None,
+                },
+            )
+            .whatever("unable to write generation metadata")?;
+        crate::apps::manager::AppManager::mark_complete(gen_dir)
+            .whatever("unable to mark generation as complete")?;
+        app_manager
+            .activate_generation(app_name, *gen_number)
+            .whatever("unable to activate app generation")?;
+    }
+
+    Ok(())
 }
 
 fn install_update_stream(
@@ -1105,6 +1402,9 @@ pub enum Command {
     /// Utility commands useful for scripting.
     #[clap(subcommand)]
     Utils(UtilsCommand),
+    /// Manage applications.
+    #[clap(subcommand)]
+    Apps(AppsCommand),
     /// Unstable experimental commands.
     #[clap(subcommand)]
     Unstable(UnstableCommand),
@@ -1260,4 +1560,71 @@ pub enum UtilsCommand {
         disk: Option<PathBuf>,
         partition: u32,
     },
+}
+
+#[derive(Debug, Parser)]
+pub enum AppsCommand {
+    /// Install apps from a bundle.
+    Install {
+        /// Path or URL of the app bundle.
+        bundle: String,
+        /// Skip bundle signature verification.
+        #[clap(long)]
+        insecure_skip_bundle_verification: bool,
+    },
+    /// List all installed apps.
+    List,
+    /// Show app info and status.
+    Info {
+        /// App name.
+        app: String,
+    },
+    /// Activate a generation. If no generation is specified, activates the
+    /// most recently activated generation (useful for re-activating after deactivation).
+    Activate {
+        /// App name.
+        app: String,
+        /// Generation number (defaults to the most recently activated generation).
+        generation: Option<u64>,
+    },
+    /// Deactivate the current generation of an app.
+    Deactivate {
+        /// App name.
+        app: String,
+    },
+    /// Rollback an app to the previous generation.
+    Rollback {
+        /// App name.
+        app: String,
+    },
+    /// Remove an app entirely.
+    Remove {
+        /// App name.
+        app: String,
+    },
+    /// List generations for an app.
+    Generations {
+        /// App name.
+        app: String,
+    },
+    /// Garbage collect old generations. If no app is specified, runs for all apps.
+    Gc {
+        /// App name (if omitted, runs for all apps).
+        app: Option<String>,
+        /// Number of previously activated generations to keep (in addition to the
+        /// currently active generation, which is always kept).
+        #[clap(long, default_value_t = 1)]
+        keep: usize,
+    },
+    /// Recover any interrupted app transitions.
+    Recover,
+    /// Systemd integration.
+    #[clap(subcommand)]
+    Systemd(AppsSystemdCommand),
+}
+
+#[derive(Debug, Parser)]
+pub enum AppsSystemdCommand {
+    /// Sync app units into the systemd runtime directory.
+    SyncUnits,
 }

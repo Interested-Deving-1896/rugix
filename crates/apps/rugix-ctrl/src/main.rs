@@ -1,3 +1,4 @@
+pub mod apps;
 pub mod boot;
 pub mod cli;
 pub mod config;

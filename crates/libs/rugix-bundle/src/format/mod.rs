@@ -47,6 +47,10 @@ define_struct! {
         /// Slot where the payload should be installed to.
         pub type_slot[PAYLOAD_ENTRY_TYPE_SLOT]: Option<SlotPayloadType>,
         pub type_execute[PAYLOAD_ENTRY_TYPE_EXECUTE]: Option<ExecutePayloadType>,
+        /// App file payload.
+        pub type_app_file[PAYLOAD_ENTRY_TYPE_APP_FILE]: Option<AppFilePayloadType>,
+        /// App archive payload.
+        pub type_app_archive[PAYLOAD_ENTRY_TYPE_APP_ARCHIVE]: Option<AppArchivePayloadType>,
         /// Hash of the payload header.
         pub header_hash[PAYLOAD_ENTRY_HEADER_HASH]: Bytes,
         /// Hash of the payload file.
@@ -95,6 +99,24 @@ define_struct! {
     /// Header of a payload.
     pub struct ExecutePayloadType {
         pub handler[PAYLOAD_TYPE_EXECUTE_HANDLER]: Vec<String>,
+    }
+}
+
+define_struct! {
+    /// App file payload type: a single file written to a generation directory.
+    pub struct AppFilePayloadType {
+        /// App name.
+        pub app[PAYLOAD_TYPE_APP_FILE_APP]: String,
+        /// Relative path within the generation directory.
+        pub path[PAYLOAD_TYPE_APP_FILE_PATH]: String,
+    }
+}
+
+define_struct! {
+    /// App archive payload type: a tar archive extracted into a generation directory.
+    pub struct AppArchivePayloadType {
+        /// App name.
+        pub app[PAYLOAD_TYPE_APP_ARCHIVE_APP]: String,
     }
 }
 

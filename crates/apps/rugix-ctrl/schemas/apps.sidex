@@ -1,0 +1,15 @@
+/// Rugix Apps configuration.
+#[json(rename_all = "kebab-case")]
+record AppsConfig {
+    /// The service manager available on the system (e.g., `"systemd"`).
+    ///
+    /// Defaults to `"none"`.
+    service_manager?: string,
+}
+
+/// App manifest (`app.toml`) inside a generation directory.
+#[json(rename_all = "kebab-case")]
+record AppManifest {
+    /// Orchestrator to use (e.g., `"docker-compose"`, `"binary"`, `"generic"`).
+    orchestrator: string,
+}
