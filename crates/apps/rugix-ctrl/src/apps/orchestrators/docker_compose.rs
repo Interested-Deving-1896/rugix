@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs;
 use std::process::Command;
 
@@ -7,17 +8,41 @@ use tracing::info;
 use crate::apps::orchestrator::{AppContext, AppStatus, Orchestrator};
 use crate::apps::AppsResult;
 
+/// Name of the env file written into the generation directory.
+const ENV_FILE: &str = "rugix-app.env";
+
 /// Docker Compose orchestrator.
 pub struct DockerCompose;
 
 impl DockerCompose {
-    /// Build a `docker compose` command with the right project name and file flags.
+    /// Write the Rugix environment file into the generation directory.
+    fn write_env_file(ctx: &AppContext) -> AppsResult<()> {
+        let mut content = String::new();
+        writeln!(content, "RUGIX_APP_NAME={}", ctx.app_name).unwrap();
+        writeln!(content, "RUGIX_APP_DIR={}", ctx.app_dir.display()).unwrap();
+        writeln!(
+            content,
+            "RUGIX_APP_GENERATION_DIR={}",
+            ctx.generation_dir.display()
+        )
+        .unwrap();
+        writeln!(content, "RUGIX_APP_DATA_DIR={}", ctx.data_dir.display()).unwrap();
+        let env_path = ctx.generation_dir.join(ENV_FILE);
+        fs::write(&env_path, content).whatever("unable to write rugix-app.env")?;
+        Ok(())
+    }
+
+    /// Build a `docker compose` command with the right project name, file, and env file.
     fn compose_cmd(ctx: &AppContext) -> Command {
         let mut cmd = Command::new("docker");
         cmd.arg("compose");
         cmd.arg("--project-name").arg(ctx.app_name);
         cmd.arg("-f")
             .arg(ctx.generation_dir.join("docker-compose.yml"));
+        let env_path = ctx.generation_dir.join(ENV_FILE);
+        if env_path.exists() {
+            cmd.arg("--env-file").arg(env_path);
+        }
         cmd
     }
 }
@@ -28,6 +53,9 @@ impl Orchestrator for DockerCompose {
     }
 
     fn activate(&self, ctx: &AppContext) -> AppsResult<()> {
+        // Write the env file so compose can reference Rugix variables.
+        Self::write_env_file(ctx)?;
+
         // Load all image tarballs from the images/ subdirectory.
         let images_dir = ctx.generation_dir.join("images");
         if images_dir.exists() {
