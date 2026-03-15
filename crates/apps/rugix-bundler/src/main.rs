@@ -603,7 +603,8 @@ fn extract_compose_images(compose_path: &Path) -> BundleResult<Vec<String>> {
 
 /// Save Docker images via `docker save`.
 ///
-/// When `pull` is true, each image is pulled first (with the specified platform if given).
+/// When `pull` is true, each image is pulled first (with the specified platform if
+/// given).
 fn docker_save(
     images: &[String],
     platform: Option<&str>,

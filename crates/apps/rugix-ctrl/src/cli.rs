@@ -610,9 +610,7 @@ pub fn main() -> SystemResult<()> {
                     use crate::config::output::{AppGcAppOutput, AppGcOutput};
                     let app_names = match app {
                         Some(name) => vec![name.clone()],
-                        None => manager
-                            .list_apps()
-                            .whatever("unable to list apps")?,
+                        None => manager.list_apps().whatever("unable to list apps")?,
                     };
                     let mut results = indexmap::IndexMap::new();
                     for name in &app_names {
