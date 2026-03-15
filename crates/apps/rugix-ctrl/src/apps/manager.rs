@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use reportify::ResultExt;
 use tracing::{info, warn};
+
+use crate::payload_db::PayloadState;
 
 use super::orchestrator::{AppContext, AppStatus};
 use super::{orchestrators, AppsResult};
@@ -216,6 +219,29 @@ impl AppManager {
     /// Check whether a generation is complete (fully installed).
     pub fn is_complete(gen_dir: &Path) -> bool {
         gen_dir.join(".rugix/complete").exists()
+    }
+
+    /// Save per-payload state (hashes, sizes) for a generation.
+    pub fn save_payload_states(
+        gen_dir: &Path,
+        states: &HashMap<String, PayloadState>,
+    ) -> AppsResult<()> {
+        let path = gen_dir.join(".rugix/payloads.json");
+        fs::create_dir_all(path.parent().unwrap()).whatever("unable to create .rugix directory")?;
+        let json =
+            serde_json::to_string_pretty(states).whatever("unable to serialize payload states")?;
+        rugix_common::fsutils::atomic_write(&path, json.as_bytes())
+            .whatever("unable to write payload states")?;
+        Ok(())
+    }
+
+    /// Load per-payload state for a generation. Returns empty map if absent.
+    pub fn load_payload_states(gen_dir: &Path) -> HashMap<String, PayloadState> {
+        let path = gen_dir.join(".rugix/payloads.json");
+        let Ok(content) = fs::read_to_string(&path) else {
+            return HashMap::new();
+        };
+        serde_json::from_str(&content).unwrap_or_default()
     }
 
     /// Update the generation metadata to record the current time as `last_activated`.

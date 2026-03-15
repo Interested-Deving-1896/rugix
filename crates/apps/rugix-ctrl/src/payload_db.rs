@@ -1,4 +1,4 @@
-//! Slot database.
+//! Payload database for block indices and payload state.
 
 use std::hash::BuildHasher;
 use std::path::{Path, PathBuf};
@@ -16,6 +16,11 @@ use rugix_bundle::source::FileSource;
 use rugix_common::slots::SlotState;
 use si_crypto_hashes::HashAlgorithm;
 use tracing::warn;
+
+/// State of an installed payload (hashes, size, timestamp).
+///
+/// Currently identical to [`SlotState`] but separated so the two can diverge.
+pub type PayloadState = SlotState;
 
 /// Stored block index.
 #[derive(Debug, serde::Serialize)]
@@ -54,7 +59,15 @@ impl BlockProvider {
     }
 
     pub fn add_slot(&mut self, slot_name: &str, slot_file: PathBuf) -> SystemResult<()> {
-        for index in get_stored_indices(slot_name)? {
+        self.add_indices(&get_stored_indices(slot_name)?, slot_file)
+    }
+
+    pub fn add_indices(
+        &mut self,
+        indices: &[StoredBlockIndex],
+        data_file: PathBuf,
+    ) -> SystemResult<()> {
+        for index in indices {
             if index.hash_algorithm != self.hash_algorithm {
                 continue;
             }
@@ -76,7 +89,7 @@ impl BlockProvider {
             let index =
                 BlockIndex::decode(&mut decoder, atom).whatever("unable to decode block index")?;
             let file_idx = self.files.len();
-            self.files.push(slot_file);
+            self.files.push(data_file);
             let mut next_block_idx = self.hashes.len() / self.hash_algorithm.hash_size();
             self.hashes.extend_from_slice(&index.block_hashes.raw);
             let mut current_offset = NumBytes::ZERO;
@@ -190,6 +203,74 @@ pub fn get_stored_indices(slot: &str) -> SystemResult<Vec<StoredBlockIndex>> {
                 index_file: dir_entry.path(),
             })
         }
+    }
+    Ok(indices)
+}
+
+/// Compute and save a block index for an app-file payload in a generation directory.
+///
+/// Indices are stored at:
+/// `<gen_dir>/.rugix/block-indices/<payload_path>/<chunker>_<hash>.rugix-block-index`
+pub fn add_app_file_index(
+    gen_dir: &Path,
+    payload_path: &str,
+    data_file: &Path,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+) -> SystemResult<()> {
+    let path = gen_dir
+        .join(".rugix/block-indices")
+        .join(payload_path)
+        .join(format!(
+            "{chunker_algorithm}_{hash_algorithm:#}.rugix-block-index"
+        ));
+    std::fs::create_dir_all(path.parent().unwrap()).ok();
+    let index_config = BlockIndexConfig {
+        hash_algorithm: *hash_algorithm,
+        chunker: chunker_algorithm.clone(),
+    };
+    let block_index =
+        compute_block_index(index_config, data_file).whatever("unable to compute block index")?;
+    std::fs::write(path, &block_index.encode()).whatever("unable to write block index")?;
+    Ok(())
+}
+
+/// Get stored block indices for an app-file payload in a generation directory.
+pub fn get_app_file_indices(
+    gen_dir: &Path,
+    payload_path: &str,
+) -> SystemResult<Vec<StoredBlockIndex>> {
+    let index_dir = gen_dir.join(".rugix/block-indices").join(payload_path);
+    let mut indices = Vec::new();
+    if !index_dir.exists() {
+        return Ok(indices);
+    }
+    for dir_entry in
+        std::fs::read_dir(&index_dir).whatever("unable to list block index directory")?
+    {
+        let dir_entry = dir_entry.whatever("unable to list block index directory")?;
+        let filename = dir_entry.file_name();
+        let filename = filename.to_string_lossy();
+        let Some(name) = filename.strip_suffix(".rugix-block-index") else {
+            continue;
+        };
+        let Some((chunker_algorithm, hash_algorithm)) = name.split_once('_') else {
+            warn!("invalid filename for block index: {filename:?}");
+            continue;
+        };
+        let Ok(chunker_algorithm) = chunker_algorithm.parse() else {
+            warn!("invalid chunker algorithm: {chunker_algorithm:?}");
+            continue;
+        };
+        let Ok(hash_algorithm) = hash_algorithm.parse() else {
+            warn!("invalid hash algorithm: {hash_algorithm:?}");
+            continue;
+        };
+        indices.push(StoredBlockIndex {
+            chunker_algorithm,
+            hash_algorithm,
+            index_file: dir_entry.path(),
+        });
     }
     Ok(indices)
 }

@@ -410,15 +410,13 @@ fn main() -> BundleResult<()> {
                 };
                 let new_app = new_config.app.clone();
                 let new_app_path = new_config.path.clone();
-                let Some(old_payload_idx) =
-                    old_manifest.payloads.iter().position(|p| {
-                        matches!(
-                            &p.delivery,
-                            DeliveryConfig::AppFile(config)
-                                if config.app == new_app && config.path == new_app_path
-                        )
-                    })
-                else {
+                let Some(old_payload_idx) = old_manifest.payloads.iter().position(|p| {
+                    matches!(
+                        &p.delivery,
+                        DeliveryConfig::AppFile(config)
+                            if config.app == new_app && config.path == new_app_path
+                    )
+                }) else {
                     info!(app = %new_app, path = %new_app_path, "no matching app-file in old bundle, skipping");
                     continue;
                 };

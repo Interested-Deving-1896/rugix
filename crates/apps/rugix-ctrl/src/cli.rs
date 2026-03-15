@@ -38,7 +38,7 @@ use xscript::{vars, Vars};
 use crate::config::output::BlockDeviceInfo;
 use crate::http_source::{HttpSource, RetryConfig};
 use crate::overlay::overlay_dir;
-use crate::slot_db::{self, BlockProvider};
+use crate::payload_db::{self, BlockProvider};
 use crate::system_state;
 use crate::utils::{clear_flag, reboot, set_flag, DEFERRED_SPARE_REBOOT_FLAG};
 
@@ -298,10 +298,10 @@ pub fn main() -> SystemResult<()> {
         },
         Command::Slots(slots_command) => match slots_command {
             SlotsCommand::Inspect { slot } => {
-                let indices = slot_db::get_stored_indices(slot)?;
+                let indices = payload_db::get_stored_indices(slot)?;
                 #[derive(serde::Serialize)]
                 struct SlotInspectOutput<'a> {
-                    indices: &'a [slot_db::StoredBlockIndex],
+                    indices: &'a [payload_db::StoredBlockIndex],
                 }
                 rugix_cli::json::print_json(&SlotInspectOutput { indices: &indices }, false)
                     .whatever("unable to write slot info to stdout")?;
@@ -317,7 +317,7 @@ pub fn main() -> SystemResult<()> {
                 };
                 match slot.kind() {
                     SlotKind::Block(block_slot) => {
-                        slot_db::add_index(
+                        payload_db::add_index(
                             slot.name(),
                             block_slot.device().path(),
                             chunker_algorithm,
@@ -325,7 +325,12 @@ pub fn main() -> SystemResult<()> {
                         )?;
                     }
                     SlotKind::File { path } => {
-                        slot_db::add_index(slot.name(), path, chunker_algorithm, hash_algorithm)?;
+                        payload_db::add_index(
+                            slot.name(),
+                            path,
+                            chunker_algorithm,
+                            hash_algorithm,
+                        )?;
                     }
                     SlotKind::Custom { .. } => {
                         bail!("cannot create indices on custom slots");
@@ -337,7 +342,7 @@ pub fn main() -> SystemResult<()> {
                 let Some((_, slot)) = system.slots().find_by_name(slot) else {
                     bail!("slot {slot} not found")
                 };
-                let Some(slot_state) = slot_db::get_stored_state(slot.name())? else {
+                let Some(slot_state) = payload_db::get_stored_state(slot.name())? else {
                     bail!("no stored state for slot {}", slot.name());
                 };
                 if !slot.is_immutable() {
@@ -625,6 +630,45 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::Recover => {
                     manager.recover_all().whatever("recovery failed")?;
                 }
+                AppsCommand::CreateIndex {
+                    app,
+                    chunker,
+                    hash_algorithm,
+                    path,
+                    generation,
+                } => {
+                    let gen_number = match generation {
+                        Some(n) => *n,
+                        None => manager
+                            .current_generation(app)
+                            .ok_or_else(|| whatever!("no active generation for app {app}"))?,
+                    };
+                    let gen_dir = manager.generation_dir(app, gen_number);
+                    let paths: Vec<String> = match path {
+                        Some(p) => vec![p.clone()],
+                        None => {
+                            let states =
+                                crate::apps::manager::AppManager::load_payload_states(&gen_dir);
+                            states.into_keys().collect()
+                        }
+                    };
+                    for payload_path in &paths {
+                        let data_file = gen_dir.join(payload_path);
+                        if !data_file.exists() {
+                            bail!(
+                                "file {payload_path} not found in generation {gen_number} of app {app}"
+                            );
+                        }
+                        info!(app = %app, path = %payload_path, "creating block index");
+                        payload_db::add_app_file_index(
+                            &gen_dir,
+                            payload_path,
+                            &data_file,
+                            chunker,
+                            hash_algorithm,
+                        )?;
+                    }
+                }
                 AppsCommand::Systemd(systemd_cmd) => match systemd_cmd {
                     AppsSystemdCommand::SyncUnits => {
                         crate::apps::generator::sync_units()
@@ -709,6 +753,11 @@ fn install_app_bundle(
 
     let mut app_generations: std::collections::HashMap<String, (u64, PathBuf)> =
         std::collections::HashMap::new();
+    // Accumulated payload hashes per app, keyed by (app_name, path).
+    let mut payload_states: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, payload_db::PayloadState>,
+    > = std::collections::HashMap::new();
 
     let mut progress = |_source: &_| {};
 
@@ -719,33 +768,165 @@ fn install_app_bundle(
     {
         let payload_entry = payload.entry();
         if let Some(type_app_file) = &payload_entry.type_app_file {
-            let (_, gen_dir) = app_generations
-                .entry(type_app_file.app.clone())
-                .or_insert_with(|| {
-                    app_manager
-                        .create_generation(&type_app_file.app)
-                        .expect("unable to create app generation")
-                });
-            let file_path = gen_dir.join(&type_app_file.path);
+            let app_name = type_app_file.app.clone();
+            let payload_path = type_app_file.path.clone();
+            let delta_encoding = payload_entry.delta_encoding.clone();
+            let (_, gen_dir) = app_generations.entry(app_name.clone()).or_insert_with(|| {
+                app_manager
+                    .create_generation(&app_name)
+                    .expect("unable to create app generation")
+            });
+            let gen_dir = gen_dir.clone();
+            let file_path = gen_dir.join(&payload_path);
             if let Some(parent) = file_path.parent() {
                 fs::create_dir_all(parent).whatever("unable to create parent directory")?;
             }
-            info!(
-                app = type_app_file.app,
-                path = type_app_file.path,
-                "extracting app file payload {}",
-                payload.idx()
+
+            // Set up block provider for block-encoded payloads.
+            let mut block_provider = None;
+            if let Some(block_encoding) = &payload.header().block_encoding {
+                let mut provider = BlockProvider::new(
+                    block_encoding.chunker.clone(),
+                    block_encoding.hash_algorithm,
+                );
+                // Add block indices from existing generations of the same app.
+                for gen in app_manager.list_generations(&app_name).unwrap_or_default() {
+                    if !gen.complete {
+                        continue;
+                    }
+                    let old_gen_dir = app_manager.generation_dir(&app_name, gen.meta.number);
+                    let indices = payload_db::get_app_file_indices(&old_gen_dir, &payload_path)
+                        .unwrap_or_default();
+                    if !indices.is_empty() {
+                        let data_file = old_gen_dir.join(&payload_path);
+                        if data_file.exists() {
+                            if let Err(e) = provider.add_indices(&indices, data_file) {
+                                warn!("failed to load app-file block indices: {e:?}");
+                            }
+                        }
+                    }
+                }
+                block_provider = Some(provider);
+            }
+
+            let decoded_payload_info = if let Some(delta_encoding) = delta_encoding {
+                info!(
+                    app = app_name,
+                    path = payload_path,
+                    "installing delta app file payload {}",
+                    payload.idx()
+                );
+                if delta_encoding.inputs.len() != 1 {
+                    bail!("unsupported number of delta encoding inputs");
+                }
+                let input = &delta_encoding.inputs[0];
+                // Find the delta source in existing generations.
+                let mut source_path = None;
+                'generations: for gen in app_manager.list_generations(&app_name).unwrap_or_default()
+                {
+                    if !gen.complete {
+                        continue;
+                    }
+                    let old_gen_dir = app_manager.generation_dir(&app_name, gen.meta.number);
+                    let old_states =
+                        crate::apps::manager::AppManager::load_payload_states(&old_gen_dir);
+                    let Some(old_state) = old_states.get(&payload_path) else {
+                        continue;
+                    };
+                    for input_hash in &input.hashes {
+                        if let Some(stored_hash) = old_state.hashes.get(&input_hash.algorithm()) {
+                            if stored_hash == input_hash {
+                                let candidate = old_gen_dir.join(&payload_path);
+                                if candidate.exists() {
+                                    source_path = Some(candidate);
+                                    break 'generations;
+                                }
+                            }
+                        }
+                    }
+                }
+                let Some(source_path) = source_path else {
+                    bail!("no suitable delta source found for app-file {payload_path}");
+                };
+                match delta_encoding.format {
+                    rugix_bundle::manifest::DeltaEncodingFormat::Xdelta => { /* ok */ }
+                }
+                let target = std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .read(true)
+                    .write(true)
+                    .open(&file_path)
+                    .whatever("unable to open app file target")?;
+                let mut target_writer =
+                    HashWriter::new(delta_encoding.original_hash.algorithm(), target);
+                let (mut patch_reader, patch_writer) = buffered_pipe(8192);
+                let (decode_result, xdelta_result) = std::thread::scope(|scope| {
+                    let target_writer = &mut target_writer;
+                    let handle = scope.spawn(move || {
+                        xdelta_decompress(&source_path, &mut patch_reader, target_writer)
+                    });
+                    let decode_result = payload.decode_into(
+                        BufferedPipeTarget {
+                            writer: patch_writer,
+                        },
+                        block_provider
+                            .as_ref()
+                            .map(|p| p as &dyn StoredBlockProvider),
+                        &mut progress,
+                    );
+                    (decode_result, handle.join().unwrap())
+                });
+                decode_result.whatever("unable to decode delta app payload")?;
+                xdelta_result.whatever("unable to decompress delta app payload")?;
+                let (target_hash, target_size) = target_writer.finalize();
+                if target_hash != delta_encoding.original_hash {
+                    bail!("decoded app file data does not match hash");
+                }
+                DecodedPayloadInfo {
+                    hash: target_hash,
+                    size: target_size.into(),
+                }
+            } else {
+                info!(
+                    app = app_name,
+                    path = payload_path,
+                    "extracting app file payload {}",
+                    payload.idx()
+                );
+                let target = std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(true)
+                    .read(true)
+                    .write(true)
+                    .open(&file_path)
+                    .whatever("unable to open app file target")?;
+                payload
+                    .decode_into(
+                        target,
+                        block_provider
+                            .as_ref()
+                            .map(|p| p as &dyn StoredBlockProvider),
+                        &mut progress,
+                    )
+                    .whatever("unable to decode app payload")?
+            };
+
+            // Save payload hash for this app-file.
+            payload_states.entry(app_name.clone()).or_default().insert(
+                payload_path.clone(),
+                payload_db::PayloadState {
+                    hashes: [(
+                        decoded_payload_info.hash.algorithm(),
+                        decoded_payload_info.hash,
+                    )]
+                    .into_iter()
+                    .collect(),
+                    size: Some(decoded_payload_info.size),
+                    updated_at: Some(jiff::Timestamp::now()),
+                },
             );
-            let target = std::fs::OpenOptions::new()
-                .create(true)
-                .truncate(true)
-                .read(true)
-                .write(true)
-                .open(&file_path)
-                .whatever("unable to open app file target")?;
-            payload
-                .decode_into(target, None, &mut progress)
-                .whatever("unable to decode app payload")?;
+
             continue;
         }
         if let Some(type_app_archive) = &payload_entry.type_app_archive {
@@ -787,8 +968,14 @@ fn install_app_bundle(
         return Ok(());
     }
 
-    // Phase 2: finalize and activate.
+    // Phase 2: save payload states, finalize, and activate.
     for (app_name, (gen_number, gen_dir)) in &app_generations {
+        // Persist payload hashes for this generation.
+        if let Some(states) = payload_states.get(app_name) {
+            if let Err(e) = crate::apps::manager::AppManager::save_payload_states(gen_dir, states) {
+                warn!(app = %app_name, "failed to save payload states: {e:?}");
+            }
+        }
         info!(app = %app_name, generation = gen_number, "finalizing app generation");
         app_manager
             .write_generation_metadata(
@@ -824,7 +1011,7 @@ fn install_update_stream(
     if bundle.starts_with("http") {
         let mut has_indices = false;
         for (_, slot) in system.slots().iter() {
-            has_indices |= slot_db::get_stored_indices(slot.name())
+            has_indices |= payload_db::get_stored_indices(slot.name())
                 .map(|indices| !indices.is_empty())
                 .unwrap_or_default();
             if has_indices {
@@ -1044,7 +1231,7 @@ fn install_update_bundle<R: BundleSource>(
                     payload.idx(),
                     slot.name()
                 );
-                slot_db::erase(slot.name())?;
+                payload_db::erase(slot.name())?;
                 let mut block_provider = None;
                 if let Some(block_encoding) = &payload.header().block_encoding {
                     let mut provider = BlockProvider::new(
@@ -1079,7 +1266,7 @@ fn install_update_bundle<R: BundleSource>(
                     let input = &delta_encoding.inputs[0];
                     let mut source = None;
                     'slots: for (_, delta_slot) in system.slots().iter() {
-                        let Ok(Some(slot_state)) = slot_db::get_stored_state(delta_slot.name())
+                        let Ok(Some(slot_state)) = payload_db::get_stored_state(delta_slot.name())
                         else {
                             continue;
                         };
@@ -1218,7 +1405,7 @@ fn install_update_bundle<R: BundleSource>(
                         }
                     }
                 };
-                if let Err(error) = slot_db::save_slot_state(
+                if let Err(error) = payload_db::save_slot_state(
                     slot.name(),
                     // Only save the hashes and size if the slot is immutable.
                     &SlotState {
@@ -1618,6 +1805,25 @@ pub enum AppsCommand {
     },
     /// Recover any interrupted app transitions.
     Recover,
+    /// Create block indices for app-file payloads in a generation.
+    ///
+    /// If no path is specified, creates indices for all payload files
+    /// recorded in the generation's payloads.json.
+    CreateIndex {
+        /// App name.
+        app: String,
+        /// Chunker algorithm.
+        chunker: ChunkerAlgorithm,
+        /// Hash algorithm.
+        hash_algorithm: HashAlgorithm,
+        /// Relative payload path within the generation directory.
+        /// If omitted, creates indices for all known payload files.
+        #[clap(long)]
+        path: Option<String>,
+        /// Generation number (defaults to the currently active generation).
+        #[clap(long)]
+        generation: Option<u64>,
+    },
     /// Systemd integration.
     #[clap(subcommand)]
     Systemd(AppsSystemdCommand),
