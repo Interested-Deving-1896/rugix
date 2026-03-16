@@ -3,7 +3,7 @@ use std::path::Path;
 use rugix_common::disk::blkdev::find_block_device;
 use tracing::error;
 
-use crate::slot_db;
+use crate::payload_db;
 use crate::system::paths::MOUNT_POINT_DATA;
 use crate::system::System;
 
@@ -18,7 +18,7 @@ pub fn state_from_system(system: &System) -> SystemInfoOutput {
         .slots()
         .iter()
         .map(|(_, slot)| {
-            let slot_state = match slot_db::get_stored_state(slot.name()) {
+            let slot_state = match payload_db::get_stored_state(slot.name()) {
                 Ok(state) => state,
                 Err(error) => {
                     error!("unable to get state for slot {}: {:?}", slot.name(), error);

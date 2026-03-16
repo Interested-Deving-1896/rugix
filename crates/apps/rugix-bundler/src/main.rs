@@ -328,10 +328,11 @@ fn main() -> BundleResult<()> {
                 &std::fs::read_to_string(new_dir.path().join("rugix-bundle.toml")).unwrap(),
             )
             .unwrap();
-            let slots = if cmd.slots.is_empty() {
-                &["system".to_owned(), "boot:system".to_owned()]
-            } else {
+            let explicit_slots = !cmd.slots.is_empty();
+            let slots = if explicit_slots {
                 cmd.slots.as_slice()
+            } else {
+                &["system".to_owned(), "boot:system".to_owned()]
             };
             for slot in slots {
                 let (new_slot, old_slot) = slot
@@ -346,10 +347,13 @@ fn main() -> BundleResult<()> {
                             _ => false,
                         })
                 else {
-                    panic!("unable to find slot {new_slot} in new bundle");
+                    if explicit_slots {
+                        panic!("unable to find slot {new_slot} in new bundle");
+                    }
+                    continue;
                 };
                 let Some(old_payload_idx) =
-                    new_manifest
+                    old_manifest
                         .payloads
                         .iter()
                         .position(|p| match &p.delivery {
@@ -357,11 +361,68 @@ fn main() -> BundleResult<()> {
                             _ => false,
                         })
                 else {
-                    panic!("unable to find slot {old_slot} in old bundle");
+                    if explicit_slots {
+                        panic!("unable to find slot {old_slot} in old bundle");
+                    }
+                    continue;
                 };
                 info!(%old_slot, %new_slot, "computing delta");
                 let old_filename = &old_manifest.payloads[old_payload_idx].filename;
                 let new_filename = &old_manifest.payloads[new_payload_idx].filename;
+                let new_filename_patched = format!("{new_filename}.xdelta");
+                let old_path = old_dir.path().join("payloads").join(old_filename);
+                let new_path = new_dir.path().join("payloads").join(new_filename);
+                let hash_algorithm = new_manifest
+                    .hash_algorithm
+                    .unwrap_or(si_crypto_hashes::HashAlgorithm::Sha512_256);
+                let old_hash = hash_file(hash_algorithm, &old_path);
+                let new_hash = hash_file(hash_algorithm, &new_path);
+                let patch_path = new_dir.path().join("payloads").join(&new_filename_patched);
+                xdelta_compress(&old_path, &new_path, &patch_path)?;
+                std::fs::remove_file(&new_path).unwrap();
+                assert!(patch_path.exists());
+                let new_payload = &mut new_manifest.payloads[new_payload_idx];
+                new_payload.filename = new_filename_patched;
+                new_payload.block_encoding = Some(
+                    BlockEncoding::new(ChunkerAlgorithm::Fixed {
+                        block_size_kib: 256,
+                    })
+                    .with_compression(if cmd.disable_compression {
+                        None
+                    } else {
+                        Some(Compression::Xz(XzCompression::new()))
+                    }),
+                );
+                new_payload.delta_encoding = Some(DeltaEncoding::new(
+                    vec![DeltaEncodingInput {
+                        hashes: vec![old_hash],
+                    }],
+                    DeltaEncodingFormat::Xdelta,
+                    new_hash,
+                ));
+            }
+            // Compute deltas for app-file payloads with matching paths.
+            for new_payload_idx in 0..new_manifest.payloads.len() {
+                let DeliveryConfig::AppFile(ref new_config) =
+                    new_manifest.payloads[new_payload_idx].delivery
+                else {
+                    continue;
+                };
+                let new_app = new_config.app.clone();
+                let new_app_path = new_config.path.clone();
+                let Some(old_payload_idx) = old_manifest.payloads.iter().position(|p| {
+                    matches!(
+                        &p.delivery,
+                        DeliveryConfig::AppFile(config)
+                            if config.app == new_app && config.path == new_app_path
+                    )
+                }) else {
+                    info!(app = %new_app, path = %new_app_path, "no matching app-file in old bundle, skipping");
+                    continue;
+                };
+                info!(app = %new_app, path = %new_app_path, "computing app-file delta");
+                let old_filename = &old_manifest.payloads[old_payload_idx].filename;
+                let new_filename = &new_manifest.payloads[new_payload_idx].filename;
                 let new_filename_patched = format!("{new_filename}.xdelta");
                 let old_path = old_dir.path().join("payloads").join(old_filename);
                 let new_path = new_dir.path().join("payloads").join(new_filename);
