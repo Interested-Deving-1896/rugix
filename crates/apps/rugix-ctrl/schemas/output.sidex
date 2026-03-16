@@ -64,14 +64,6 @@ record BlockDeviceInfo {
     partition?: u32,
 }
 
-// -- Apps CLI output types ----------------------------------------------------
-
-/// Output of the app list command (`apps list`).
-record AppListOutput {
-    /// Map from app name to app entry.
-    apps: [string: AppListEntryOutput],
-}
-
 /// Entry in the app list output.
 record AppListEntryOutput {
     /// Live status of the app (e.g., `"running"`, `"stopped"`, `"unknown"`).
@@ -139,12 +131,6 @@ record GenerationInfoOutput {
     last_activated?: string,
     /// Whether this is the currently active generation.
     current: bool,
-}
-
-/// Output of the garbage collection command (`apps gc`).
-record AppGcOutput {
-    /// Map from app name to the generation numbers that were removed.
-    apps: [string: AppGcAppOutput],
 }
 
 /// Garbage collection result for a single app.

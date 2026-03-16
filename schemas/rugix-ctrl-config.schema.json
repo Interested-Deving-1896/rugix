@@ -294,23 +294,6 @@
       ],
       "unevaluatedProperties": false
     },
-    "rugix_ctrl.output.AppGcOutput": {
-      "$id": "rugix_ctrl.output.AppGcOutput",
-      "type": "object",
-      "description": "Output of the garbage collection command (`apps gc`).",
-      "properties": {
-        "apps": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/rugix_ctrl.output.AppGcAppOutput"
-          }
-        }
-      },
-      "required": [
-        "apps"
-      ],
-      "unevaluatedProperties": false
-    },
     "rugix_ctrl.output.AppInfoOutput": {
       "$id": "rugix_ctrl.output.AppInfoOutput",
       "type": "object",
@@ -355,23 +338,6 @@
       },
       "required": [
         "status"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppListOutput": {
-      "$id": "rugix_ctrl.output.AppListOutput",
-      "type": "object",
-      "description": "Output of the app list command (`apps list`).",
-      "properties": {
-        "apps": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/rugix_ctrl.output.AppListEntryOutput"
-          }
-        }
-      },
-      "required": [
-        "apps"
       ],
       "unevaluatedProperties": false
     },

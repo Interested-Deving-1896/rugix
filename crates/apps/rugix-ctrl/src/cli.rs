@@ -498,9 +498,9 @@ pub fn main() -> SystemResult<()> {
                     )?;
                 }
                 AppsCommand::List => {
-                    use crate::config::output::{AppListEntryOutput, AppListOutput};
+                    use crate::config::output::AppListEntryOutput;
                     let apps = manager.list_apps().whatever("unable to list apps")?;
-                    let entries = apps
+                    let entries: indexmap::IndexMap<String, AppListEntryOutput> = apps
                         .iter()
                         .map(|app| {
                             let status = manager
@@ -514,7 +514,7 @@ pub fn main() -> SystemResult<()> {
                             )
                         })
                         .collect();
-                    rugix_cli::json::print_json(&AppListOutput::new(entries), false)
+                    rugix_cli::json::print_json(&entries, false)
                         .whatever("unable to write apps list to stdout")?;
                 }
                 AppsCommand::Info { app } => {
@@ -612,7 +612,7 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write generations to stdout")?;
                 }
                 AppsCommand::Gc { app, keep } => {
-                    use crate::config::output::{AppGcAppOutput, AppGcOutput};
+                    use crate::config::output::AppGcAppOutput;
                     let app_names = match app {
                         Some(name) => vec![name.clone()],
                         None => manager.list_apps().whatever("unable to list apps")?,
@@ -624,7 +624,7 @@ pub fn main() -> SystemResult<()> {
                             .whatever("unable to garbage collect")?;
                         results.insert(name.clone(), AppGcAppOutput::new(removed));
                     }
-                    rugix_cli::json::print_json(&AppGcOutput::new(results), false)
+                    rugix_cli::json::print_json(&results, false)
                         .whatever("unable to write gc output to stdout")?;
                 }
                 AppsCommand::Recover => {
