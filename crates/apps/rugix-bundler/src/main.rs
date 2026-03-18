@@ -702,6 +702,87 @@ fn docker_save(
     Ok(())
 }
 
+/// Normalize non-deterministic tar header fields (timestamps, ownership) for
+/// reproducible builds while preserving permission bits.
+fn normalize_tar_header(header: &mut tar::Header) {
+    header.set_mtime(0);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_username("").ok();
+    header.set_groupname("").ok();
+    header.set_cksum();
+}
+
+/// Append a file to a tar archive with normalized metadata for reproducibility,
+/// preserving the file's permission bits.
+fn tar_append_file(archive: &mut tar::Builder<File>, path: &Path, name: &str) -> BundleResult<()> {
+    let mut file =
+        File::open(path).whatever_with(|_| format!("unable to open {}", path.display()))?;
+    let metadata = file
+        .metadata()
+        .whatever_with(|_| format!("unable to read metadata of {}", path.display()))?;
+    let mut header = tar::Header::new_gnu();
+    header.set_size(metadata.len());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        header.set_mode(metadata.permissions().mode());
+    }
+    #[cfg(not(unix))]
+    {
+        header.set_mode(0o644);
+    }
+    normalize_tar_header(&mut header);
+    archive
+        .append_data(&mut header, name, &mut file)
+        .whatever_with(|_| format!("unable to add {} to archive", name))?;
+    Ok(())
+}
+
+/// Append a directory tree to a tar archive with normalized metadata for
+/// reproducibility, preserving permission bits and sorting entries for
+/// deterministic ordering.
+fn tar_append_dir(archive: &mut tar::Builder<File>, name: &str, src: &Path) -> BundleResult<()> {
+    fn walk(archive: &mut tar::Builder<File>, prefix: &str, dir: &Path) -> BundleResult<()> {
+        let mut entries: Vec<_> = fs::read_dir(dir)
+            .whatever_with(|_| format!("unable to read directory {}", dir.display()))?
+            .collect::<Result<Vec<_>, _>>()
+            .whatever("unable to read directory entry")?;
+        entries.sort_by_key(|e| e.file_name());
+        for entry in entries {
+            let path = entry.path();
+            let file_name = entry.file_name();
+            let Some(file_name_str) = file_name.to_str() else {
+                bail!("non-UTF-8 filename in directory {}", dir.display());
+            };
+            let entry_name = format!("{}/{}", prefix, file_name_str);
+            if path.is_dir() {
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(tar::EntryType::Directory);
+                header.set_size(0);
+                header.set_mode(0o755);
+                normalize_tar_header(&mut header);
+                archive
+                    .append_data(&mut header, &entry_name, &[][..])
+                    .whatever("unable to add directory entry to archive")?;
+                walk(archive, &entry_name, &path)?;
+            } else {
+                tar_append_file(archive, &path, &entry_name)?;
+            }
+        }
+        Ok(())
+    }
+    let mut header = tar::Header::new_gnu();
+    header.set_entry_type(tar::EntryType::Directory);
+    header.set_size(0);
+    header.set_mode(0o755);
+    normalize_tar_header(&mut header);
+    archive
+        .append_data(&mut header, name, &[][..])
+        .whatever("unable to add directory entry to archive")?;
+    walk(archive, name, src)
+}
+
 /// Pack a Docker Compose app into an app bundle.
 ///
 /// Creates a bundle with:
@@ -725,15 +806,13 @@ fn pack_docker_compose(cmd: &PackDockerComposeCmd) -> BundleResult<()> {
         let mut header = tar::Header::new_gnu();
         header.set_size(app_toml.len() as u64);
         header.set_mode(0o644);
-        header.set_cksum();
+        normalize_tar_header(&mut header);
         archive
             .append_data(&mut header, "app.toml", &app_toml[..])
             .whatever("unable to add app.toml to archive")?;
 
         // docker-compose.yml
-        archive
-            .append_path_with_name(&cmd.compose_file, "docker-compose.yml")
-            .whatever("unable to add docker-compose.yml to archive")?;
+        tar_append_file(&mut archive, &cmd.compose_file, "docker-compose.yml")?;
 
         // Extra files and directories.
         for include in &cmd.includes {
@@ -744,13 +823,9 @@ fn pack_docker_compose(cmd: &PackDockerComposeCmd) -> BundleResult<()> {
                 );
             };
             if include.is_dir() {
-                archive
-                    .append_dir_all(name, include)
-                    .whatever("unable to add directory to archive")?;
+                tar_append_dir(&mut archive, name, include)?;
             } else {
-                archive
-                    .append_path_with_name(include, name)
-                    .whatever("unable to add file to archive")?;
+                tar_append_file(&mut archive, include, name)?;
             }
         }
 
