@@ -36,7 +36,8 @@ fn tar_append_file(archive: &mut tar::Builder<File>, path: &Path, name: &str) ->
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        header.set_mode(metadata.permissions().mode());
+        let is_executable = metadata.permissions().mode() & 0o111 != 0;
+        header.set_mode(if is_executable { 0o755 } else { 0o644 });
     }
     #[cfg(not(unix))]
     {
