@@ -86,7 +86,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, nixos]
     permissions:
       contents: read
       packages: read
@@ -118,15 +118,6 @@ jobs:
             fi
           done
           find .
-      - name: Configure `binfmt_misc` for Foreign Architectures
-        run: docker run --privileged --rm tonistiigi/binfmt --install all
-      - name: Reclaim some disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf /opt/hostedtoolcache
-          sudo rm -rf /mnt/* || true
       - name: Run Tests
         shell: bash
         run: |
