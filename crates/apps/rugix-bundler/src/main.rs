@@ -1,4 +1,4 @@
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -10,9 +10,8 @@ use reportify::{bail, ResultExt};
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::format::tags::TagNameResolver;
 use rugix_bundle::manifest::{
-    AppArchiveDeliveryConfig, AppFileDeliveryConfig, BlockEncoding, BundleManifest, Compression,
-    DeliveryConfig, DeltaEncoding, DeltaEncodingFormat, DeltaEncodingInput, HashAlgorithm, Payload,
-    UpdateType, XzCompression,
+    BlockEncoding, BundleManifest, Compression, DeliveryConfig, DeltaEncoding, DeltaEncodingFormat,
+    DeltaEncodingInput, HashAlgorithm, XzCompression,
 };
 use rugix_bundle::reader::BundleReader;
 use rugix_bundle::source::FileSource;
@@ -22,6 +21,7 @@ use rugix_chunker::ChunkerAlgorithm;
 use si_crypto_hashes::HashDigest;
 use tracing::{info, Level};
 
+mod apps;
 mod simulation;
 
 #[derive(Debug, Parser)]
@@ -72,6 +72,10 @@ pub enum AppsCmd {
 pub enum AppsPackCmd {
     /// Pack a Docker Compose app into an app bundle.
     DockerCompose(PackDockerComposeCmd),
+    /// Pack a binary app into an app bundle.
+    Binary(PackBinaryCmd),
+    /// Pack a generic app into an app bundle.
+    Generic(PackGenericCmd),
 }
 
 #[derive(Debug, Parser)]
@@ -97,6 +101,37 @@ pub struct PackDockerComposeCmd {
     includes: Vec<PathBuf>,
     /// Path to the Docker Compose file.
     compose_file: PathBuf,
+    /// Output bundle file.
+    output: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+pub struct PackBinaryCmd {
+    /// App name.
+    #[clap(long)]
+    app: String,
+    /// Path to the executable binary.
+    binary: PathBuf,
+    /// Path to the systemd service unit template.
+    #[clap(long)]
+    service: PathBuf,
+    /// Extra files or directories to include in the archive.
+    #[clap(long = "include")]
+    includes: Vec<PathBuf>,
+    /// Output bundle file.
+    output: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+pub struct PackGenericCmd {
+    /// App name.
+    #[clap(long)]
+    app: String,
+    /// Path to the orchestrator script.
+    orchestrator: PathBuf,
+    /// Extra files or directories to include in the archive.
+    #[clap(long = "include")]
+    includes: Vec<PathBuf>,
     /// Output bundle file.
     output: PathBuf,
 }
@@ -309,7 +344,13 @@ fn main() -> BundleResult<()> {
         Cmd::Apps(apps_cmd) => match apps_cmd {
             AppsCmd::Pack(pack_cmd) => match pack_cmd {
                 AppsPackCmd::DockerCompose(cmd) => {
-                    pack_docker_compose(&cmd)?;
+                    apps::pack_docker_compose(&cmd)?;
+                }
+                AppsPackCmd::Binary(cmd) => {
+                    apps::pack_binary(&cmd)?;
+                }
+                AppsPackCmd::Generic(cmd) => {
+                    apps::pack_generic(&cmd)?;
                 }
             },
         },
@@ -617,262 +658,4 @@ pub fn hash_file(algorithm: HashAlgorithm, path: &Path) -> HashDigest {
         }
     }
     hasher.finalize()
-}
-
-/// Extract the string representation from a saphyr YAML node.
-fn yaml_as_str<'a>(node: &'a saphyr::Yaml<'a>) -> Option<&'a str> {
-    match node {
-        saphyr::Yaml::Representation(cow, _, _) => Some(cow.as_ref()),
-        saphyr::Yaml::Value(saphyr::Scalar::String(cow)) => Some(cow.as_ref()),
-        _ => None,
-    }
-}
-
-/// Look up a key in a saphyr YAML mapping node.
-fn yaml_mapping_get<'a, 'b>(node: &'a saphyr::Yaml<'b>, key: &str) -> Option<&'a saphyr::Yaml<'b>> {
-    if let saphyr::Yaml::Mapping(mapping) = node {
-        for (k, v) in mapping.iter() {
-            if yaml_as_str(k) == Some(key) {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
-/// Extract image references from a Docker Compose file.
-fn extract_compose_images(compose_path: &Path) -> BundleResult<Vec<String>> {
-    let content =
-        fs::read_to_string(compose_path).whatever("unable to read Docker Compose file")?;
-    use saphyr::LoadableYamlNode;
-    let docs =
-        saphyr::Yaml::load_from_str(&content).whatever("unable to parse Docker Compose file")?;
-    let mut images = Vec::new();
-    if let Some(doc) = docs.first() {
-        if let Some(saphyr::Yaml::Mapping(services)) = yaml_mapping_get(doc, "services") {
-            for (_key, service) in services.iter() {
-                if let Some(image_node) = yaml_mapping_get(service, "image") {
-                    if let Some(image) = yaml_as_str(image_node) {
-                        images.push(image.to_owned());
-                    }
-                }
-            }
-        }
-    }
-    Ok(images)
-}
-
-/// Save Docker images via `docker save`.
-///
-/// When `pull` is true, each image is pulled first (with the specified platform if
-/// given).
-fn docker_save(
-    images: &[String],
-    platform: Option<&str>,
-    pull: bool,
-    output: &Path,
-) -> BundleResult<()> {
-    if pull {
-        for image in images {
-            let mut cmd = std::process::Command::new("docker");
-            cmd.arg("pull");
-            if let Some(platform) = platform {
-                cmd.arg("--platform").arg(platform);
-            }
-            cmd.arg(image);
-            info!(image, ?platform, "pulling docker image");
-            let status = cmd.status().whatever("unable to run docker pull")?;
-            if !status.success() {
-                bail!("docker pull failed for {image}");
-            }
-        }
-    }
-
-    info!(?images, "saving docker images");
-    let mut save_cmd = std::process::Command::new("docker");
-    save_cmd.arg("save").arg("-o").arg(output);
-    if let Some(platform) = platform {
-        save_cmd.arg("--platform").arg(platform);
-    }
-    save_cmd.args(images);
-    let status = save_cmd.status().whatever("unable to run docker save")?;
-    if !status.success() {
-        bail!("docker save failed");
-    }
-    Ok(())
-}
-
-/// Normalize non-deterministic tar header fields (timestamps, ownership) for
-/// reproducible builds while preserving permission bits.
-fn normalize_tar_header(header: &mut tar::Header) {
-    header.set_mtime(0);
-    header.set_uid(0);
-    header.set_gid(0);
-    header.set_username("").ok();
-    header.set_groupname("").ok();
-    header.set_cksum();
-}
-
-/// Append a file to a tar archive with normalized metadata for reproducibility,
-/// preserving the file's permission bits.
-fn tar_append_file(archive: &mut tar::Builder<File>, path: &Path, name: &str) -> BundleResult<()> {
-    let mut file =
-        File::open(path).whatever_with(|_| format!("unable to open {}", path.display()))?;
-    let metadata = file
-        .metadata()
-        .whatever_with(|_| format!("unable to read metadata of {}", path.display()))?;
-    let mut header = tar::Header::new_gnu();
-    header.set_size(metadata.len());
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        header.set_mode(metadata.permissions().mode());
-    }
-    #[cfg(not(unix))]
-    {
-        header.set_mode(0o644);
-    }
-    normalize_tar_header(&mut header);
-    archive
-        .append_data(&mut header, name, &mut file)
-        .whatever_with(|_| format!("unable to add {} to archive", name))?;
-    Ok(())
-}
-
-/// Append a directory tree to a tar archive with normalized metadata for
-/// reproducibility, preserving permission bits and sorting entries for
-/// deterministic ordering.
-fn tar_append_dir(archive: &mut tar::Builder<File>, name: &str, src: &Path) -> BundleResult<()> {
-    fn walk(archive: &mut tar::Builder<File>, prefix: &str, dir: &Path) -> BundleResult<()> {
-        let mut entries: Vec<_> = fs::read_dir(dir)
-            .whatever_with(|_| format!("unable to read directory {}", dir.display()))?
-            .collect::<Result<Vec<_>, _>>()
-            .whatever("unable to read directory entry")?;
-        entries.sort_by_key(|e| e.file_name());
-        for entry in entries {
-            let path = entry.path();
-            let file_name = entry.file_name();
-            let Some(file_name_str) = file_name.to_str() else {
-                bail!("non-UTF-8 filename in directory {}", dir.display());
-            };
-            let entry_name = format!("{}/{}", prefix, file_name_str);
-            if path.is_dir() {
-                let mut header = tar::Header::new_gnu();
-                header.set_entry_type(tar::EntryType::Directory);
-                header.set_size(0);
-                header.set_mode(0o755);
-                normalize_tar_header(&mut header);
-                archive
-                    .append_data(&mut header, &entry_name, &[][..])
-                    .whatever("unable to add directory entry to archive")?;
-                walk(archive, &entry_name, &path)?;
-            } else {
-                tar_append_file(archive, &path, &entry_name)?;
-            }
-        }
-        Ok(())
-    }
-    let mut header = tar::Header::new_gnu();
-    header.set_entry_type(tar::EntryType::Directory);
-    header.set_size(0);
-    header.set_mode(0o755);
-    normalize_tar_header(&mut header);
-    archive
-        .append_data(&mut header, name, &[][..])
-        .whatever("unable to add directory entry to archive")?;
-    walk(archive, name, src)
-}
-
-/// Pack a Docker Compose app into an app bundle.
-///
-/// Creates a bundle with:
-/// - An `app-archive` payload containing `app.toml`, `docker-compose.yml`, and any extra
-///   included files/directories.
-/// - An `app-file` payload for the Docker images (saved via `docker save`), placed at
-///   `images/images.tar` inside the generation directory.
-fn pack_docker_compose(cmd: &PackDockerComposeCmd) -> BundleResult<()> {
-    let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
-    let payloads_dir = bundle_dir.path().join("payloads");
-    fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
-
-    // Build the base tar archive: app.toml + docker-compose.yml + includes.
-    let archive_path = payloads_dir.join("base.tar");
-    {
-        let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
-        let mut archive = tar::Builder::new(archive_file);
-
-        // app.toml
-        let app_toml = b"orchestrator = \"docker-compose\"\n";
-        let mut header = tar::Header::new_gnu();
-        header.set_size(app_toml.len() as u64);
-        header.set_mode(0o644);
-        normalize_tar_header(&mut header);
-        archive
-            .append_data(&mut header, "app.toml", &app_toml[..])
-            .whatever("unable to add app.toml to archive")?;
-
-        // docker-compose.yml
-        tar_append_file(&mut archive, &cmd.compose_file, "docker-compose.yml")?;
-
-        // Extra files and directories.
-        for include in &cmd.includes {
-            let Some(name) = include.file_name().and_then(|n| n.to_str()) else {
-                bail!(
-                    "unable to determine name for include path: {}",
-                    include.display()
-                );
-            };
-            if include.is_dir() {
-                tar_append_dir(&mut archive, name, include)?;
-            } else {
-                tar_append_file(&mut archive, include, name)?;
-            }
-        }
-
-        archive.finish().whatever("unable to finish archive")?;
-    }
-
-    let block_encoding = Some(
-        BlockEncoding::new(ChunkerAlgorithm::Casync {
-            avg_block_size_kib: 64,
-        })
-        .with_compression(Some(Compression::Xz(XzCompression::new()))),
-    );
-
-    // Build the manifest.
-    let mut payloads = vec![Payload {
-        delivery: DeliveryConfig::AppArchive(AppArchiveDeliveryConfig::new(cmd.app.clone())),
-        filename: "base.tar".to_owned(),
-        block_encoding: block_encoding.clone(),
-        delta_encoding: None,
-    }];
-
-    // Save and add Docker images.
-    if !cmd.no_images {
-        let images = extract_compose_images(&cmd.compose_file)?;
-        if !images.is_empty() {
-            let image_payload = payloads_dir.join("images.tar");
-            docker_save(&images, cmd.platform.as_deref(), cmd.pull, &image_payload)?;
-            payloads.push(Payload {
-                delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
-                    cmd.app.clone(),
-                    "images/images.tar".to_owned(),
-                )),
-                filename: "images.tar".to_owned(),
-                block_encoding: block_encoding.clone(),
-                delta_encoding: None,
-            });
-        }
-    }
-
-    let manifest = BundleManifest::new(UpdateType::Full, payloads);
-    fs::write(
-        bundle_dir.path().join("rugix-bundle.toml"),
-        toml::to_string_pretty(&manifest).whatever("unable to serialize manifest")?,
-    )
-    .whatever("unable to write manifest")?;
-
-    rugix_bundle::builder::pack(bundle_dir.path(), &cmd.output)?;
-    info!(app = %cmd.app, output = ?cmd.output, "packed compose app bundle");
-    Ok(())
 }
