@@ -489,11 +489,15 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::Install {
                     bundle,
                     insecure_skip_bundle_verification,
+                    root_cert,
+                    bundle_hash,
                 } => {
                     install_app_bundle(
                         &config,
                         &manager,
                         bundle,
+                        bundle_hash,
+                        root_cert.as_deref(),
                         *insecure_skip_bundle_verification,
                     )?;
                 }
@@ -732,21 +736,29 @@ fn install_app_bundle(
     config: &Config,
     app_manager: &crate::apps::manager::AppManager,
     bundle: &str,
+    bundle_hash: &Option<HashDigest>,
+    root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
 ) -> SystemResult<()> {
     let file = File::open(bundle).whatever("unable to open app bundle")?;
     let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
-    let mut bundle_reader = rugix_bundle::reader::BundleReader::start(bundle_source, None)
-        .whatever("unable to read app bundle")?;
+    let mut bundle_reader =
+        rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
+            .whatever("unable to read app bundle")?;
 
-    let root_cert = config.signatures.as_ref().and_then(|c| {
-        if c.roots.len() > 1 {
-            warn!("multiple root certificates in config, using only the first")
-        };
-        c.roots.first().map(|p| Path::new(p))
+    let root_cert = root_cert.or_else(|| {
+        config.signatures.as_ref().and_then(|c| {
+            if c.roots.len() > 1 {
+                warn!("multiple root certificates in config, using only the first")
+            };
+            c.roots.first().map(|p| Path::new(p))
+        })
     });
 
-    let bundle_verified = verify_bundle_signature(root_cert, &bundle_reader)?;
+    // If a bundle hash has been specified, then the bundle will be verified against that hash
+    // by the reader. Otherwise, try signature verification.
+    let bundle_verified =
+        bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
     if !bundle_verified && !insecure_skip_bundle_verification {
         bail!("bundle verification failed, refusing to install app bundle");
     }
@@ -1755,9 +1767,21 @@ pub enum AppsCommand {
     Install {
         /// Path or URL of the app bundle.
         bundle: String,
-        /// Skip bundle signature verification.
+        /// Skip bundle verification (insecure, do not use in production).
+        ///
+        /// By default, either a valid signature is required or a bundle hash has to be
+        /// specified with `--bundle-hash`. This flag allows the installation of app
+        /// bundles without either of those.
         #[clap(long)]
         insecure_skip_bundle_verification: bool,
+        /// Root certificate to use for signature verification.
+        ///
+        /// This overrides the configured default certificate.
+        #[clap(long)]
+        root_cert: Option<PathBuf>,
+        /// Expected bundle hash.
+        #[clap(long)]
+        bundle_hash: Option<HashDigest>,
     },
     /// List all installed apps.
     List,
