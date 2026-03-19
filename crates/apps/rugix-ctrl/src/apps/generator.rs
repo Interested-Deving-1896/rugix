@@ -15,7 +15,7 @@ use std::path::Path;
 use std::process::Command;
 
 use reportify::ResultExt;
-use tracing::info;
+use tracing::{error, info};
 
 use super::manager::AppState;
 use super::AppsResult;
@@ -44,7 +44,7 @@ pub fn sync_units() -> AppsResult<()> {
         return Ok(());
     }
     let runtime_dir = Path::new(RUNTIME_UNITS_DIR);
-    let mut synced = 0u32;
+    let mut synced_units: Vec<String> = Vec::new();
     let entries = fs::read_dir(apps_dir).whatever("unable to read apps directory")?;
     for entry in entries {
         let entry = entry.whatever("unable to read directory entry")?;
@@ -77,11 +77,13 @@ pub fn sync_units() -> AppsResult<()> {
             };
             let dest = runtime_dir.join(file_name);
             fs::copy(&unit_path, &dest).whatever("unable to copy unit file")?;
+            if let Some(name) = file_name.to_str() {
+                synced_units.push(name.to_owned());
+            }
             info!(unit = ?file_name, "synced app unit");
-            synced += 1;
         }
     }
-    if synced > 0 {
+    if !synced_units.is_empty() {
         let status = Command::new("systemctl")
             .arg("daemon-reload")
             .status()
@@ -89,7 +91,26 @@ pub fn sync_units() -> AppsResult<()> {
         if !status.success() {
             reportify::bail!("systemctl daemon-reload failed");
         }
-        info!(count = synced, "daemon-reload after syncing app units");
+        info!(
+            count = synced_units.len(),
+            "daemon-reload after syncing app units"
+        );
+        // Start each synced unit individually. A single unit failing should
+        // not prevent the remaining units from starting.
+        for unit in &synced_units {
+            let result = Command::new("systemctl").args(["start", unit]).status();
+            match result {
+                Ok(status) if status.success() => {
+                    info!(unit, "started synced app unit");
+                }
+                Ok(status) => {
+                    error!(unit, code = ?status.code(), "failed to start synced app unit");
+                }
+                Err(err) => {
+                    error!(unit, %err, "failed to run systemctl start for synced app unit");
+                }
+            }
+        }
     }
     Ok(())
 }

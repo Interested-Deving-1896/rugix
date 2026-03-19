@@ -87,14 +87,21 @@ impl Orchestrator for Binary {
 
         Self::daemon_reload()?;
 
-        let enable_status = Command::new("systemctl")
-            .args(["enable", "--now", &service])
+        // Enable the unit so it auto-starts on systems with persistent /etc.
+        // Ignore failure — /etc may be ephemeral, in which case the sync
+        // service handles restart after reboot.
+        let _ = Command::new("systemctl")
+            .args(["enable", &service])
+            .status();
+
+        let start_status = Command::new("systemctl")
+            .args(["start", &service])
             .status()
-            .whatever("unable to run systemctl enable --now")?;
-        if !enable_status.success() {
-            reportify::bail!("systemctl enable --now {service} failed");
+            .whatever("unable to run systemctl start")?;
+        if !start_status.success() {
+            reportify::bail!("systemctl start {service} failed");
         }
-        info!(app = ctx.app_name, service = %service, "enabled and started");
+        info!(app = ctx.app_name, service = %service, "started");
 
         Ok(())
     }
@@ -123,10 +130,11 @@ impl Orchestrator for Binary {
 
         let service = Self::service_name(ctx.app_name);
 
+        let _ = Command::new("systemctl").args(["stop", &service]).status();
         let _ = Command::new("systemctl")
-            .args(["disable", "--now", &service])
+            .args(["disable", &service])
             .status();
-        info!(app = ctx.app_name, service = %service, "disabled and stopped");
+        info!(app = ctx.app_name, service = %service, "stopped and disabled");
 
         let persist_dir = Self::persistent_unit_dir(ctx);
         let persist_path = persist_dir.join(&service);
