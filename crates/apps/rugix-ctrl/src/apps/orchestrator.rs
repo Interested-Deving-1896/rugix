@@ -43,6 +43,9 @@ pub struct AppContext<'cx> {
 /// Activation must set up all resources, start the workload, and register auto-start
 /// behavior (e.g., `systemctl enable`).  Deactivation must stop the workload, disable
 /// auto-start, and tear down resources.
+///
+/// Start and stop operate on an already-active generation: they only start or stop the
+/// workload process(es) without changing the generation lifecycle state.
 pub trait Orchestrator: Send + Sync {
     /// Unique identifier (e.g., "docker-compose").
     fn name(&self) -> &str;
@@ -57,4 +60,10 @@ pub trait Orchestrator: Send + Sync {
     /// Deactivate a generation: stop the workload, disable auto-start, and tear down
     /// resources.
     fn deactivate(&self, ctx: &AppContext) -> AppsResult<()>;
+
+    /// Start the workload of an already-active generation.
+    fn start(&self, ctx: &AppContext) -> AppsResult<()>;
+
+    /// Stop the workload of an already-active generation without tearing down resources.
+    fn stop(&self, ctx: &AppContext) -> AppsResult<()>;
 }

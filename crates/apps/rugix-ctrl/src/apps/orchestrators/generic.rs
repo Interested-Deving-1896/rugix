@@ -9,7 +9,7 @@ use crate::apps::AppsResult;
 /// Generic orchestrator delegating lifecycle operations to an `orchestrator` script.
 ///
 /// The script is invoked with the operation name as the first argument (`activate`,
-/// `status`, `deactivate`).
+/// `status`, `deactivate`, `start`, `stop`).
 ///
 /// The following environment variables are set:
 ///
@@ -19,8 +19,8 @@ use crate::apps::AppsResult;
 /// - `RUGIX_APP_DATA_DIR` — absolute path to the app's persistent data directory.
 /// - `RUGIX_APP_RECOVERY` — `"true"` if replaying an interrupted transition.
 ///
-/// For all operations except `status`, a zero exit code means success and non-zero means
-/// failure (stderr is included in the error message).
+/// For all operations except `status`, a zero exit code means success and non-zero
+/// means failure (stderr is included in the error message).
 ///
 /// The `status` operation must print a JSON object to stdout:
 ///
@@ -111,5 +111,15 @@ impl Orchestrator for Generic {
             "running generic orchestrator: deactivate"
         );
         Self::run_orchestrator_checked(ctx, "deactivate")
+    }
+
+    fn start(&self, ctx: &AppContext) -> AppsResult<()> {
+        info!(app = ctx.app_name, "running generic orchestrator: start");
+        Self::run_orchestrator_checked(ctx, "start")
+    }
+
+    fn stop(&self, ctx: &AppContext) -> AppsResult<()> {
+        info!(app = ctx.app_name, "running generic orchestrator: stop");
+        Self::run_orchestrator_checked(ctx, "stop")
     }
 }

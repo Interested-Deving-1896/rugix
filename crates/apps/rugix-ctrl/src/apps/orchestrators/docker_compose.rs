@@ -115,4 +115,30 @@ impl Orchestrator for DockerCompose {
         let _ = Self::compose_cmd(ctx).arg("down").status();
         Ok(())
     }
+
+    fn start(&self, ctx: &AppContext) -> AppsResult<()> {
+        Self::write_env_file(ctx)?;
+        info!(app = ctx.app_name, "starting docker compose");
+        let status = Self::compose_cmd(ctx)
+            .arg("up")
+            .arg("-d")
+            .status()
+            .whatever("unable to run docker compose up")?;
+        if !status.success() {
+            reportify::bail!("docker compose up failed");
+        }
+        Ok(())
+    }
+
+    fn stop(&self, ctx: &AppContext) -> AppsResult<()> {
+        info!(app = ctx.app_name, "stopping docker compose containers");
+        let status = Self::compose_cmd(ctx)
+            .arg("stop")
+            .status()
+            .whatever("unable to run docker compose stop")?;
+        if !status.success() {
+            reportify::bail!("docker compose stop failed");
+        }
+        Ok(())
+    }
 }

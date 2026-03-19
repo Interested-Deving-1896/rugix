@@ -4,8 +4,8 @@
 //! `<app_dir>/systemd/units/`. This module copies them into `/run/systemd/system/` so
 //! systemd can manage them, then triggers a `daemon-reload`.
 //!
-//! Only apps in the `active` state are synced.  Apps that are inactive, switching, or in
-//! an error state are skipped.
+//! Only apps in the `active`, `starting`, or `stopping` state are synced.  Apps that are
+//! inactive, switching, or in an error state are skipped.
 //!
 //! Intended to be called from a oneshot service (`rugix-app-sync.service`) that runs
 //! early in boot, after the data partition is mounted.
@@ -36,7 +36,7 @@ fn read_app_state(app_dir: &Path) -> AppState {
 
 /// Sync all persisted app units into the systemd runtime directory.
 ///
-/// Only syncs units for apps that are in the `active` state.
+/// Only syncs units for apps that are in the `active`, `starting`, or `stopping` state.
 pub fn sync_units() -> AppsResult<()> {
     let apps_dir = config::apps_dir();
     if !apps_dir.exists() {
@@ -56,8 +56,11 @@ pub fn sync_units() -> AppsResult<()> {
             continue;
         }
 
-        // Only sync units for active apps.
-        if !matches!(read_app_state(&entry.path()), AppState::Active { .. }) {
+        // Only sync units for active apps (including transient starting/stopping states).
+        if !matches!(
+            read_app_state(&entry.path()),
+            AppState::Active { .. } | AppState::Starting { .. } | AppState::Stopping { .. }
+        ) {
             continue;
         }
 

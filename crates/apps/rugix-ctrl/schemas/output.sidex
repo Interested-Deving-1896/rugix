@@ -93,8 +93,24 @@ variant AppStateOutput {
     Switching: AppStateSwitchingOutput,
     /// A generation is active.
     Active: AppStateActiveOutput,
+    /// The workload is being started.
+    Starting: AppStateStartingOutput,
+    /// The workload is being stopped.
+    Stopping: AppStateStoppingOutput,
     /// A transition and automatic rollback both failed.
     Error: AppStateErrorOutput,
+}
+
+/// Details of a starting state.
+record AppStateStartingOutput {
+    /// The active generation number.
+    generation: u64,
+}
+
+/// Details of a stopping state.
+record AppStateStoppingOutput {
+    /// The active generation number.
+    generation: u64,
 }
 
 /// Details of a switching state.

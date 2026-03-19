@@ -61,6 +61,16 @@ pub enum AppState {
         /// The active generation number.
         generation: u64,
     },
+    /// The workload of an active generation is being started.
+    Starting {
+        /// The active generation number.
+        generation: u64,
+    },
+    /// The workload of an active generation is being stopped.
+    Stopping {
+        /// The active generation number.
+        generation: u64,
+    },
     /// A transition and automatic rollback both failed. Manual intervention required.
     Error {
         /// The generation that failed to activate.
@@ -143,6 +153,20 @@ impl AppManager {
                 }
                 info!(app = app_name, ?from, ?to, "recovering interrupted switch");
                 self.do_switch(app_name, from, to, true)?;
+            }
+            AppState::Starting { generation } => {
+                info!(app = app_name, generation, "recovering interrupted start");
+                if let Err(e) = self.run_start(app_name, generation, true) {
+                    warn!(app = app_name, generation, "start recovery failed: {e:?}");
+                }
+                self.write_state(app_name, &AppState::Active { generation })?;
+            }
+            AppState::Stopping { generation } => {
+                info!(app = app_name, generation, "recovering interrupted stop");
+                if let Err(e) = self.run_stop(app_name, generation, true) {
+                    warn!(app = app_name, generation, "stop recovery failed: {e:?}");
+                }
+                self.write_state(app_name, &AppState::Active { generation })?;
             }
             // Nothing to recover.
             AppState::Inactive | AppState::Active { .. } | AppState::Error { .. } => {}
@@ -449,6 +473,88 @@ impl AppManager {
         Ok(())
     }
 
+    /// Start the workload of an already-active generation.
+    ///
+    /// The state transitions to `Starting` before the orchestrator is called and
+    /// back to `Active` afterwards, ensuring crash recovery can replay the
+    /// operation if it is interrupted.
+    pub fn start_app(&self, app_name: &str) -> AppsResult<()> {
+        let AppState::Active { generation } = self.read_state(app_name) else {
+            reportify::bail!("app {app_name} has no active generation");
+        };
+
+        self.write_state(app_name, &AppState::Starting { generation })?;
+
+        let result = self.run_start(app_name, generation, false);
+
+        // Always transition back to Active regardless of outcome.
+        self.write_state(app_name, &AppState::Active { generation })?;
+
+        result.whatever("failed to start app workload")?;
+        info!(app = app_name, "workload started");
+        Ok(())
+    }
+
+    /// Stop the workload of an already-active generation without deactivating it.
+    ///
+    /// The state transitions to `Stopping` before the orchestrator is called and
+    /// back to `Active` afterwards, ensuring crash recovery can replay the
+    /// operation if it is interrupted.
+    pub fn stop_app(&self, app_name: &str) -> AppsResult<()> {
+        let AppState::Active { generation } = self.read_state(app_name) else {
+            reportify::bail!("app {app_name} has no active generation");
+        };
+
+        self.write_state(app_name, &AppState::Stopping { generation })?;
+
+        let result = self.run_stop(app_name, generation, false);
+
+        // Always transition back to Active regardless of outcome.
+        self.write_state(app_name, &AppState::Active { generation })?;
+
+        result.whatever("failed to stop app workload")?;
+        info!(app = app_name, "workload stopped");
+        Ok(())
+    }
+
+    /// Run the orchestrator's start hook for a specific generation.
+    fn run_start(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
+        let gen_dir = self.generation_dir(app_name, gen_number);
+        let manifest = load_manifest(&gen_dir)?;
+        let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
+        let app_dir = self.app_dir(app_name);
+        let data_dir = self.data_dir(app_name);
+        let ctx = AppContext {
+            app_name,
+            app_dir: &app_dir,
+            generation_dir: &gen_dir,
+            data_dir: &data_dir,
+            recovery,
+            service_manager: &self.service_manager,
+        };
+        orchestrator
+            .start(&ctx)
+            .whatever("orchestrator start failed")
+    }
+
+    /// Run the orchestrator's stop hook for a specific generation.
+    fn run_stop(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
+        let gen_dir = self.generation_dir(app_name, gen_number);
+        let manifest = load_manifest(&gen_dir)?;
+        let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
+        let app_dir = self.app_dir(app_name);
+        let data_dir = self.data_dir(app_name);
+        let ctx = AppContext {
+            app_name,
+            app_dir: &app_dir,
+            generation_dir: &gen_dir,
+            data_dir: &data_dir,
+            recovery,
+            service_manager: &self.service_manager,
+        };
+        orchestrator.stop(&ctx).whatever("orchestrator stop failed")
+    }
+
     /// Get status of the currently active generation.
     pub fn app_status(&self, app_name: &str) -> AppsResult<AppStatus> {
         let Some(gen_dir) = self.resolve_current(app_name) else {
@@ -531,7 +637,9 @@ impl AppManager {
     /// Get the currently active generation number, if any.
     pub fn current_generation(&self, app_name: &str) -> Option<u64> {
         match self.read_state(app_name) {
-            AppState::Active { generation } => Some(generation),
+            AppState::Active { generation }
+            | AppState::Starting { generation }
+            | AppState::Stopping { generation } => Some(generation),
             _ => None,
         }
     }

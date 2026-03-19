@@ -524,7 +524,8 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::Info { app } => {
                     use crate::config::output::{
                         AppInfoOutput, AppStateActiveOutput, AppStateErrorOutput, AppStateOutput,
-                        AppStateSwitchingOutput, GenerationInfoOutput,
+                        AppStateStartingOutput, AppStateStoppingOutput, AppStateSwitchingOutput,
+                        GenerationInfoOutput,
                     };
                     let status = manager
                         .app_status(app)
@@ -544,6 +545,12 @@ pub fn main() -> SystemResult<()> {
                         }
                         crate::apps::manager::AppState::Active { generation } => {
                             AppStateOutput::Active(AppStateActiveOutput::new(generation))
+                        }
+                        crate::apps::manager::AppState::Starting { generation } => {
+                            AppStateOutput::Starting(AppStateStartingOutput::new(generation))
+                        }
+                        crate::apps::manager::AppState::Stopping { generation } => {
+                            AppStateOutput::Stopping(AppStateStoppingOutput::new(generation))
                         }
                         crate::apps::manager::AppState::Error {
                             generation,
@@ -587,6 +594,16 @@ pub fn main() -> SystemResult<()> {
                     manager
                         .deactivate(app)
                         .whatever("unable to deactivate app")?;
+                }
+                AppsCommand::Start { app } => {
+                    manager
+                        .start_app(app)
+                        .whatever("unable to start app workload")?;
+                }
+                AppsCommand::Stop { app } => {
+                    manager
+                        .stop_app(app)
+                        .whatever("unable to stop app workload")?;
                 }
                 AppsCommand::Rollback { app } => {
                     manager.rollback(app).whatever("unable to rollback app")?;
@@ -1800,6 +1817,16 @@ pub enum AppsCommand {
     },
     /// Deactivate the current generation of an app.
     Deactivate {
+        /// App name.
+        app: String,
+    },
+    /// Start the workload of an active app.
+    Start {
+        /// App name.
+        app: String,
+    },
+    /// Stop the workload of an active app without deactivating it.
+    Stop {
         /// App name.
         app: String,
     },

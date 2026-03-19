@@ -459,6 +459,38 @@
           "type": "object",
           "properties": {
             "state": {
+              "const": "starting"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "stopping"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
               "const": "error"
             },
             "generation": {
@@ -476,6 +508,36 @@
           ]
         }
       ]
+    },
+    "rugix_ctrl.output.AppStateStartingOutput": {
+      "$id": "rugix_ctrl.output.AppStateStartingOutput",
+      "type": "object",
+      "description": "Details of a starting state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppStateStoppingOutput": {
+      "$id": "rugix_ctrl.output.AppStateStoppingOutput",
+      "type": "object",
+      "description": "Details of a stopping state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
     },
     "rugix_ctrl.output.AppStateSwitchingOutput": {
       "$id": "rugix_ctrl.output.AppStateSwitchingOutput",

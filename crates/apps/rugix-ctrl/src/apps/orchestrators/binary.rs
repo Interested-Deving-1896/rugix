@@ -143,4 +143,32 @@ impl Orchestrator for Binary {
         }
         Ok(())
     }
+
+    fn start(&self, ctx: &AppContext) -> AppsResult<()> {
+        Self::require_systemd(ctx)?;
+        let service = Self::service_name(ctx.app_name);
+        let status = Command::new("systemctl")
+            .args(["start", &service])
+            .status()
+            .whatever("unable to run systemctl start")?;
+        if !status.success() {
+            reportify::bail!("systemctl start {service} failed");
+        }
+        info!(app = ctx.app_name, service = %service, "started");
+        Ok(())
+    }
+
+    fn stop(&self, ctx: &AppContext) -> AppsResult<()> {
+        Self::require_systemd(ctx)?;
+        let service = Self::service_name(ctx.app_name);
+        let status = Command::new("systemctl")
+            .args(["stop", &service])
+            .status()
+            .whatever("unable to run systemctl stop")?;
+        if !status.success() {
+            reportify::bail!("systemctl stop {service} failed");
+        }
+        info!(app = ctx.app_name, service = %service, "stopped");
+        Ok(())
+    }
 }
