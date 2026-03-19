@@ -425,10 +425,10 @@ pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
             delta_encoding: None,
         },
         Payload {
-            delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
-                cmd.app.clone(),
-                binary_name.to_owned(),
-            )),
+            delivery: DeliveryConfig::AppFile(
+                AppFileDeliveryConfig::new(cmd.app.clone(), binary_name.to_owned())
+                    .with_mode(Some(0o755)),
+            ),
             filename: "binary".to_owned(),
             block_encoding: block_encoding.clone(),
             delta_encoding: None,

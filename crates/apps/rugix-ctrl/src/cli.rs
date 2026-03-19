@@ -799,6 +799,7 @@ fn install_app_bundle(
         if let Some(type_app_file) = &payload_entry.type_app_file {
             let app_name = type_app_file.app.clone();
             let payload_path = type_app_file.path.clone();
+            let file_mode = type_app_file.mode;
             let delta_encoding = payload_entry.delta_encoding.clone();
             let (_, gen_dir) = app_generations.entry(app_name.clone()).or_insert_with(|| {
                 app_manager
@@ -940,6 +941,14 @@ fn install_app_bundle(
                     )
                     .whatever("unable to decode app payload")?
             };
+
+            // Apply file mode if specified in the payload metadata.
+            #[cfg(unix)]
+            if let Some(mode) = file_mode {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&file_path, fs::Permissions::from_mode(mode))
+                    .whatever("unable to set app file permissions")?;
+            }
 
             // Save payload hash for this app-file.
             payload_states.entry(app_name.clone()).or_default().insert(

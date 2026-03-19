@@ -65,6 +65,7 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
                 Some(format::AppFilePayloadType {
                     app: config.app.clone(),
                     path: config.path.clone(),
+                    mode: config.mode,
                 })
             } else {
                 None

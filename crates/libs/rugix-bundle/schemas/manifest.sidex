@@ -82,6 +82,8 @@ record AppFileDeliveryConfig {
     app: string,
     /// Relative path within the generation directory.
     path: string,
+    /// Unix file mode (e.g., `755` for executables).
+    mode?: u32,
 }
 
 record AppArchiveDeliveryConfig {

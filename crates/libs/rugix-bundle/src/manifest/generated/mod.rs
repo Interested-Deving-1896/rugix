@@ -2245,11 +2245,17 @@ pub mod manifest {
         pub app: ::std::string::String,
         #[doc = "Relative path within the generation directory.\n"]
         pub path: ::std::string::String,
+        #[doc = "Unix file mode (e.g., `755` for executables).\n"]
+        pub mode: ::std::option::Option<u32>,
     }
     impl AppFileDeliveryConfig {
         #[doc = "Creates a new [`AppFileDeliveryConfig`]."]
         pub fn new(app: ::std::string::String, path: ::std::string::String) -> Self {
-            Self { app, path }
+            Self {
+                app,
+                path,
+                mode: ::std::default::Default::default(),
+            }
         }
         #[doc = "Sets the value of `app`."]
         pub fn set_app(&mut self, app: ::std::string::String) -> &mut Self {
@@ -2271,6 +2277,16 @@ pub mod manifest {
             self.path = path;
             self
         }
+        #[doc = "Sets the value of `mode`."]
+        pub fn set_mode(&mut self, mode: ::std::option::Option<u32>) -> &mut Self {
+            self.mode = mode;
+            self
+        }
+        #[doc = "Sets the value of `mode`."]
+        pub fn with_mode(mut self, mode: ::std::option::Option<u32>) -> Self {
+            self.mode = mode;
+            self
+        }
     }
     #[automatically_derived]
     impl __serde::Serialize for AppFileDeliveryConfig {
@@ -2281,10 +2297,12 @@ pub mod manifest {
             let mut __record = __sidex_serde::ser::RecordSerializer::new(
                 __serializer,
                 "AppFileDeliveryConfig",
-                2usize,
+                3usize,
             )?;
             __record.serialize_field("app", &self.app)?;
             __record.serialize_field("path", &self.path)?;
+            __record
+                .serialize_optional_field("mode", ::core::option::Option::as_ref(&self.mode))?;
             __record.end()
         }
     }
@@ -2320,7 +2338,7 @@ pub mod manifest {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
                             );
                         }
                     };
@@ -2331,13 +2349,25 @@ pub mod manifest {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
+                            );
+                        }
+                    };
+                    let __field2 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<u32>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
                             );
                         }
                     };
                     ::core::result::Result::Ok(AppFileDeliveryConfig {
                         app: __field0,
                         path: __field1,
+                        mode: __field2,
                     })
                 }
                 #[inline]
@@ -2349,15 +2379,16 @@ pub mod manifest {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &'static [&'static str] = &["app", "path"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["app", "path", "mode"];
                     #[doc(hidden)]
                     const __EXPECTING_IDENTIFIERS: &'static str =
-                        "an identifier in [\"app\", \"path\"]";
+                        "an identifier in [\"app\", \"path\", \"mode\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
                         __Identifier0,
                         __Identifier1,
+                        __Identifier2,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -2380,6 +2411,7 @@ pub mod manifest {
                             match __value {
                                 0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -2393,6 +2425,7 @@ pub mod manifest {
                             match __value {
                                 "app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 "path" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                "mode" => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -2406,6 +2439,7 @@ pub mod manifest {
                             match __value {
                                 b"app" => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 b"path" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                b"mode" => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -2427,6 +2461,8 @@ pub mod manifest {
                     let mut __field0: ::core::option::Option<::std::string::String> =
                         ::core::option::Option::None;
                     let mut __field1: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    let mut __field2: ::core::option::Option<::std::option::Option<u32>> =
                         ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
                         __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
@@ -2456,6 +2492,18 @@ pub mod manifest {
                                     )?,
                                 );
                             }
+                            __Identifier::__Identifier2 => {
+                                if ::core::option::Option::is_some(&__field2) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("mode"),
+                                    );
+                                }
+                                __field2 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::option::Option<u32>>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
                             _ => {
                                 __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
                                     &mut __map,
@@ -2479,14 +2527,19 @@ pub mod manifest {
                             );
                         }
                     };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppFileDeliveryConfig {
                         app: __field0,
                         path: __field1,
+                        mode: __field2,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &'static [&'static str] = &["app", "path"];
+            const __FIELDS: &'static [&'static str] = &["app", "path", "mode"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppFileDeliveryConfig",

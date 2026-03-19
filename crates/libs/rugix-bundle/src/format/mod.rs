@@ -109,6 +109,8 @@ define_struct! {
         pub app[PAYLOAD_TYPE_APP_FILE_APP]: String,
         /// Relative path within the generation directory.
         pub path[PAYLOAD_TYPE_APP_FILE_PATH]: String,
+        /// Unix file mode (e.g., 0o755 for executables).
+        pub mode[PAYLOAD_TYPE_APP_FILE_MODE]: Option<u32>,
     }
 }
 

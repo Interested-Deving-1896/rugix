@@ -47,6 +47,10 @@
         },
         "path": {
           "type": "string"
+        },
+        "mode": {
+          "type": "integer",
+          "format": "uint32"
         }
       },
       "required": [
@@ -148,6 +152,10 @@
             },
             "path": {
               "type": "string"
+            },
+            "mode": {
+              "type": "integer",
+              "format": "uint32"
             }
           },
           "required": [
