@@ -507,10 +507,7 @@ pub fn main() -> SystemResult<()> {
                     let entries: indexmap::IndexMap<String, AppListEntryOutput> = apps
                         .iter()
                         .map(|app| {
-                            let status = manager
-                                .app_status(app)
-                                .map(|s| format!("{s}"))
-                                .unwrap_or_else(|_| "unknown".to_owned());
+                            let status = app_status_to_output(manager.app_status(app).ok());
                             let generation = manager.current_generation(app);
                             (
                                 app.clone(),
@@ -527,10 +524,7 @@ pub fn main() -> SystemResult<()> {
                         AppStateStartingOutput, AppStateStoppingOutput, AppStateSwitchingOutput,
                         GenerationInfoOutput,
                     };
-                    let status = manager
-                        .app_status(app)
-                        .map(|s| format!("{s}"))
-                        .unwrap_or_else(|_| "unknown".to_owned());
+                    let status = app_status_to_output(manager.app_status(app).ok());
                     let generations = manager
                         .list_generations(app)
                         .whatever("unable to list generations")?;
@@ -702,6 +696,26 @@ pub fn main() -> SystemResult<()> {
         }
     }
     Ok(())
+}
+
+/// Convert an [`AppStatus`] to the structured output type.
+fn app_status_to_output(
+    status: Option<crate::apps::orchestrator::AppStatus>,
+) -> crate::config::output::AppWorkloadStatusOutput {
+    use crate::apps::orchestrator::AppStatus;
+    use crate::config::output::{AppWorkloadMessageOutput, AppWorkloadStatusOutput};
+
+    match status {
+        Some(AppStatus::Running) => AppWorkloadStatusOutput::Running,
+        Some(AppStatus::Unhealthy { message }) => {
+            AppWorkloadStatusOutput::Unhealthy(AppWorkloadMessageOutput::new(message))
+        }
+        Some(AppStatus::Stopped) => AppWorkloadStatusOutput::Stopped,
+        Some(AppStatus::Failed { message }) => {
+            AppWorkloadStatusOutput::Failed(AppWorkloadMessageOutput::new(message))
+        }
+        Some(AppStatus::Unknown) | None => AppWorkloadStatusOutput::Unknown,
+    }
 }
 
 #[derive(Debug, Clone)]

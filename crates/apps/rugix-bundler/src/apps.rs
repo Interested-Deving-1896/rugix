@@ -95,8 +95,11 @@ fn tar_append_dir(archive: &mut tar::Builder<File>, name: &str, src: &Path) -> B
 }
 
 /// Write an `app.toml` entry into a tar archive.
-fn tar_append_app_toml(archive: &mut tar::Builder<File>, orchestrator: &str) -> BundleResult<()> {
-    let content = format!("orchestrator = \"{orchestrator}\"\n");
+fn tar_append_app_toml(
+    archive: &mut tar::Builder<File>,
+    manifest: &rugix_bundle::manifest::AppManifest,
+) -> BundleResult<()> {
+    let content = toml::to_string_pretty(manifest).whatever("unable to serialize app.toml")?;
     let bytes = content.as_bytes();
     let mut header = tar::Header::new_gnu();
     header.set_size(bytes.len() as u64);
@@ -349,7 +352,17 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
     {
         let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
         let mut archive = tar::Builder::new(archive_file);
-        tar_append_app_toml(&mut archive, "docker-compose")?;
+        let manifest = {
+            use rugix_bundle::manifest::{AppHealthCheckConfig, AppManifest};
+            let mut m = AppManifest::new("docker-compose".to_owned());
+            if let Some(timeout) = cmd.health_check_timeout {
+                m = m.with_health_check(Some(
+                    AppHealthCheckConfig::new().with_timeout(Some(timeout)),
+                ));
+            }
+            m
+        };
+        tar_append_app_toml(&mut archive, &manifest)?;
         tar_append_file(&mut archive, &cmd.compose_file, "docker-compose.yml")?;
         tar_append_includes(&mut archive, &cmd.includes)?;
         archive.finish().whatever("unable to finish archive")?;
@@ -402,7 +415,8 @@ pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
     {
         let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
         let mut archive = tar::Builder::new(archive_file);
-        tar_append_app_toml(&mut archive, "binary")?;
+        let manifest = rugix_bundle::manifest::AppManifest::new("binary".to_owned());
+        tar_append_app_toml(&mut archive, &manifest)?;
         tar_append_file(&mut archive, &cmd.service, "systemd.service")?;
         tar_append_includes(&mut archive, &cmd.includes)?;
         archive.finish().whatever("unable to finish archive")?;
@@ -455,7 +469,8 @@ pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
     {
         let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
         let mut archive = tar::Builder::new(archive_file);
-        tar_append_app_toml(&mut archive, "generic")?;
+        let manifest = rugix_bundle::manifest::AppManifest::new("generic".to_owned());
+        tar_append_app_toml(&mut archive, &manifest)?;
         tar_append_file(&mut archive, &cmd.orchestrator, "orchestrator")?;
         tar_append_includes(&mut archive, &cmd.includes)?;
         archive.finish().whatever("unable to finish archive")?;

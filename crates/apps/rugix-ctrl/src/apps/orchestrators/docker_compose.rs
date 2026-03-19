@@ -11,6 +11,21 @@ use crate::apps::AppsResult;
 /// Name of the env file written into the generation directory.
 const ENV_FILE: &str = "rugix-app.env";
 
+/// Default timeout (in seconds) for `docker compose up --wait`.
+const DEFAULT_HEALTH_CHECK_TIMEOUT: u64 = 120;
+
+/// A single container entry from `docker compose ps --format json`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct ContainerStatus {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    state: String,
+    #[serde(default)]
+    health: Option<String>,
+}
+
 /// Docker Compose orchestrator.
 pub struct DockerCompose;
 
@@ -44,6 +59,15 @@ impl DockerCompose {
             cmd.arg("--env-file").arg(env_path);
         }
         cmd
+    }
+
+    /// Get the health check timeout from the manifest, falling back to the default.
+    fn health_check_timeout(ctx: &AppContext) -> u64 {
+        ctx.manifest
+            .health_check
+            .as_ref()
+            .and_then(|hc| hc.timeout)
+            .unwrap_or(DEFAULT_HEALTH_CHECK_TIMEOUT)
     }
 }
 
@@ -81,12 +105,18 @@ impl Orchestrator for DockerCompose {
 
         // Start the containers.
         info!(app = ctx.app_name, "starting docker compose");
-        let status = Self::compose_cmd(ctx)
-            .arg("up")
-            .arg("-d")
-            .arg("--remove-orphans")
-            .status()
-            .whatever("unable to run docker compose up")?;
+        let mut cmd = Self::compose_cmd(ctx);
+        cmd.arg("up").arg("-d").arg("--remove-orphans");
+
+        // Wait for containers to be healthy if a timeout is configured.
+        let timeout = Self::health_check_timeout(ctx);
+        if timeout > 0 {
+            cmd.arg("--wait")
+                .arg("--wait-timeout")
+                .arg(timeout.to_string());
+        }
+
+        let status = cmd.status().whatever("unable to run docker compose up")?;
         if !status.success() {
             reportify::bail!("docker compose up failed");
         }
@@ -106,6 +136,36 @@ impl Orchestrator for DockerCompose {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.trim().is_empty() {
             return Ok(AppStatus::Stopped);
+        }
+        // Parse each container's state and health.  `docker compose ps --format json`
+        // outputs one JSON object per line.
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(container) = serde_json::from_str::<ContainerStatus>(line) else {
+                continue;
+            };
+            if !container.state.eq_ignore_ascii_case("running") {
+                return Ok(AppStatus::Failed {
+                    message: format!(
+                        "container {} is {}",
+                        container.name.as_deref().unwrap_or("unknown"),
+                        container.state
+                    ),
+                });
+            }
+            if let Some(ref health) = container.health {
+                if health.eq_ignore_ascii_case("unhealthy") {
+                    return Ok(AppStatus::Unhealthy {
+                        message: format!(
+                            "container {} is unhealthy",
+                            container.name.as_deref().unwrap_or("unknown"),
+                        ),
+                    });
+                }
+            }
         }
         Ok(AppStatus::Running)
     }

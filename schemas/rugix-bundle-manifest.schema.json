@@ -59,6 +59,36 @@
       ],
       "unevaluatedProperties": false
     },
+    "rugix_bundle.manifest.AppHealthCheckConfig": {
+      "$id": "rugix_bundle.manifest.AppHealthCheckConfig",
+      "type": "object",
+      "description": "Health check configuration for an app.",
+      "properties": {
+        "timeout": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
+    "rugix_bundle.manifest.AppManifest": {
+      "$id": "rugix_bundle.manifest.AppManifest",
+      "type": "object",
+      "description": "App manifest (`app.toml`) inside a generation directory.",
+      "properties": {
+        "orchestrator": {
+          "type": "string"
+        },
+        "health-check": {
+          "$ref": "#/$defs/rugix_bundle.manifest.AppHealthCheckConfig"
+        }
+      },
+      "required": [
+        "orchestrator"
+      ],
+      "unevaluatedProperties": false
+    },
     "rugix_bundle.manifest.BlockEncoding": {
       "$id": "rugix_bundle.manifest.BlockEncoding",
       "type": "object",

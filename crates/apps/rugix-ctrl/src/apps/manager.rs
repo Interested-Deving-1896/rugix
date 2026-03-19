@@ -9,7 +9,7 @@ use crate::payload_db::PayloadState;
 
 use super::orchestrator::{AppContext, AppStatus};
 use super::{orchestrators, AppsResult};
-use crate::config::apps::AppManifest;
+use rugix_bundle::manifest::AppManifest;
 
 /// Metadata for a single generation, persisted in `.rugix/generation.json`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -420,6 +420,7 @@ impl AppManager {
             data_dir: &data_dir,
             recovery,
             service_manager: &self.service_manager,
+            manifest: &manifest,
         };
 
         orchestrator
@@ -465,6 +466,7 @@ impl AppManager {
             data_dir: &data_dir,
             recovery,
             service_manager: &self.service_manager,
+            manifest: &manifest,
         };
 
         orchestrator
@@ -531,6 +533,7 @@ impl AppManager {
             data_dir: &data_dir,
             recovery,
             service_manager: &self.service_manager,
+            manifest: &manifest,
         };
         orchestrator
             .start(&ctx)
@@ -551,6 +554,7 @@ impl AppManager {
             data_dir: &data_dir,
             recovery,
             service_manager: &self.service_manager,
+            manifest: &manifest,
         };
         orchestrator.stop(&ctx).whatever("orchestrator stop failed")
     }
@@ -571,6 +575,7 @@ impl AppManager {
             data_dir: &data_dir,
             recovery: false,
             service_manager: &self.service_manager,
+            manifest: &manifest,
         };
         orchestrator
             .status(&ctx)

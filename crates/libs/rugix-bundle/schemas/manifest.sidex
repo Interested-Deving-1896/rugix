@@ -109,3 +109,21 @@ variant Compression {
 record XzCompression {
     level?: u8,
 }
+
+/// App manifest (`app.toml`) inside a generation directory.
+#[json(rename_all = "kebab-case")]
+record AppManifest {
+    /// Orchestrator to use (e.g., `"docker-compose"`, `"binary"`, `"generic"`).
+    orchestrator: string,
+    /// Health check configuration.
+    health_check?: AppHealthCheckConfig,
+}
+
+/// Health check configuration for an app.
+#[json(rename_all = "kebab-case")]
+record AppHealthCheckConfig {
+    /// Timeout in seconds.  During activation, the orchestrator waits up to
+    /// this many seconds for the workload to become healthy.
+    /// Set to 0 to disable.  Default: 120.
+    timeout?: u64,
+}

@@ -66,8 +66,8 @@ record BlockDeviceInfo {
 
 /// Entry in the app list output.
 record AppListEntryOutput {
-    /// Live status of the app (e.g., `"running"`, `"stopped"`, `"unknown"`).
-    status: string,
+    /// Live workload status.
+    status: AppWorkloadStatusOutput,
     /// Currently active generation number, if any.
     generation?: u64,
 }
@@ -76,12 +76,33 @@ record AppListEntryOutput {
 record AppInfoOutput {
     /// App name.
     name: string,
-    /// Live status of the app.
-    status: string,
+    /// Live workload status.
+    status: AppWorkloadStatusOutput,
     /// Persisted app state.
     state: AppStateOutput,
     /// All generations of the app.
     generations: [GenerationInfoOutput],
+}
+
+/// Live workload status.
+#[json(tag = "state", rename_all = "kebab-case")]
+variant AppWorkloadStatusOutput {
+    /// The workload is running and healthy.
+    Running,
+    /// The workload is running but failing health checks.
+    Unhealthy: AppWorkloadMessageOutput,
+    /// The workload is not running.
+    Stopped,
+    /// The workload has failed.
+    Failed: AppWorkloadMessageOutput,
+    /// The status could not be determined.
+    Unknown,
+}
+
+/// Details for a workload status with a message.
+record AppWorkloadMessageOutput {
+    /// Human-readable description.
+    message: string,
 }
 
 /// Persisted app state.

@@ -99,6 +99,11 @@ pub struct PackDockerComposeCmd {
     /// Each entry is added at the same relative path inside the generation directory.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Health check timeout in seconds.  During activation, `docker compose up`
+    /// waits up to this many seconds for containers with health checks to become
+    /// healthy.  Set to 0 to disable.  Default: 120.
+    #[clap(long)]
+    health_check_timeout: Option<u64>,
     /// Path to the Docker Compose file.
     compose_file: PathBuf,
     /// Output bundle file.

@@ -26,8 +26,9 @@ use crate::apps::AppsResult;
 ///
 /// ```json
 /// {"status": "running"}
+/// {"status": "unhealthy", "message": "health check failing"}
 /// {"status": "stopped"}
-/// {"status": "failed", "message": "health check failing"}
+/// {"status": "failed", "message": "process crashed"}
 /// {"status": "unknown"}
 /// ```
 pub struct Generic;
@@ -97,6 +98,9 @@ impl Orchestrator for Generic {
         };
         match response.status.as_str() {
             "running" => Ok(AppStatus::Running),
+            "unhealthy" => Ok(AppStatus::Unhealthy {
+                message: response.message.unwrap_or_default(),
+            }),
             "stopped" => Ok(AppStatus::Stopped),
             "failed" => Ok(AppStatus::Failed {
                 message: response.message.unwrap_or_default(),

@@ -11,20 +11,6 @@
   "required": [],
   "unevaluatedProperties": false,
   "$defs": {
-    "rugix_ctrl.apps.AppManifest": {
-      "$id": "rugix_ctrl.apps.AppManifest",
-      "type": "object",
-      "description": "App manifest (`app.toml`) inside a generation directory.",
-      "properties": {
-        "orchestrator": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "orchestrator"
-      ],
-      "unevaluatedProperties": false
-    },
     "rugix_ctrl.apps.AppsConfig": {
       "$id": "rugix_ctrl.apps.AppsConfig",
       "type": "object",
@@ -303,7 +289,7 @@
           "type": "string"
         },
         "status": {
-          "type": "string"
+          "$ref": "#/$defs/rugix_ctrl.output.AppWorkloadStatusOutput"
         },
         "state": {
           "$ref": "#/$defs/rugix_ctrl.output.AppStateOutput"
@@ -329,7 +315,7 @@
       "description": "Entry in the app list output.",
       "properties": {
         "status": {
-          "type": "string"
+          "$ref": "#/$defs/rugix_ctrl.output.AppWorkloadStatusOutput"
         },
         "generation": {
           "type": "integer",
@@ -525,6 +511,89 @@
       },
       "required": [],
       "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppWorkloadMessageOutput": {
+      "$id": "rugix_ctrl.output.AppWorkloadMessageOutput",
+      "type": "object",
+      "description": "Details for a workload status with a message.",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.AppWorkloadStatusOutput": {
+      "$id": "rugix_ctrl.output.AppWorkloadStatusOutput",
+      "description": "Live workload status.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "running"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "unhealthy"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "stopped"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "failed"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "unknown"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        }
+      ]
     },
     "rugix_ctrl.output.BlockDeviceInfo": {
       "$id": "rugix_ctrl.output.BlockDeviceInfo",

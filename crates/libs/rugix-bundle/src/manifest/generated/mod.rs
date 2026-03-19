@@ -3529,4 +3529,496 @@ pub mod manifest {
             )
         }
     }
+    #[doc = "App manifest (`app.toml`) inside a generation directory.\n"]
+    #[derive(Clone, Debug)]
+    pub struct AppManifest {
+        #[doc = "Orchestrator to use (e.g., `\"docker-compose\"`, `\"binary\"`, `\"generic\"`).\n"]
+        pub orchestrator: ::std::string::String,
+        #[doc = "Health check configuration.\n"]
+        pub health_check: ::std::option::Option<AppHealthCheckConfig>,
+    }
+    impl AppManifest {
+        #[doc = "Creates a new [`AppManifest`]."]
+        pub fn new(orchestrator: ::std::string::String) -> Self {
+            Self {
+                orchestrator,
+                health_check: ::std::default::Default::default(),
+            }
+        }
+        #[doc = "Sets the value of `orchestrator`."]
+        pub fn set_orchestrator(&mut self, orchestrator: ::std::string::String) -> &mut Self {
+            self.orchestrator = orchestrator;
+            self
+        }
+        #[doc = "Sets the value of `orchestrator`."]
+        pub fn with_orchestrator(mut self, orchestrator: ::std::string::String) -> Self {
+            self.orchestrator = orchestrator;
+            self
+        }
+        #[doc = "Sets the value of `health_check`."]
+        pub fn set_health_check(
+            &mut self,
+            health_check: ::std::option::Option<AppHealthCheckConfig>,
+        ) -> &mut Self {
+            self.health_check = health_check;
+            self
+        }
+        #[doc = "Sets the value of `health_check`."]
+        pub fn with_health_check(
+            mut self,
+            health_check: ::std::option::Option<AppHealthCheckConfig>,
+        ) -> Self {
+            self.health_check = health_check;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppManifest {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record =
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "AppManifest", 2usize)?;
+            __record.serialize_field("orchestrator", &self.orchestrator)?;
+            __record.serialize_optional_field(
+                "health-check",
+                ::core::option::Option::as_ref(&self.health_check),
+            )?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppManifest {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppManifest;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "record AppManifest")
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        ::std::string::String,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<AppHealthCheckConfig>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppManifest {
+                        orchestrator: __field0,
+                        health_check: __field1,
+                    })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["orchestrator", "health-check"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"orchestrator\", \"health-check\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Identifier1,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "orchestrator" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                "health-check" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"orchestrator" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                b"health-check" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    let mut __field1: ::core::option::Option<
+                        ::std::option::Option<AppHealthCheckConfig>,
+                    > = ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "orchestrator",
+                                        ),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            __Identifier::__Identifier1 => {
+                                if ::core::option::Option::is_some(&__field1) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "health-check",
+                                        ),
+                                    );
+                                }
+                                __field1 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        ::std::option::Option<AppHealthCheckConfig>,
+                                    >(&mut __map)?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("orchestrator"),
+                            );
+                        }
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    ::core::result::Result::Ok(AppManifest {
+                        orchestrator: __field0,
+                        health_check: __field1,
+                    })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["orchestrator", "health-check"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppManifest",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Health check configuration for an app.\n"]
+    #[derive(Clone, Debug)]
+    pub struct AppHealthCheckConfig {
+        #[doc = "Timeout in seconds.  During activation, the orchestrator waits up to\nthis many seconds for the workload to become healthy.\nSet to 0 to disable.  Default: 120.\n"]
+        pub timeout: ::std::option::Option<u64>,
+    }
+    impl AppHealthCheckConfig {
+        #[doc = "Creates a new [`AppHealthCheckConfig`]."]
+        pub fn new() -> Self {
+            Self {
+                timeout: ::std::default::Default::default(),
+            }
+        }
+        #[doc = "Sets the value of `timeout`."]
+        pub fn set_timeout(&mut self, timeout: ::std::option::Option<u64>) -> &mut Self {
+            self.timeout = timeout;
+            self
+        }
+        #[doc = "Sets the value of `timeout`."]
+        pub fn with_timeout(mut self, timeout: ::std::option::Option<u64>) -> Self {
+            self.timeout = timeout;
+            self
+        }
+    }
+    impl ::std::default::Default for AppHealthCheckConfig {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppHealthCheckConfig {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record = __sidex_serde::ser::RecordSerializer::new(
+                __serializer,
+                "AppHealthCheckConfig",
+                1usize,
+            )?;
+            __record.serialize_optional_field(
+                "timeout",
+                ::core::option::Option::as_ref(&self.timeout),
+            )?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppHealthCheckConfig {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppHealthCheckConfig;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "record AppHealthCheckConfig")
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<u64>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppHealthCheckConfig { timeout: __field0 })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["timeout"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"timeout\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "timeout" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"timeout" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::option::Option<u64>> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "timeout",
+                                        ),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::option::Option<u64>>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    ::core::result::Result::Ok(AppHealthCheckConfig { timeout: __field0 })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["timeout"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppHealthCheckConfig",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
 }

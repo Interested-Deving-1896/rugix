@@ -229,216 +229,6 @@ pub mod apps {
             )
         }
     }
-    #[doc = "App manifest (`app.toml`) inside a generation directory.\n"]
-    #[derive(Clone, Debug)]
-    pub struct AppManifest {
-        #[doc = "Orchestrator to use (e.g., `\"docker-compose\"`, `\"binary\"`, `\"generic\"`).\n"]
-        pub orchestrator: ::std::string::String,
-    }
-    impl AppManifest {
-        #[doc = "Creates a new [`AppManifest`]."]
-        pub fn new(orchestrator: ::std::string::String) -> Self {
-            Self { orchestrator }
-        }
-        #[doc = "Sets the value of `orchestrator`."]
-        pub fn set_orchestrator(&mut self, orchestrator: ::std::string::String) -> &mut Self {
-            self.orchestrator = orchestrator;
-            self
-        }
-        #[doc = "Sets the value of `orchestrator`."]
-        pub fn with_orchestrator(mut self, orchestrator: ::std::string::String) -> Self {
-            self.orchestrator = orchestrator;
-            self
-        }
-    }
-    #[automatically_derived]
-    impl __serde::Serialize for AppManifest {
-        fn serialize<__S: __serde::Serializer>(
-            &self,
-            __serializer: __S,
-        ) -> ::std::result::Result<__S::Ok, __S::Error> {
-            let mut __record =
-                __sidex_serde::ser::RecordSerializer::new(__serializer, "AppManifest", 1usize)?;
-            __record.serialize_field("orchestrator", &self.orchestrator)?;
-            __record.end()
-        }
-    }
-    #[automatically_derived]
-    impl<'de> __serde::Deserialize<'de> for AppManifest {
-        fn deserialize<__D: __serde::Deserializer<'de>>(
-            __deserializer: __D,
-        ) -> ::std::result::Result<Self, __D::Error> {
-            #[doc(hidden)]
-            struct __Visitor {
-                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
-            }
-            impl<'de> __serde::de::Visitor<'de> for __Visitor {
-                type Value = AppManifest;
-                fn expecting(
-                    &self,
-                    __formatter: &mut ::core::fmt::Formatter,
-                ) -> ::core::fmt::Result {
-                    ::core::fmt::Formatter::write_str(__formatter, "record AppManifest")
-                }
-                #[inline]
-                fn visit_seq<__A>(
-                    self,
-                    mut __seq: __A,
-                ) -> ::core::result::Result<Self::Value, __A::Error>
-                where
-                    __A: __serde::de::SeqAccess<'de>,
-                {
-                    let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
-                    >(&mut __seq)?
-                    {
-                        ::core::option::Option::Some(__value) => __value,
-                        ::core::option::Option::None => {
-                            return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
-                            );
-                        }
-                    };
-                    ::core::result::Result::Ok(AppManifest {
-                        orchestrator: __field0,
-                    })
-                }
-                #[inline]
-                fn visit_map<__A>(
-                    self,
-                    mut __map: __A,
-                ) -> ::core::result::Result<Self::Value, __A::Error>
-                where
-                    __A: __serde::de::MapAccess<'de>,
-                {
-                    #[doc(hidden)]
-                    const __IDENTIFIERS: &'static [&'static str] = &["orchestrator"];
-                    #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &'static str =
-                        "an identifier in [\"orchestrator\"]";
-                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
-                    #[doc(hidden)]
-                    enum __Identifier {
-                        __Identifier0,
-                        __Unknown,
-                    }
-                    #[doc(hidden)]
-                    struct __IdentifierVisitor;
-                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
-                        type Value = __Identifier;
-                        fn expecting(
-                            &self,
-                            __formatter: &mut ::core::fmt::Formatter,
-                        ) -> ::core::fmt::Result {
-                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
-                        }
-                        fn visit_u64<__E>(
-                            self,
-                            __value: u64,
-                        ) -> ::core::result::Result<Self::Value, __E>
-                        where
-                            __E: __serde::de::Error,
-                        {
-                            match __value {
-                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
-                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
-                            }
-                        }
-                        fn visit_str<__E>(
-                            self,
-                            __value: &str,
-                        ) -> ::core::result::Result<Self::Value, __E>
-                        where
-                            __E: __serde::de::Error,
-                        {
-                            match __value {
-                                "orchestrator" => {
-                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
-                                }
-                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
-                            }
-                        }
-                        fn visit_bytes<__E>(
-                            self,
-                            __value: &[u8],
-                        ) -> ::core::result::Result<Self::Value, __E>
-                        where
-                            __E: __serde::de::Error,
-                        {
-                            match __value {
-                                b"orchestrator" => {
-                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
-                                }
-                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
-                            }
-                        }
-                    }
-                    impl<'de> __serde::Deserialize<'de> for __Identifier {
-                        #[inline]
-                        fn deserialize<__D>(
-                            __deserializer: __D,
-                        ) -> ::core::result::Result<Self, __D::Error>
-                        where
-                            __D: __serde::Deserializer<'de>,
-                        {
-                            __serde::Deserializer::deserialize_identifier(
-                                __deserializer,
-                                __IdentifierVisitor,
-                            )
-                        }
-                    }
-                    let mut __field0: ::core::option::Option<::std::string::String> =
-                        ::core::option::Option::None;
-                    while let ::core::option::Option::Some(__key) =
-                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
-                    {
-                        match __key {
-                            __Identifier::__Identifier0 => {
-                                if ::core::option::Option::is_some(&__field0) {
-                                    return ::core::result::Result::Err(
-                                        <__A::Error as __serde::de::Error>::duplicate_field(
-                                            "orchestrator",
-                                        ),
-                                    );
-                                }
-                                __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
-                                );
-                            }
-                            _ => {
-                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
-                                    &mut __map,
-                                )?;
-                            }
-                        }
-                    }
-                    let __field0 = match __field0 {
-                        ::core::option::Option::Some(__value) => __value,
-                        ::core::option::Option::None => {
-                            return ::core::result::Result::Err(
-                                <__A::Error as __serde::de::Error>::missing_field("orchestrator"),
-                            );
-                        }
-                    };
-                    ::core::result::Result::Ok(AppManifest {
-                        orchestrator: __field0,
-                    })
-                }
-            }
-            #[doc(hidden)]
-            const __FIELDS: &'static [&'static str] = &["orchestrator"];
-            __serde::Deserializer::deserialize_struct(
-                __deserializer,
-                "AppManifest",
-                __FIELDS,
-                __Visitor {
-                    __phantom_vars: ::core::marker::PhantomData,
-                },
-            )
-        }
-    }
 }
 pub mod bootstrapping {
     #![doc = "Bootstrapping configuration.\n"]
@@ -5118,26 +4908,26 @@ pub mod output {
     #[doc = "Entry in the app list output.\n"]
     #[derive(Clone, Debug)]
     pub struct AppListEntryOutput {
-        #[doc = "Live status of the app (e.g., `\"running\"`, `\"stopped\"`, `\"unknown\"`).\n"]
-        pub status: ::std::string::String,
+        #[doc = "Live workload status.\n"]
+        pub status: AppWorkloadStatusOutput,
         #[doc = "Currently active generation number, if any.\n"]
         pub generation: ::std::option::Option<u64>,
     }
     impl AppListEntryOutput {
         #[doc = "Creates a new [`AppListEntryOutput`]."]
-        pub fn new(status: ::std::string::String) -> Self {
+        pub fn new(status: AppWorkloadStatusOutput) -> Self {
             Self {
                 status,
                 generation: ::std::default::Default::default(),
             }
         }
         #[doc = "Sets the value of `status`."]
-        pub fn set_status(&mut self, status: ::std::string::String) -> &mut Self {
+        pub fn set_status(&mut self, status: AppWorkloadStatusOutput) -> &mut Self {
             self.status = status;
             self
         }
         #[doc = "Sets the value of `status`."]
-        pub fn with_status(mut self, status: ::std::string::String) -> Self {
+        pub fn with_status(mut self, status: AppWorkloadStatusOutput) -> Self {
             self.status = status;
             self
         }
@@ -5197,7 +4987,7 @@ pub mod output {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        AppWorkloadStatusOutput,
                     >(&mut __seq)?
                     {
                         ::core::option::Option::Some(__value) => __value,
@@ -5313,7 +5103,7 @@ pub mod output {
                             )
                         }
                     }
-                    let mut __field0: ::core::option::Option<::std::string::String> =
+                    let mut __field0: ::core::option::Option<AppWorkloadStatusOutput> =
                         ::core::option::Option::None;
                     let mut __field1: ::core::option::Option<::std::option::Option<u64>> =
                         ::core::option::Option::None;
@@ -5330,7 +5120,7 @@ pub mod output {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                    __serde::de::MapAccess::next_value::<AppWorkloadStatusOutput>(
                                         &mut __map,
                                     )?,
                                 );
@@ -5391,8 +5181,8 @@ pub mod output {
     pub struct AppInfoOutput {
         #[doc = "App name.\n"]
         pub name: ::std::string::String,
-        #[doc = "Live status of the app.\n"]
-        pub status: ::std::string::String,
+        #[doc = "Live workload status.\n"]
+        pub status: AppWorkloadStatusOutput,
         #[doc = "Persisted app state.\n"]
         pub state: AppStateOutput,
         #[doc = "All generations of the app.\n"]
@@ -5402,7 +5192,7 @@ pub mod output {
         #[doc = "Creates a new [`AppInfoOutput`]."]
         pub fn new(
             name: ::std::string::String,
-            status: ::std::string::String,
+            status: AppWorkloadStatusOutput,
             state: AppStateOutput,
             generations: ::std::vec::Vec<GenerationInfoOutput>,
         ) -> Self {
@@ -5424,12 +5214,12 @@ pub mod output {
             self
         }
         #[doc = "Sets the value of `status`."]
-        pub fn set_status(&mut self, status: ::std::string::String) -> &mut Self {
+        pub fn set_status(&mut self, status: AppWorkloadStatusOutput) -> &mut Self {
             self.status = status;
             self
         }
         #[doc = "Sets the value of `status`."]
-        pub fn with_status(mut self, status: ::std::string::String) -> Self {
+        pub fn with_status(mut self, status: AppWorkloadStatusOutput) -> Self {
             self.status = status;
             self
         }
@@ -5512,7 +5302,7 @@ pub mod output {
                         }
                     };
                     let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        AppWorkloadStatusOutput,
                     >(&mut __seq)?
                     {
                         ::core::option::Option::Some(__value) => __value,
@@ -5653,7 +5443,7 @@ pub mod output {
                     }
                     let mut __field0: ::core::option::Option<::std::string::String> =
                         ::core::option::Option::None;
-                    let mut __field1: ::core::option::Option<::std::string::String> =
+                    let mut __field1: ::core::option::Option<AppWorkloadStatusOutput> =
                         ::core::option::Option::None;
                     let mut __field2: ::core::option::Option<AppStateOutput> =
                         ::core::option::Option::None;
@@ -5685,7 +5475,7 @@ pub mod output {
                                     );
                                 }
                                 __field1 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                    __serde::de::MapAccess::next_value::<AppWorkloadStatusOutput>(
                                         &mut __map,
                                     )?,
                                 );
@@ -5770,6 +5560,448 @@ pub mod output {
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppInfoOutput",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Live workload status.\n"]
+    #[derive(Clone, Debug)]
+    pub enum AppWorkloadStatusOutput {
+        #[doc = "The workload is running and healthy.\n"]
+        Running,
+        #[doc = "The workload is running but failing health checks.\n"]
+        Unhealthy(AppWorkloadMessageOutput),
+        #[doc = "The workload is not running.\n"]
+        Stopped,
+        #[doc = "The workload has failed.\n"]
+        Failed(AppWorkloadMessageOutput),
+        #[doc = "The status could not be determined.\n"]
+        Unknown,
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppWorkloadStatusOutput {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let __serializer =
+                __sidex_serde::ser::VariantSerializer::new(__serializer, "AppWorkloadStatusOutput");
+            match self {
+                Self::Running => __serializer.serialize_internal_tag("state", "running", 0u32),
+                Self::Unhealthy(__value) => {
+                    __serializer.serialize_internally_tagged("state", "unhealthy", 1u32, __value)
+                }
+                Self::Stopped => __serializer.serialize_internal_tag("state", "stopped", 2u32),
+                Self::Failed(__value) => {
+                    __serializer.serialize_internally_tagged("state", "failed", 3u32, __value)
+                }
+                Self::Unknown => __serializer.serialize_internal_tag("state", "unknown", 4u32),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppWorkloadStatusOutput {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            const __IDENTIFIERS: &'static [&'static str] =
+                &["running", "unhealthy", "stopped", "failed", "unknown"];
+            #[doc(hidden)]
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"running\", \"unhealthy\", \"stopped\", \"failed\", \"unknown\"]" ;
+            #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+            #[doc(hidden)]
+            enum __Identifier {
+                __Identifier0,
+                __Identifier1,
+                __Identifier2,
+                __Identifier3,
+                __Identifier4,
+            }
+            #[doc(hidden)]
+            struct __IdentifierVisitor;
+            impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                type Value = __Identifier;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                }
+                fn visit_u64<__E>(self, __value: u64) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        4u64 => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        __variant => {
+                            ::core::result::Result::Err(__serde::de::Error::invalid_value(
+                                __serde::de::Unexpected::Unsigned(__variant),
+                                &__EXPECTING_IDENTIFIERS,
+                            ))
+                        }
+                    }
+                }
+                fn visit_str<__E>(self, __value: &str) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        "running" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        "unhealthy" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        "stopped" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        "failed" => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        "unknown" => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        __variant => ::core::result::Result::Err(
+                            __serde::de::Error::unknown_variant(__variant, __IDENTIFIERS),
+                        ),
+                    }
+                }
+                fn visit_bytes<__E>(
+                    self,
+                    __value: &[u8],
+                ) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        b"running" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        b"unhealthy" => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                        b"stopped" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        b"failed" => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        b"unknown" => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        __variant => {
+                            ::core::result::Result::Err(__serde::de::Error::invalid_value(
+                                __serde::de::Unexpected::Bytes(__variant),
+                                &__EXPECTING_IDENTIFIERS,
+                            ))
+                        }
+                    }
+                }
+            }
+            impl<'de> __serde::Deserialize<'de> for __Identifier {
+                #[inline]
+                fn deserialize<__D>(__deserializer: __D) -> ::core::result::Result<Self, __D::Error>
+                where
+                    __D: __serde::Deserializer<'de>,
+                {
+                    __serde::Deserializer::deserialize_identifier(
+                        __deserializer,
+                        __IdentifierVisitor,
+                    )
+                }
+            }
+            #[doc(hidden)]
+            const __VARIANTS: &'static [&'static str] =
+                &["running", "unhealthy", "stopped", "failed", "unknown"];
+            if __serde::Deserializer::is_human_readable(&__deserializer) {
+                let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
+                    __Identifier,
+                    __D,
+                >(__deserializer, "state")?;
+                match __tagged . tag { __Identifier :: __Identifier0 => { :: core :: result :: Result :: Ok (AppWorkloadStatusOutput :: Running) } , __Identifier :: __Identifier1 => { :: core :: result :: Result :: Ok (AppWorkloadStatusOutput :: Unhealthy (__tagged . deserialize_internally_tagged :: < AppWorkloadMessageOutput < > , __D :: Error > () ?)) } , __Identifier :: __Identifier2 => { :: core :: result :: Result :: Ok (AppWorkloadStatusOutput :: Stopped) } , __Identifier :: __Identifier3 => { :: core :: result :: Result :: Ok (AppWorkloadStatusOutput :: Failed (__tagged . deserialize_internally_tagged :: < AppWorkloadMessageOutput < > , __D :: Error > () ?)) } , __Identifier :: __Identifier4 => { :: core :: result :: Result :: Ok (AppWorkloadStatusOutput :: Unknown) } , }
+            } else {
+                #[doc(hidden)]
+                struct __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+                }
+                impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                    type Value = AppWorkloadStatusOutput;
+                    fn expecting(
+                        &self,
+                        __formatter: &mut ::core::fmt::Formatter,
+                    ) -> ::core::fmt::Result {
+                        ::core::fmt::Formatter::write_str(
+                            __formatter,
+                            "enum AppWorkloadStatusOutput",
+                        )
+                    }
+                    #[inline]
+                    fn visit_str<__E>(
+                        self,
+                        __value: &str,
+                    ) -> ::core::result::Result<Self::Value, __E>
+                    where
+                        __E: __serde::de::Error,
+                    {
+                        let __identifier = __IdentifierVisitor.visit_str(__value)?;
+                        #[allow(unreachable_patterns)]
+                        match __identifier {
+                            __Identifier::__Identifier0 => {
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Running)
+                            }
+                            __Identifier::__Identifier2 => {
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Stopped)
+                            }
+                            __Identifier::__Identifier4 => {
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Unknown)
+                            }
+                            _ => Err(__E::invalid_value(
+                                __serde::de::Unexpected::Str(__value),
+                                &self,
+                            )),
+                        }
+                    }
+                    #[inline]
+                    fn visit_enum<__A>(
+                        self,
+                        __data: __A,
+                    ) -> ::core::result::Result<Self::Value, __A::Error>
+                    where
+                        __A: __serde::de::EnumAccess<'de>,
+                    {
+                        match __serde::de::EnumAccess::variant::<__Identifier>(__data)? {
+                            (__Identifier::__Identifier0, __variant) => {
+                                __serde::de::VariantAccess::unit_variant(__variant)?;
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Running)
+                            }
+                            (__Identifier::__Identifier1, __variant) => {
+                                let __value = __serde::de::VariantAccess::newtype_variant::<
+                                    AppWorkloadMessageOutput,
+                                >(__variant)?;
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Unhealthy(
+                                    __value,
+                                ))
+                            }
+                            (__Identifier::__Identifier2, __variant) => {
+                                __serde::de::VariantAccess::unit_variant(__variant)?;
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Stopped)
+                            }
+                            (__Identifier::__Identifier3, __variant) => {
+                                let __value = __serde::de::VariantAccess::newtype_variant::<
+                                    AppWorkloadMessageOutput,
+                                >(__variant)?;
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Failed(__value))
+                            }
+                            (__Identifier::__Identifier4, __variant) => {
+                                __serde::de::VariantAccess::unit_variant(__variant)?;
+                                ::core::result::Result::Ok(AppWorkloadStatusOutput::Unknown)
+                            }
+                        }
+                    }
+                }
+                __serde::Deserializer::deserialize_enum(
+                    __deserializer,
+                    "AppWorkloadStatusOutput",
+                    __VARIANTS,
+                    __Visitor {
+                        __phantom_vars: ::core::marker::PhantomData,
+                    },
+                )
+            }
+        }
+    }
+    #[doc = "Details for a workload status with a message.\n"]
+    #[derive(Clone, Debug)]
+    pub struct AppWorkloadMessageOutput {
+        #[doc = "Human-readable description.\n"]
+        pub message: ::std::string::String,
+    }
+    impl AppWorkloadMessageOutput {
+        #[doc = "Creates a new [`AppWorkloadMessageOutput`]."]
+        pub fn new(message: ::std::string::String) -> Self {
+            Self { message }
+        }
+        #[doc = "Sets the value of `message`."]
+        pub fn set_message(&mut self, message: ::std::string::String) -> &mut Self {
+            self.message = message;
+            self
+        }
+        #[doc = "Sets the value of `message`."]
+        pub fn with_message(mut self, message: ::std::string::String) -> Self {
+            self.message = message;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for AppWorkloadMessageOutput {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record = __sidex_serde::ser::RecordSerializer::new(
+                __serializer,
+                "AppWorkloadMessageOutput",
+                1usize,
+            )?;
+            __record.serialize_field("message", &self.message)?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for AppWorkloadMessageOutput {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = AppWorkloadMessageOutput;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(
+                        __formatter,
+                        "record AppWorkloadMessageOutput",
+                    )
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        ::std::string::String,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppWorkloadMessageOutput { message: __field0 })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["message"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"message\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "message" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"message" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier0)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "message",
+                                        ),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<::std::string::String>(
+                                        &mut __map,
+                                    )?,
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("message"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(AppWorkloadMessageOutput { message: __field0 })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["message"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "AppWorkloadMessageOutput",
                 __FIELDS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,

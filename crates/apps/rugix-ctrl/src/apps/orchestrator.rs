@@ -1,11 +1,14 @@
 use std::path::Path;
 
+use rugix_bundle::manifest::AppManifest;
+
 use super::AppsResult;
 
 /// Status of an app's workload.
 #[derive(Debug, Clone)]
 pub enum AppStatus {
     Running,
+    Unhealthy { message: String },
     Stopped,
     Failed { message: String },
     Unknown,
@@ -15,6 +18,7 @@ impl std::fmt::Display for AppStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppStatus::Running => write!(f, "running"),
+            AppStatus::Unhealthy { message } => write!(f, "unhealthy: {message}"),
             AppStatus::Stopped => write!(f, "stopped"),
             AppStatus::Failed { message } => write!(f, "failed: {message}"),
             AppStatus::Unknown => write!(f, "unknown"),
@@ -36,6 +40,8 @@ pub struct AppContext<'cx> {
     pub recovery: bool,
     /// The system's configured service manager (e.g., `"systemd"`, `"none"`).
     pub service_manager: &'cx str,
+    /// The parsed app manifest (`app.toml`).
+    pub manifest: &'cx AppManifest,
 }
 
 /// Trait for app lifecycle orchestrators.

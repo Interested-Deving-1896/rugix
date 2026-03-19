@@ -7,9 +7,3 @@ record AppsConfig {
     service_manager?: string,
 }
 
-/// App manifest (`app.toml`) inside a generation directory.
-#[json(rename_all = "kebab-case")]
-record AppManifest {
-    /// Orchestrator to use (e.g., `"docker-compose"`, `"binary"`, `"generic"`).
-    orchestrator: string,
-}
