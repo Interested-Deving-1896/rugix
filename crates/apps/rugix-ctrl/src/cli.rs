@@ -690,11 +690,13 @@ pub fn main() -> SystemResult<()> {
                         )?;
                     }
                 }
-                AppsCommand::Systemd(systemd_cmd) => match systemd_cmd {
-                    AppsSystemdCommand::SyncUnits => {
-                        crate::apps::generator::sync_units()
-                            .whatever("failed to sync app units")?;
-                    }
+                AppsCommand::ServiceManager(sm_cmd) => match sm_cmd {
+                    AppsServiceManagerCommand::Systemd(systemd_cmd) => match systemd_cmd {
+                        AppsSystemdCommand::RestoreUnits => {
+                            crate::apps::generator::restore_units()
+                                .whatever("failed to restore app units")?;
+                        }
+                    },
                 },
             }
         }
@@ -1884,6 +1886,13 @@ pub enum AppsCommand {
         #[clap(long)]
         generation: Option<u64>,
     },
+    /// Service manager integration.
+    #[clap(subcommand)]
+    ServiceManager(AppsServiceManagerCommand),
+}
+
+#[derive(Debug, Parser)]
+pub enum AppsServiceManagerCommand {
     /// Systemd integration.
     #[clap(subcommand)]
     Systemd(AppsSystemdCommand),
@@ -1891,6 +1900,6 @@ pub enum AppsCommand {
 
 #[derive(Debug, Parser)]
 pub enum AppsSystemdCommand {
-    /// Sync app units into the systemd runtime directory.
-    SyncUnits,
+    /// Restore app units into the systemd runtime directory.
+    RestoreUnits,
 }

@@ -30,9 +30,9 @@ impl Binary {
         format!("rugix-app-{app_name}.service")
     }
 
-    /// Directory that holds the rendered units for an app.
+    /// Directory that holds the rendered units for the active generation.
     fn persistent_unit_dir(ctx: &AppContext) -> PathBuf {
-        ctx.app_dir.join("systemd/units")
+        ctx.generation_dir.join(".rugix/systemd/units")
     }
 
     /// Runtime path where systemd can pick up the unit immediately.
@@ -87,11 +87,11 @@ impl Orchestrator for Binary {
 
         Self::daemon_reload()?;
 
-        // Enable the unit so it auto-starts on systems with persistent /etc.
-        // Ignore failure — /etc may be ephemeral, in which case the sync
-        // service handles restart after reboot.
+        // Enable with --runtime to create .wants/ symlinks under
+        // /run/systemd/system/, integrating the unit into systemd's boot
+        // dependency graph.  This is restored by restore-units after reboot.
         let _ = Command::new("systemctl")
-            .args(["enable", &service])
+            .args(["enable", "--runtime", &service])
             .status();
 
         let start_status = Command::new("systemctl")
@@ -101,7 +101,7 @@ impl Orchestrator for Binary {
         if !start_status.success() {
             reportify::bail!("systemctl start {service} failed");
         }
-        info!(app = ctx.app_name, service = %service, "started");
+        info!(app = ctx.app_name, service = %service, "enabled and started");
 
         Ok(())
     }
@@ -132,7 +132,7 @@ impl Orchestrator for Binary {
 
         let _ = Command::new("systemctl").args(["stop", &service]).status();
         let _ = Command::new("systemctl")
-            .args(["disable", &service])
+            .args(["disable", "--runtime", &service])
             .status();
         info!(app = ctx.app_name, service = %service, "stopped and disabled");
 

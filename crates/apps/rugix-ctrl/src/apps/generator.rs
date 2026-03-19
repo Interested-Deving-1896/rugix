@@ -1,14 +1,16 @@
-//! Sync pre-rendered app unit files into the systemd runtime directory.
+//! Restore app systemd units after reboot.
 //!
-//! Orchestrators persist rendered unit files in the app directory under
-//! `<app_dir>/systemd/units/`. This module copies them into `/run/systemd/system/` so
-//! systemd can manage them, then triggers a `daemon-reload`.
+//! Since `/run/` is a tmpfs, systemd units installed there do not survive reboots.
+//! This module restores them by copying persisted unit files from the generation
+//! directory (`<gen_dir>/.rugix/systemd/units/`) into `/run/systemd/system/`,
+//! enabling them with `systemctl enable --runtime`, and queuing them for start with
+//! `systemctl start --no-block`.
 //!
-//! Only apps in the `active`, `starting`, or `stopping` state are synced.  Apps that are
-//! inactive, switching, or in an error state are skipped.
+//! Only apps in the `active`, `starting`, or `stopping` state are restored.  Apps
+//! that are inactive, switching, or in an error state are skipped.
 //!
-//! Intended to be called from a oneshot service (`rugix-app-sync.service`) that runs
-//! early in boot, after the data partition is mounted.
+//! Intended to be called from a oneshot service that runs early in boot, after the
+//! data partition is mounted.
 
 use std::fs;
 use std::path::Path;
@@ -34,10 +36,24 @@ fn read_app_state(app_dir: &Path) -> AppState {
     serde_json::from_str(&content).unwrap_or(AppState::Inactive)
 }
 
-/// Sync all persisted app units into the systemd runtime directory.
+/// Extract the active generation number from the app state, if any.
+fn active_generation(state: &AppState) -> Option<u64> {
+    match state {
+        AppState::Active { generation }
+        | AppState::Starting { generation }
+        | AppState::Stopping { generation } => Some(*generation),
+        _ => None,
+    }
+}
+
+/// Restore all persisted app units into the systemd runtime directory.
 ///
-/// Only syncs units for apps that are in the `active`, `starting`, or `stopping` state.
-pub fn sync_units() -> AppsResult<()> {
+/// Only restores units for apps that are in the `active`, `starting`, or `stopping`
+/// state.  After copying the unit files and reloading systemd, each unit is enabled
+/// with `--runtime` (for bookkeeping) and queued for start with
+/// `systemctl start --no-block` (which lets systemd resolve declared dependencies
+/// asynchronously).
+pub fn restore_units() -> AppsResult<()> {
     let apps_dir = config::apps_dir();
     if !apps_dir.exists() {
         info!("no apps directory, nothing to sync");
@@ -56,15 +72,16 @@ pub fn sync_units() -> AppsResult<()> {
             continue;
         }
 
-        // Only sync units for active apps (including transient starting/stopping states).
-        if !matches!(
-            read_app_state(&entry.path()),
-            AppState::Active { .. } | AppState::Starting { .. } | AppState::Stopping { .. }
-        ) {
+        let app_dir = entry.path();
+        let state = read_app_state(&app_dir);
+        let Some(generation) = active_generation(&state) else {
             continue;
-        }
+        };
 
-        let unit_dir = entry.path().join("systemd/units");
+        let unit_dir = app_dir
+            .join("generations")
+            .join(generation.to_string())
+            .join(".rugix/systemd/units");
         if !unit_dir.is_dir() {
             continue;
         }
@@ -95,16 +112,36 @@ pub fn sync_units() -> AppsResult<()> {
             count = synced_units.len(),
             "daemon-reload after syncing app units"
         );
-        // Start each synced unit individually. A single unit failing should
-        // not prevent the remaining units from starting.
+        // For each synced unit:
+        //
+        // 1. `enable --runtime` creates .wants/ symlinks under /run/systemd/system/ so `systemctl
+        //    is-enabled` reports the correct state.
+        //
+        // 2. `start --no-block` queues a start job and returns immediately. Systemd resolves the
+        //    unit's declared dependencies (After=, Requires=, etc.) and starts it at the right
+        //    time.  Using --no-block avoids blocking the sync service (and the rest of boot) on
+        //    units whose dependencies are not yet met.
+        //
+        // We cannot rely on enable --runtime alone because systemd computes
+        // each target's job transaction before any of its dependencies run.
+        // By the time the sync service creates the .wants/ symlinks, the
+        // transaction is already set.
         for unit in &synced_units {
-            let result = Command::new("systemctl").args(["start", unit]).status();
+            // Enable (best-effort — missing [Install] is not fatal).
+            let _ = Command::new("systemctl")
+                .args(["enable", "--runtime", unit])
+                .status();
+
+            // Queue start job (non-blocking).
+            let result = Command::new("systemctl")
+                .args(["start", "--no-block", unit])
+                .status();
             match result {
                 Ok(status) if status.success() => {
-                    info!(unit, "started synced app unit");
+                    info!(unit, "queued start for synced app unit");
                 }
                 Ok(status) => {
-                    error!(unit, code = ?status.code(), "failed to start synced app unit");
+                    error!(unit, code = ?status.code(), "failed to queue start for synced app unit");
                 }
                 Err(err) => {
                     error!(unit, %err, "failed to run systemctl start for synced app unit");

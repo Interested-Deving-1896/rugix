@@ -1,11 +1,11 @@
 [Unit]
-Description=Sync Rugix app units into systemd
+Description=Restore Rugix app units into systemd
 After=local-fs.target
 DefaultDependencies=no
 
 [Service]
 Type=oneshot
-ExecStart=rugix-ctrl apps systemd sync-units
+ExecStart=rugix-ctrl apps service-manager systemd restore-units
 RemainAfterExit=yes
 
 [Install]
