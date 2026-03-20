@@ -510,14 +510,28 @@ pub fn main() -> SystemResult<()> {
                     root_cert,
                     bundle_hash,
                 } => {
-                    install_app_bundle(
-                        &config,
-                        &manager,
-                        bundle,
-                        bundle_hash,
-                        root_cert.as_deref(),
-                        *insecure_skip_bundle_verification,
-                    )?;
+                    if bundle == "-" {
+                        let source = ReaderSource::<_, SkipRead>::from_unbuffered(std::io::stdin());
+                        install_app_bundle(
+                            &config,
+                            &manager,
+                            source,
+                            bundle_hash,
+                            root_cert.as_deref(),
+                            *insecure_skip_bundle_verification,
+                        )?;
+                    } else {
+                        let file = File::open(bundle).whatever("unable to open app bundle")?;
+                        let source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
+                        install_app_bundle(
+                            &config,
+                            &manager,
+                            source,
+                            bundle_hash,
+                            root_cert.as_deref(),
+                            *insecure_skip_bundle_verification,
+                        )?;
+                    }
                 }
                 AppsCommand::List => {
                     use crate::config::output::AppListEntryOutput;
