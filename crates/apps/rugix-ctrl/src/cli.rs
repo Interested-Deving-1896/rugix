@@ -614,6 +614,7 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write app info to stdout")?;
                 }
                 AppsCommand::Activate { app, generation } => {
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
                     let gen = match generation {
                         Some(n) => *n,
                         None => {
@@ -627,29 +628,38 @@ pub fn main() -> SystemResult<()> {
                         }
                     };
                     manager
-                        .activate_generation(app, gen)
+                        .activate_generation(&lock, app, gen)
                         .whatever("unable to activate generation")?;
                 }
                 AppsCommand::Deactivate { app } => {
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
                     manager
-                        .deactivate(app)
+                        .deactivate(&lock, app)
                         .whatever("unable to deactivate app")?;
                 }
                 AppsCommand::Start { app } => {
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
                     manager
-                        .start_app(app)
+                        .start_app(&lock, app)
                         .whatever("unable to start app workload")?;
                 }
                 AppsCommand::Stop { app } => {
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
                     manager
-                        .stop_app(app)
+                        .stop_app(&lock, app)
                         .whatever("unable to stop app workload")?;
                 }
                 AppsCommand::Rollback { app } => {
-                    manager.rollback(app).whatever("unable to rollback app")?;
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
+                    manager
+                        .rollback(&lock, app)
+                        .whatever("unable to rollback app")?;
                 }
                 AppsCommand::Remove { app } => {
-                    manager.remove_app(app).whatever("unable to remove app")?;
+                    let lock = manager.lock_app(app).whatever("unable to lock app")?;
+                    manager
+                        .remove_app(&lock, app)
+                        .whatever("unable to remove app")?;
                 }
                 AppsCommand::Generations { app } => {
                     use crate::config::output::GenerationInfoOutput;
@@ -682,8 +692,9 @@ pub fn main() -> SystemResult<()> {
                     };
                     let mut results = indexmap::IndexMap::new();
                     for name in &app_names {
+                        let lock = manager.lock_app(name).whatever("unable to lock app")?;
                         let removed = manager
-                            .gc(name, *keep)
+                            .gc(&lock, name, *keep)
                             .whatever("unable to garbage collect")?;
                         results.insert(name.clone(), AppGcAppOutput::new(removed));
                     }
@@ -801,16 +812,14 @@ impl<R: Read> Read for MaybeStreamHasher<R> {
     }
 }
 
-fn install_app_bundle(
+fn install_app_bundle<S: BundleSource>(
     config: &Config,
     app_manager: &crate::apps::manager::AppManager,
-    bundle: &str,
+    bundle_source: S,
     bundle_hash: &Option<HashDigest>,
     root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
 ) -> SystemResult<()> {
-    let file = File::open(bundle).whatever("unable to open app bundle")?;
-    let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
     let mut bundle_reader =
         rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
             .whatever("unable to read app bundle")?;
@@ -834,6 +843,9 @@ fn install_app_bundle(
 
     let mut app_generations: std::collections::HashMap<String, (u64, PathBuf)> =
         std::collections::HashMap::new();
+    // Advisory locks held for the duration of the install, one per app.
+    let mut app_locks: std::collections::HashMap<String, crate::apps::manager::AppLock> =
+        std::collections::HashMap::new();
     // Accumulated payload hashes per app, keyed by (app_name, path).
     let mut payload_states: std::collections::HashMap<
         String,
@@ -853,11 +865,17 @@ fn install_app_bundle(
             let payload_path = type_app_file.path.clone();
             let file_mode = type_app_file.mode;
             let delta_encoding = payload_entry.delta_encoding.clone();
-            let (_, gen_dir) = app_generations.entry(app_name.clone()).or_insert_with(|| {
-                app_manager
-                    .create_generation(&app_name)
-                    .expect("unable to create app generation")
-            });
+            if !app_generations.contains_key(&app_name) {
+                let lock = app_manager
+                    .lock_app(&app_name)
+                    .whatever("unable to lock app")?;
+                let gen = app_manager
+                    .create_generation(&lock, &app_name)
+                    .whatever("unable to create app generation")?;
+                app_locks.insert(app_name.clone(), lock);
+                app_generations.insert(app_name.clone(), gen);
+            }
+            let (_, gen_dir) = &app_generations[&app_name];
             let gen_dir = gen_dir.clone();
             let file_path = gen_dir.join(&payload_path);
             if let Some(parent) = file_path.parent() {
@@ -1020,13 +1038,17 @@ fn install_app_bundle(
             continue;
         }
         if let Some(type_app_archive) = &payload_entry.type_app_archive {
-            let (_, gen_dir) = app_generations
-                .entry(type_app_archive.app.clone())
-                .or_insert_with(|| {
-                    app_manager
-                        .create_generation(&type_app_archive.app)
-                        .expect("unable to create app generation")
-                });
+            if !app_generations.contains_key(&type_app_archive.app) {
+                let lock = app_manager
+                    .lock_app(&type_app_archive.app)
+                    .whatever("unable to lock app")?;
+                let gen = app_manager
+                    .create_generation(&lock, &type_app_archive.app)
+                    .whatever("unable to create app generation")?;
+                app_locks.insert(type_app_archive.app.clone(), lock);
+                app_generations.insert(type_app_archive.app.clone(), gen);
+            }
+            let (_, gen_dir) = &app_generations[&type_app_archive.app];
             info!(
                 app = type_app_archive.app,
                 "extracting app archive payload {}",
@@ -1078,8 +1100,9 @@ fn install_app_bundle(
             .whatever("unable to write generation metadata")?;
         crate::apps::manager::AppManager::mark_complete(gen_dir)
             .whatever("unable to mark generation as complete")?;
+        let lock = &app_locks[app_name];
         app_manager
-            .activate_generation(app_name, *gen_number)
+            .activate_generation(lock, app_name, *gen_number)
             .whatever("unable to activate app generation")?;
     }
 
@@ -1842,7 +1865,7 @@ pub enum UtilsCommand {
 pub enum AppsCommand {
     /// Install apps from a bundle.
     Install {
-        /// Path or URL of the app bundle.
+        /// Path of the app bundle, or `-` to read from stdin.
         bundle: String,
         /// Skip bundle verification (insecure, do not use in production).
         ///

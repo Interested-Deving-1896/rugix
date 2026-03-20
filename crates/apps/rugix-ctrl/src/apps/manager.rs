@@ -15,6 +15,11 @@ use super::orchestrators::{AppContext, AppStatus};
 use super::{config, orchestrators, AppsResult};
 use rugix_bundle::manifest::AppManifest;
 
+/// An advisory file lock held for the duration of a mutating operation.
+///
+/// The lock is released when this guard is dropped (via [`nix::fcntl::Flock`]).
+pub type AppLock = nix::fcntl::Flock<fs::File>;
+
 /// A generation with its completeness status resolved from the filesystem.
 pub struct ResolvedGeneration {
     /// The persisted generation metadata.
@@ -39,6 +44,27 @@ impl AppManager {
             apps_dir,
             service_manager,
         }
+    }
+
+    /// Acquire an exclusive advisory lock for the given app.
+    ///
+    /// The lock file is created in `<app_dir>/.rugix/lock`. Callers must hold the
+    /// returned [`AppLock`] for the duration of the mutating operation. The lock
+    /// is released when the guard is dropped.
+    pub fn lock_app(&self, app_name: &str) -> AppsResult<AppLock> {
+        let lock_dir = self.app_dir(app_name).join(".rugix");
+        fs::create_dir_all(&lock_dir).whatever("unable to create app .rugix directory")?;
+        let lock_path = lock_dir.join("lock");
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .whatever("unable to open app lock file")?;
+        nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusive)
+            .map_err(|(_file, errno)| errno)
+            .whatever("unable to acquire app lock")
     }
 
     /// Path to the directory of an app.
@@ -87,7 +113,9 @@ impl AppManager {
     }
 
     /// Check for and recover any interrupted transition for a single app.
-    pub fn recover_app(&self, app_name: &str) -> AppsResult<()> {
+    ///
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn recover_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         match self.read_state(app_name)? {
             AppState::Switching(AppStateSwitching { from, to }) => {
                 info!(app = app_name, ?from, ?to, "recovering interrupted switch");
@@ -114,18 +142,31 @@ impl AppManager {
     }
 
     /// Check for and recover interrupted transitions across all apps.
+    ///
+    /// Acquires the lock for each app internally.
     pub fn recover_all(&self) -> AppsResult<()> {
         let apps = self.list_apps()?;
         for app_name in &apps {
-            if let Err(e) = self.recover_app(app_name) {
-                warn!(app = %app_name, "recovery failed: {e:?}");
+            match self.lock_app(app_name) {
+                Ok(lock) => {
+                    if let Err(e) = self.recover_app(&lock, app_name) {
+                        warn!(app = %app_name, "recovery failed: {e:?}");
+                    }
+                }
+                Err(e) => {
+                    warn!(app = %app_name, "unable to lock app for recovery: {e:?}");
+                }
             }
         }
         Ok(())
     }
 
     /// Allocate the next generation number and create its directory.
-    pub fn create_generation(&self, app_name: &str) -> AppsResult<(u64, PathBuf)> {
+    ///
+    /// The caller must hold the [`AppLock`] for this app for the duration of the
+    /// installation that follows.
+    pub fn create_generation(&self, _lock: &AppLock, app_name: &str) -> AppsResult<(u64, PathBuf)> {
+        rugix_bundle::manifest::validate_app_name(app_name).whatever("invalid app name")?;
         let generations_dir = self.generations_dir(app_name);
         fs::create_dir_all(&generations_dir).whatever("unable to create generations directory")?;
         fs::create_dir_all(self.data_dir(app_name))
@@ -173,10 +214,20 @@ impl AppManager {
     }
 
     /// Mark a generation as complete (all payloads have been fully written).
+    ///
+    /// The marker file is fsynced, and the parent directory is fsynced afterwards,
+    /// so that the marker survives a crash.
     pub fn mark_complete(gen_dir: &Path) -> AppsResult<()> {
         let rugix_dir = gen_dir.join(".rugix");
         fs::create_dir_all(&rugix_dir).whatever("unable to create .rugix directory")?;
-        fs::write(rugix_dir.join("complete"), "").whatever("unable to write complete marker")?;
+        let marker_path = rugix_dir.join("complete");
+        let file = fs::File::create(&marker_path).whatever("unable to create complete marker")?;
+        file.sync_all().whatever("unable to sync complete marker")?;
+        drop(file);
+        // Fsync the directory so the new entry is durable.
+        if let Ok(dir) = fs::File::open(&rugix_dir) {
+            let _ = dir.sync_all();
+        }
         Ok(())
     }
 
@@ -230,7 +281,14 @@ impl AppManager {
     /// If activation fails, the previous generation is automatically rolled back.
     ///
     /// If rollback also fails, the app enters the `error` state.
-    pub fn activate_generation(&self, app_name: &str, gen_number: u64) -> AppsResult<()> {
+    ///
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn activate_generation(
+        &self,
+        _lock: &AppLock,
+        app_name: &str,
+        gen_number: u64,
+    ) -> AppsResult<()> {
         let gen_dir = self.generation_dir(app_name, gen_number);
         if !Self::is_complete(&gen_dir) {
             reportify::bail!("generation is not complete (installation may have been interrupted)");
@@ -250,7 +308,9 @@ impl AppManager {
     }
 
     /// Deactivate the current generation.
-    pub fn deactivate(&self, app_name: &str) -> AppsResult<()> {
+    ///
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn deactivate(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
@@ -292,6 +352,15 @@ impl AppManager {
                 generation = to_gen,
                 "activation failed: {err:?}"
             );
+            // Try to clean up any residual resources from the failed activation
+            // (e.g. partially started containers) before attempting rollback.
+            if let Err(cleanup_err) = self.run_deactivate(app_name, to_gen, true) {
+                warn!(
+                    app = app_name,
+                    generation = to_gen,
+                    "failed to clean up after failed activation: {cleanup_err:?}"
+                );
+            }
             // Attempt rollback to the previous generation.
             if let Some(prev) = from {
                 let prev_dir = self.generation_dir(app_name, prev);
@@ -405,7 +474,8 @@ impl AppManager {
     /// The state transitions to `Starting` before the orchestrator is called and back to
     /// `Active` afterwards, ensuring crash recovery can replay the operation if it is
     /// interrupted.
-    pub fn start_app(&self, app_name: &str) -> AppsResult<()> {
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn start_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         let AppState::Active(AppStateActive { generation }) = self.read_state(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
@@ -430,7 +500,8 @@ impl AppManager {
     /// The state transitions to `Stopping` before the orchestrator is called and back to
     /// `Active` afterwards, ensuring crash recovery can replay the operation if it is
     /// interrupted.
-    pub fn stop_app(&self, app_name: &str) -> AppsResult<()> {
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn stop_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         let AppState::Active(AppStateActive { generation }) = self.read_state(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
@@ -593,7 +664,8 @@ impl AppManager {
 
     /// Rollback: deactivate the current generation and activate the most recent
     /// previous generation that was successfully activated before.
-    pub fn rollback(&self, app_name: &str) -> AppsResult<()> {
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn rollback(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("no current generation to rollback from");
         };
@@ -611,7 +683,7 @@ impl AppManager {
             to = previous.meta.number,
             "rolling back"
         );
-        self.activate_generation(app_name, previous.meta.number)
+        self.activate_generation(_lock, app_name, previous.meta.number)
     }
 
     /// Remove a generation directory.
@@ -633,7 +705,8 @@ impl AppManager {
     /// rollback targets). Among previously-activated generations, at most `keep` of
     /// the most recent ones are retained. The currently active generation is never
     /// removed.
-    pub fn gc(&self, app_name: &str, keep: usize) -> AppsResult<Vec<u64>> {
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn gc(&self, _lock: &AppLock, app_name: &str, keep: usize) -> AppsResult<Vec<u64>> {
         let current = self.current_generation(app_name)?;
         let mut generations = self.list_generations(app_name)?;
         generations.sort_by_key(|g| g.meta.number);
@@ -677,10 +750,12 @@ impl AppManager {
     }
 
     /// Remove an app entirely.
-    pub fn remove_app(&self, app_name: &str) -> AppsResult<()> {
+    ///
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn remove_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         // Deactivate if active (stops workload + cleans up orchestrator resources).
         if self.current_generation(app_name)?.is_some() {
-            self.deactivate(app_name)?;
+            self.deactivate(_lock, app_name)?;
         }
         let app_dir = self.app_dir(app_name);
         if app_dir.exists() {
