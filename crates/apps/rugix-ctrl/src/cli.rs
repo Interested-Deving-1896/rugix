@@ -47,6 +47,24 @@ fn create_rugix_state_directory() -> SystemResult<()> {
         .whatever("unable to create `/run/rugix/state/.rugix`")
 }
 
+/// Acquire an exclusive lock for system update operations.
+///
+/// Prevents concurrent `update install` invocations from corrupting partition state and
+/// boot flow configuration.
+fn lock_update() -> SystemResult<nix::fcntl::Flock<File>> {
+    fs::create_dir_all("/run/rugix").whatever("unable to create `/run/rugix`")?;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open("/run/rugix/update-lock")
+        .whatever("unable to open update lock file")?;
+    nix::fcntl::Flock::lock(file, nix::fcntl::FlockArg::LockExclusiveNonblock)
+        .map_err(|(_file, errno)| errno)
+        .whatever("another update is already in progress")
+}
+
 fn set_rugix_state_flag(name: &str, value: Option<&str>) -> SystemResult<()> {
     fs::write(
         Path::new("/run/rugix/state/.rugix").join(name),
@@ -132,6 +150,7 @@ pub fn main() -> SystemResult<()> {
                     http_retry_initial_backoff,
                     http_retry_max_backoff,
                 } => {
+                    let _update_lock = lock_update()?;
                     let system = System::initialize()?;
 
                     if system.needs_commit()? {
