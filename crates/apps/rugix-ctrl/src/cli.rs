@@ -482,9 +482,8 @@ pub fn main() -> SystemResult<()> {
             warn!("edge application orchestration is experimental");
             let apps_config =
                 crate::apps::config::load_apps_config().whatever("unable to load apps config")?;
-            let service_manager = crate::apps::config::effective_service_manager(&apps_config);
             let apps_dir = crate::apps::config::apps_dir().to_owned();
-            let manager = crate::apps::manager::AppManager::new(apps_dir, service_manager);
+            let manager = crate::apps::manager::AppManager::new(apps_dir, apps_config);
             match cmd {
                 AppsCommand::Install {
                     bundle,
@@ -507,8 +506,14 @@ pub fn main() -> SystemResult<()> {
                     let entries: indexmap::IndexMap<String, AppListEntryOutput> = apps
                         .iter()
                         .map(|app| {
-                            let status = app_status_to_output(manager.app_status(app).ok());
-                            let generation = manager.current_generation(app);
+                            let status = resolve_app_status(manager.app_status(app).ok());
+                            let generation = match manager.current_generation(app) {
+                                Ok(gen) => gen,
+                                Err(err) => {
+                                    tracing::error!(app, error = ?err, "unable to read app state");
+                                    None
+                                }
+                            };
                             (
                                 app.clone(),
                                 AppListEntryOutput::new(status).with_generation(generation),
@@ -519,37 +524,45 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write apps list to stdout")?;
                 }
                 AppsCommand::Info { app } => {
+                    use crate::config::apps::{
+                        AppState, AppStateActive, AppStateError, AppStateStarting,
+                        AppStateStopping, AppStateSwitching,
+                    };
                     use crate::config::output::{
                         AppInfoOutput, AppStateActiveOutput, AppStateErrorOutput, AppStateOutput,
                         AppStateStartingOutput, AppStateStoppingOutput, AppStateSwitchingOutput,
                         GenerationInfoOutput,
                     };
-                    let status = app_status_to_output(manager.app_status(app).ok());
+                    let status = resolve_app_status(manager.app_status(app).ok());
                     let generations = manager
                         .list_generations(app)
                         .whatever("unable to list generations")?;
-                    let current = manager.current_generation(app);
-                    let state = manager.read_state(app);
+                    let current = manager
+                        .current_generation(app)
+                        .whatever("unable to read app state")?;
+                    let state = manager
+                        .read_state(app)
+                        .whatever("unable to read app state")?;
                     let state_output = match state {
-                        crate::apps::manager::AppState::Inactive => AppStateOutput::Inactive,
-                        crate::apps::manager::AppState::Switching { from, to } => {
+                        AppState::Inactive => AppStateOutput::Inactive,
+                        AppState::Switching(AppStateSwitching { from, to }) => {
                             AppStateOutput::Switching(
                                 AppStateSwitchingOutput::new().with_from(from).with_to(to),
                             )
                         }
-                        crate::apps::manager::AppState::Active { generation } => {
+                        AppState::Active(AppStateActive { generation }) => {
                             AppStateOutput::Active(AppStateActiveOutput::new(generation))
                         }
-                        crate::apps::manager::AppState::Starting { generation } => {
+                        AppState::Starting(AppStateStarting { generation }) => {
                             AppStateOutput::Starting(AppStateStartingOutput::new(generation))
                         }
-                        crate::apps::manager::AppState::Stopping { generation } => {
+                        AppState::Stopping(AppStateStopping { generation }) => {
                             AppStateOutput::Stopping(AppStateStoppingOutput::new(generation))
                         }
-                        crate::apps::manager::AppState::Error {
+                        AppState::Error(AppStateError {
                             generation,
                             message,
-                        } => AppStateOutput::Error(AppStateErrorOutput::new(generation, message)),
+                        }) => AppStateOutput::Error(AppStateErrorOutput::new(generation, message)),
                     };
                     let gen_entries: Vec<_> = generations
                         .iter()
@@ -610,7 +623,9 @@ pub fn main() -> SystemResult<()> {
                     let generations = manager
                         .list_generations(app)
                         .whatever("unable to list generations")?;
-                    let current = manager.current_generation(app);
+                    let current = manager
+                        .current_generation(app)
+                        .whatever("unable to read app state")?;
                     let entries: Vec<_> = generations
                         .iter()
                         .map(|gen| {
@@ -656,6 +671,7 @@ pub fn main() -> SystemResult<()> {
                         Some(n) => *n,
                         None => manager
                             .current_generation(app)
+                            .whatever("unable to read app state")?
                             .ok_or_else(|| whatever!("no active generation for app {app}"))?,
                     };
                     let gen_dir = manager.generation_dir(app, gen_number);
@@ -687,7 +703,7 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::ServiceManager(sm_cmd) => match sm_cmd {
                     AppsServiceManagerCommand::Systemd(systemd_cmd) => match systemd_cmd {
                         AppsSystemdCommand::RestoreUnits => {
-                            crate::apps::generator::restore_units()
+                            crate::apps::systemd::restore::restore_units(&manager)
                                 .whatever("failed to restore app units")?;
                         }
                     },
@@ -698,24 +714,11 @@ pub fn main() -> SystemResult<()> {
     Ok(())
 }
 
-/// Convert an [`AppStatus`] to the structured output type.
-fn app_status_to_output(
-    status: Option<crate::apps::orchestrator::AppStatus>,
-) -> crate::config::output::AppWorkloadStatusOutput {
-    use crate::apps::orchestrator::AppStatus;
-    use crate::config::output::{AppWorkloadMessageOutput, AppWorkloadStatusOutput};
-
-    match status {
-        Some(AppStatus::Running) => AppWorkloadStatusOutput::Running,
-        Some(AppStatus::Unhealthy { message }) => {
-            AppWorkloadStatusOutput::Unhealthy(AppWorkloadMessageOutput::new(message))
-        }
-        Some(AppStatus::Stopped) => AppWorkloadStatusOutput::Stopped,
-        Some(AppStatus::Failed { message }) => {
-            AppWorkloadStatusOutput::Failed(AppWorkloadMessageOutput::new(message))
-        }
-        Some(AppStatus::Unknown) | None => AppWorkloadStatusOutput::Unknown,
-    }
+/// Resolve an optional [`AppStatus`], defaulting to `Unknown`.
+fn resolve_app_status(
+    status: Option<crate::apps::orchestrators::AppStatus>,
+) -> crate::apps::orchestrators::AppStatus {
+    status.unwrap_or(crate::apps::orchestrators::AppStatus::Unknown)
 }
 
 #[derive(Debug, Clone)]
@@ -1034,11 +1037,10 @@ fn install_app_bundle(
         app_manager
             .write_generation_metadata(
                 gen_dir,
-                &crate::apps::manager::AppGeneration {
-                    number: *gen_number,
-                    created_at: jiff::Timestamp::now().to_string(),
-                    last_activated: None,
-                },
+                &crate::config::apps::AppGeneration::new(
+                    *gen_number,
+                    jiff::Timestamp::now().to_string(),
+                ),
             )
             .whatever("unable to write generation metadata")?;
         crate::apps::manager::AppManager::mark_complete(gen_dir)

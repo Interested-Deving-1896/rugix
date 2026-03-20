@@ -1,3 +1,5 @@
+import apps::AppStatus
+
 /// Information about the system.
 record SystemInfoOutput {
     /// Information about the slots.
@@ -67,7 +69,7 @@ record BlockDeviceInfo {
 /// Entry in the app list output.
 record AppListEntryOutput {
     /// Live workload status.
-    status: AppWorkloadStatusOutput,
+    status: AppStatus,
     /// Currently active generation number, if any.
     generation?: u64,
 }
@@ -77,32 +79,11 @@ record AppInfoOutput {
     /// App name.
     name: string,
     /// Live workload status.
-    status: AppWorkloadStatusOutput,
+    status: AppStatus,
     /// Persisted app state.
     state: AppStateOutput,
     /// All generations of the app.
     generations: [GenerationInfoOutput],
-}
-
-/// Live workload status.
-#[json(tag = "state", rename_all = "kebab-case")]
-variant AppWorkloadStatusOutput {
-    /// The workload is running and healthy.
-    Running,
-    /// The workload is running but failing health checks.
-    Unhealthy: AppWorkloadMessageOutput,
-    /// The workload is not running.
-    Stopped,
-    /// The workload has failed.
-    Failed: AppWorkloadMessageOutput,
-    /// The status could not be determined.
-    Unknown,
-}
-
-/// Details for a workload status with a message.
-record AppWorkloadMessageOutput {
-    /// Human-readable description.
-    message: string,
 }
 
 /// Persisted app state.

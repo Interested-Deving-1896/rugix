@@ -24,8 +24,8 @@ pub fn load_apps_config() -> AppsResult<AppsConfig> {
 
 /// Get the effective service manager name.
 ///
-/// If explicitly configured, use that value.  Otherwise, attempt auto-detection
-/// by checking for well-known init system indicators.  Falls back to `"none"`.
+/// If explicitly configured, use that value. Otherwise, attempt auto-detection
+/// by checking for well-known init system indicators. Falls back to `"none"`.
 pub fn effective_service_manager(config: &AppsConfig) -> String {
     if let Some(sm) = config.service_manager.as_deref() {
         return sm.to_owned();
@@ -36,7 +36,7 @@ pub fn effective_service_manager(config: &AppsConfig) -> String {
 /// Auto-detect the service manager by probing the system.
 fn detect_service_manager() -> String {
     // systemd: check for the runtime directory it always creates.
-    if Path::new("/run/systemd/system").is_dir() {
+    if Path::new(super::systemd::RUNTIME_UNITS_DIR).is_dir() {
         return "systemd".to_owned();
     }
     "none".to_owned()

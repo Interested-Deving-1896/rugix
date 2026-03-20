@@ -3,26 +3,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use reportify::ResultExt;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
+use crate::config::apps::{
+    AppGeneration, AppState, AppStateActive, AppStateError, AppStateStarting, AppStateStopping,
+    AppStateSwitching, AppsConfig,
+};
 use crate::payload_db::PayloadState;
 
-use super::orchestrator::{AppContext, AppStatus};
-use super::{orchestrators, AppsResult};
+use super::orchestrators::{AppContext, AppStatus};
+use super::{config, orchestrators, AppsResult};
 use rugix_bundle::manifest::AppManifest;
-
-/// Metadata for a single generation, persisted in `.rugix/generation.json`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppGeneration {
-    /// Generation number.
-    pub number: u64,
-    /// Creation timestamp (RFC 3339).
-    pub created_at: String,
-    /// Timestamp of the last successful activation (RFC 3339), if any.
-    #[serde(default)]
-    pub last_activated: Option<String>,
-}
 
 /// A generation with its completeness status resolved from the filesystem.
 pub struct ResolvedGeneration {
@@ -32,74 +23,30 @@ pub struct ResolvedGeneration {
     pub complete: bool,
 }
 
-/// Persisted app state.
-///
-/// Stored at `<app_dir>/.rugix/state.json`. The `switching` state indicates an
-/// in-progress transition.  If the system crashes while switching, recovery retries the
-/// operation on the next boot.
-///
-/// When a switch fails (as opposed to being interrupted), the app automatically attempts
-/// to roll back to the previous generation.  If rollback also fails, the app enters the
-/// `error` state and requires manual intervention.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "state", rename_all = "camelCase")]
-pub enum AppState {
-    /// No generation is active.
-    Inactive,
-    /// A transition is in progress.  Deactivates `from` (if set), then activates
-    /// `to` (if set).  At least one of `from` and `to` must be `Some`.
-    Switching {
-        /// Generation being deactivated, if any.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        from: Option<u64>,
-        /// Generation being activated, if any.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        to: Option<u64>,
-    },
-    /// A generation is active and ready to run.
-    Active {
-        /// The active generation number.
-        generation: u64,
-    },
-    /// The workload of an active generation is being started.
-    Starting {
-        /// The active generation number.
-        generation: u64,
-    },
-    /// The workload of an active generation is being stopped.
-    Stopping {
-        /// The active generation number.
-        generation: u64,
-    },
-    /// A transition and automatic rollback both failed. Manual intervention required.
-    Error {
-        /// The generation that failed to activate.
-        generation: u64,
-        /// Human-readable error description.
-        message: String,
-    },
-}
-
 /// Manages app generations on the data partition.
 pub struct AppManager {
     /// Root directory for all apps.
     apps_dir: PathBuf,
-    /// The system's configured service manager (e.g., `"systemd"`, `"none"`).
+    /// Resolved service manager name.
     service_manager: String,
 }
 
 impl AppManager {
-    pub fn new(apps_dir: PathBuf, service_manager: String) -> Self {
+    /// Create a new app manager.
+    pub fn new(apps_dir: PathBuf, apps_config: AppsConfig) -> Self {
+        let service_manager = config::effective_service_manager(&apps_config);
         Self {
             apps_dir,
             service_manager,
         }
     }
 
+    /// Path to the directory of an app.
     fn app_dir(&self, app_name: &str) -> PathBuf {
         self.apps_dir.join(app_name)
     }
 
+    /// Path to the generations directory of an app.
     fn generations_dir(&self, app_name: &str) -> PathBuf {
         self.app_dir(app_name).join("generations")
     }
@@ -109,14 +56,17 @@ impl AppManager {
         self.generations_dir(app_name).join(number.to_string())
     }
 
+    /// Path to the data directory of an app.
     fn data_dir(&self, app_name: &str) -> PathBuf {
         self.app_dir(app_name).join("data")
     }
 
+    /// Path to the state file of an app.
     fn state_path(&self, app_name: &str) -> PathBuf {
         self.app_dir(app_name).join(".rugix/state.json")
     }
 
+    /// Write the state of an app.
     fn write_state(&self, app_name: &str, state: &AppState) -> AppsResult<()> {
         let path = self.state_path(app_name);
         let content =
@@ -127,49 +77,38 @@ impl AppManager {
     }
 
     /// Read the persisted app state, defaulting to `Inactive` if absent.
-    pub fn read_state(&self, app_name: &str) -> AppState {
+    pub fn read_state(&self, app_name: &str) -> AppsResult<AppState> {
         let path = self.state_path(app_name);
-        let Ok(content) = fs::read_to_string(&path) else {
-            return AppState::Inactive;
-        };
-        serde_json::from_str(&content).unwrap_or(AppState::Inactive)
+        match fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).whatever("unable to parse app state"),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(AppState::Inactive),
+            Err(err) => Err(err).whatever("unable to read app state"),
+        }
     }
 
     /// Check for and recover any interrupted transition for a single app.
     pub fn recover_app(&self, app_name: &str) -> AppsResult<()> {
-        match self.read_state(app_name) {
-            AppState::Switching { from, to } => {
-                if let Some(to_gen) = to {
-                    let gen_dir = self.generation_dir(app_name, to_gen);
-                    if !gen_dir.exists() || !Self::is_complete(&gen_dir) {
-                        warn!(
-                            app = app_name,
-                            generation = to_gen,
-                            "interrupted switch but target generation is not complete, resetting to inactive"
-                        );
-                        self.write_state(app_name, &AppState::Inactive)?;
-                        return Ok(());
-                    }
-                }
+        match self.read_state(app_name)? {
+            AppState::Switching(AppStateSwitching { from, to }) => {
                 info!(app = app_name, ?from, ?to, "recovering interrupted switch");
                 self.do_switch(app_name, from, to, true)?;
             }
-            AppState::Starting { generation } => {
+            AppState::Starting(AppStateStarting { generation }) => {
                 info!(app = app_name, generation, "recovering interrupted start");
                 if let Err(e) = self.run_start(app_name, generation, true) {
                     warn!(app = app_name, generation, "start recovery failed: {e:?}");
                 }
-                self.write_state(app_name, &AppState::Active { generation })?;
+                self.write_state(app_name, &AppState::Active(AppStateActive::new(generation)))?;
             }
-            AppState::Stopping { generation } => {
+            AppState::Stopping(AppStateStopping { generation }) => {
                 info!(app = app_name, generation, "recovering interrupted stop");
                 if let Err(e) = self.run_stop(app_name, generation, true) {
                     warn!(app = app_name, generation, "stop recovery failed: {e:?}");
                 }
-                self.write_state(app_name, &AppState::Active { generation })?;
+                self.write_state(app_name, &AppState::Active(AppStateActive::new(generation)))?;
             }
             // Nothing to recover.
-            AppState::Inactive | AppState::Active { .. } | AppState::Error { .. } => {}
+            AppState::Inactive | AppState::Active(..) | AppState::Error(..) => {}
         }
         Ok(())
     }
@@ -198,6 +137,7 @@ impl AppManager {
         Ok((next, gen_dir))
     }
 
+    /// Determine the number of the next generation.
     fn next_generation_number(&self, app_name: &str) -> AppsResult<u64> {
         let generations_dir = self.generations_dir(app_name);
         let mut max = 0u64;
@@ -283,11 +223,12 @@ impl AppManager {
         Ok(())
     }
 
-    /// Activate a generation: set up resources, start the workload, and
-    /// register auto-start behaviour.
+    /// Activate a generation.
     ///
     /// If another generation is currently active it is deactivated first.
+    ///
     /// If activation fails, the previous generation is automatically rolled back.
+    ///
     /// If rollback also fails, the app enters the `error` state.
     pub fn activate_generation(&self, app_name: &str, gen_number: u64) -> AppsResult<()> {
         let gen_dir = self.generation_dir(app_name, gen_number);
@@ -295,13 +236,14 @@ impl AppManager {
             reportify::bail!("generation is not complete (installation may have been interrupted)");
         }
 
-        let from = self.current_generation(app_name);
+        let from = self.current_generation(app_name)?;
         self.write_state(
             app_name,
-            &AppState::Switching {
-                from,
-                to: Some(gen_number),
-            },
+            &AppState::Switching(
+                AppStateSwitching::new()
+                    .with_from(from)
+                    .with_to(Some(gen_number)),
+            ),
         )?;
 
         self.do_switch(app_name, from, Some(gen_number), false)
@@ -309,16 +251,13 @@ impl AppManager {
 
     /// Deactivate the current generation.
     pub fn deactivate(&self, app_name: &str) -> AppsResult<()> {
-        let Some(current) = self.current_generation(app_name) else {
+        let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
 
         self.write_state(
             app_name,
-            &AppState::Switching {
-                from: Some(current),
-                to: None,
-            },
+            &AppState::Switching(AppStateSwitching::new().with_from(Some(current))),
         )?;
 
         self.do_switch(app_name, Some(current), None, false)
@@ -327,6 +266,7 @@ impl AppManager {
     /// Execute a switch: deactivate `from` (if set), then activate `to` (if set).
     ///
     /// On activation failure, attempts to roll back to the `from` generation.
+    ///
     /// If rollback also fails, transitions to the `Error` state.
     fn do_switch(
         &self,
@@ -335,12 +275,10 @@ impl AppManager {
         to: Option<u64>,
         recovery: bool,
     ) -> AppsResult<()> {
-        // Phase 1: deactivate the old generation.
         if let Some(from_gen) = from {
             self.run_deactivate(app_name, from_gen, recovery)?;
         }
 
-        // Phase 2: activate the new generation.
         let Some(to_gen) = to else {
             // Pure deactivation, already done.
             self.write_state(app_name, &AppState::Inactive)?;
@@ -348,9 +286,8 @@ impl AppManager {
             return Ok(());
         };
 
-        let gen_dir = self.generation_dir(app_name, to_gen);
-        if let Err(err) = self.run_activate(app_name, &gen_dir, recovery) {
-            warn!(
+        if let Err(err) = self.run_activate(app_name, to_gen, recovery) {
+            error!(
                 app = app_name,
                 generation = to_gen,
                 "activation failed: {err:?}"
@@ -367,12 +304,9 @@ impl AppManager {
                     );
                     self.write_state(
                         app_name,
-                        &AppState::Switching {
-                            from: None,
-                            to: Some(prev),
-                        },
+                        &AppState::Switching(AppStateSwitching::new().with_to(Some(prev))),
                     )?;
-                    if let Err(rollback_err) = self.run_activate(app_name, &prev_dir, true) {
+                    if let Err(rollback_err) = self.run_activate(app_name, prev, true) {
                         warn!(
                             app = app_name,
                             generation = prev,
@@ -380,12 +314,12 @@ impl AppManager {
                         );
                         self.write_state(
                             app_name,
-                            &AppState::Error {
-                                generation: to_gen,
-                                message: format!(
+                            &AppState::Error(AppStateError::new(
+                                to_gen,
+                                format!(
                                     "activation failed and rollback to generation {prev} also failed"
                                 ),
-                            },
+                            )),
                         )?;
                         return Err(err);
                     }
@@ -396,10 +330,10 @@ impl AppManager {
             // No previous generation to roll back to.
             self.write_state(
                 app_name,
-                &AppState::Error {
-                    generation: to_gen,
-                    message: format!("activation failed: {err:?}"),
-                },
+                &AppState::Error(AppStateError::new(
+                    to_gen,
+                    format!("activation failed: {err:?}"),
+                )),
             )?;
             return Err(err);
         }
@@ -407,16 +341,17 @@ impl AppManager {
         Ok(())
     }
 
-    /// Run the orchestrator's activate hook.
-    fn run_activate(&self, app_name: &str, gen_dir: &Path, recovery: bool) -> AppsResult<()> {
-        let manifest = load_manifest(gen_dir)?;
+    /// Run the orchestrator's activate operation.
+    fn run_activate(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
+        let gen_dir = self.generation_dir(app_name, gen_number);
+        let manifest = load_manifest(&gen_dir)?;
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
-            generation_dir: gen_dir,
+            generation_dir: &gen_dir,
             data_dir: &data_dir,
             recovery,
             service_manager: &self.service_manager,
@@ -427,29 +362,19 @@ impl AppManager {
             .activate(&ctx)
             .whatever("orchestrator activation failed")?;
 
-        Self::mark_activated(gen_dir)?;
+        Self::mark_activated(&gen_dir)?;
 
-        let gen_number = gen_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .and_then(|n| n.parse::<u64>().ok())
-            .unwrap_or(0);
-        self.write_state(
-            app_name,
-            &AppState::Active {
-                generation: gen_number,
-            },
-        )?;
+        self.write_state(app_name, &AppState::Active(AppStateActive::new(gen_number)))?;
         info!(
             app = app_name,
-            generation_dir = ?gen_dir,
+            generation = gen_number,
             recovery,
             "generation activated"
         );
         Ok(())
     }
 
-    /// Run the orchestrator's deactivate hook for a specific generation.
+    /// Run the orchestrator's deactivate operation for a specific generation.
     fn run_deactivate(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
         let gen_dir = self.generation_dir(app_name, gen_number);
         if !gen_dir.exists() {
@@ -477,20 +402,23 @@ impl AppManager {
 
     /// Start the workload of an already-active generation.
     ///
-    /// The state transitions to `Starting` before the orchestrator is called and
-    /// back to `Active` afterwards, ensuring crash recovery can replay the
-    /// operation if it is interrupted.
+    /// The state transitions to `Starting` before the orchestrator is called and back to
+    /// `Active` afterwards, ensuring crash recovery can replay the operation if it is
+    /// interrupted.
     pub fn start_app(&self, app_name: &str) -> AppsResult<()> {
-        let AppState::Active { generation } = self.read_state(app_name) else {
+        let AppState::Active(AppStateActive { generation }) = self.read_state(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
 
-        self.write_state(app_name, &AppState::Starting { generation })?;
+        self.write_state(
+            app_name,
+            &AppState::Starting(AppStateStarting::new(generation)),
+        )?;
 
         let result = self.run_start(app_name, generation, false);
 
         // Always transition back to Active regardless of outcome.
-        self.write_state(app_name, &AppState::Active { generation })?;
+        self.write_state(app_name, &AppState::Active(AppStateActive::new(generation)))?;
 
         result.whatever("failed to start app workload")?;
         info!(app = app_name, "workload started");
@@ -499,27 +427,30 @@ impl AppManager {
 
     /// Stop the workload of an already-active generation without deactivating it.
     ///
-    /// The state transitions to `Stopping` before the orchestrator is called and
-    /// back to `Active` afterwards, ensuring crash recovery can replay the
-    /// operation if it is interrupted.
+    /// The state transitions to `Stopping` before the orchestrator is called and back to
+    /// `Active` afterwards, ensuring crash recovery can replay the operation if it is
+    /// interrupted.
     pub fn stop_app(&self, app_name: &str) -> AppsResult<()> {
-        let AppState::Active { generation } = self.read_state(app_name) else {
+        let AppState::Active(AppStateActive { generation }) = self.read_state(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
 
-        self.write_state(app_name, &AppState::Stopping { generation })?;
+        self.write_state(
+            app_name,
+            &AppState::Stopping(AppStateStopping::new(generation)),
+        )?;
 
         let result = self.run_stop(app_name, generation, false);
 
         // Always transition back to Active regardless of outcome.
-        self.write_state(app_name, &AppState::Active { generation })?;
+        self.write_state(app_name, &AppState::Active(AppStateActive::new(generation)))?;
 
         result.whatever("failed to stop app workload")?;
         info!(app = app_name, "workload stopped");
         Ok(())
     }
 
-    /// Run the orchestrator's start hook for a specific generation.
+    /// Run the orchestrator's start operation for a specific generation.
     fn run_start(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
         let gen_dir = self.generation_dir(app_name, gen_number);
         let manifest = load_manifest(&gen_dir)?;
@@ -540,7 +471,7 @@ impl AppManager {
             .whatever("orchestrator start failed")
     }
 
-    /// Run the orchestrator's stop hook for a specific generation.
+    /// Run the orchestrator's stop operation for a specific generation.
     fn run_stop(&self, app_name: &str, gen_number: u64, recovery: bool) -> AppsResult<()> {
         let gen_dir = self.generation_dir(app_name, gen_number);
         let manifest = load_manifest(&gen_dir)?;
@@ -561,7 +492,7 @@ impl AppManager {
 
     /// Get status of the currently active generation.
     pub fn app_status(&self, app_name: &str) -> AppsResult<AppStatus> {
-        let Some(gen_dir) = self.resolve_current(app_name) else {
+        let Some(gen_dir) = self.resolve_current(app_name)? else {
             return Ok(AppStatus::Stopped);
         };
         let manifest = load_manifest(&gen_dir)?;
@@ -626,11 +557,7 @@ impl AppManager {
                     } else {
                         None
                     };
-                    let meta = meta.unwrap_or(AppGeneration {
-                        number,
-                        created_at: String::new(),
-                        last_activated: None,
-                    });
+                    let meta = meta.unwrap_or_else(|| AppGeneration::new(number, String::new()));
                     generations.push(ResolvedGeneration { meta, complete });
                 }
             }
@@ -640,12 +567,12 @@ impl AppManager {
     }
 
     /// Get the currently active generation number, if any.
-    pub fn current_generation(&self, app_name: &str) -> Option<u64> {
-        match self.read_state(app_name) {
-            AppState::Active { generation }
-            | AppState::Starting { generation }
-            | AppState::Stopping { generation } => Some(generation),
-            _ => None,
+    pub fn current_generation(&self, app_name: &str) -> AppsResult<Option<u64>> {
+        match self.read_state(app_name)? {
+            AppState::Active(AppStateActive { generation })
+            | AppState::Starting(AppStateStarting { generation })
+            | AppState::Stopping(AppStateStopping { generation }) => Ok(Some(generation)),
+            _ => Ok(None),
         }
     }
 
@@ -667,7 +594,7 @@ impl AppManager {
     /// Rollback: deactivate the current generation and activate the most recent
     /// previous generation that was successfully activated before.
     pub fn rollback(&self, app_name: &str) -> AppsResult<()> {
-        let Some(current) = self.current_generation(app_name) else {
+        let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("no current generation to rollback from");
         };
         let generations = self.list_generations(app_name)?;
@@ -687,28 +614,35 @@ impl AppManager {
         self.activate_generation(app_name, previous.meta.number)
     }
 
+    /// Remove a generation directory.
+    ///
+    /// Removes the complete marker first so that an interrupted removal leaves
+    /// the generation in an incomplete state rather than appearing valid.
+    fn remove_generation(&self, app_name: &str, gen_number: u64) -> std::io::Result<()> {
+        let gen_dir = self.generation_dir(app_name, gen_number);
+        let complete_marker = gen_dir.join(".rugix/complete");
+        if complete_marker.exists() {
+            fs::remove_file(&complete_marker)?;
+        }
+        fs::remove_dir_all(&gen_dir)
+    }
+
     /// Garbage collect old generations.
     ///
-    /// Generations that were never activated are always removed (they are not
-    /// valid rollback targets).  Among previously-activated generations, at
-    /// most `keep` of the most recent ones are retained.  The currently active
-    /// generation is never removed.
+    /// Generations that were never activated are always removed (they are not valid
+    /// rollback targets). Among previously-activated generations, at most `keep` of
+    /// the most recent ones are retained. The currently active generation is never
+    /// removed.
     pub fn gc(&self, app_name: &str, keep: usize) -> AppsResult<Vec<u64>> {
-        let current = self.current_generation(app_name);
+        let current = self.current_generation(app_name)?;
         let mut generations = self.list_generations(app_name)?;
         generations.sort_by_key(|g| g.meta.number);
         let mut removed = Vec::new();
 
-        // Remove all never-activated generations (except the current one).
+        // Remove all never-activated generations.
         for gen in &generations {
-            if Some(gen.meta.number) == current {
-                continue;
-            }
             if gen.meta.last_activated.is_none() {
-                let gen_dir = self
-                    .generations_dir(app_name)
-                    .join(gen.meta.number.to_string());
-                if let Err(e) = fs::remove_dir_all(&gen_dir) {
+                if let Err(e) = self.remove_generation(app_name, gen.meta.number) {
                     info!(
                         generation = gen.meta.number,
                         "failed to remove generation: {e}"
@@ -727,10 +661,7 @@ impl AppManager {
         if activated.len() > keep {
             let to_remove = activated.len() - keep;
             for gen in activated.iter().take(to_remove) {
-                let gen_dir = self
-                    .generations_dir(app_name)
-                    .join(gen.meta.number.to_string());
-                if let Err(e) = fs::remove_dir_all(&gen_dir) {
+                if let Err(e) = self.remove_generation(app_name, gen.meta.number) {
                     info!(
                         generation = gen.meta.number,
                         "failed to remove generation: {e}"
@@ -745,11 +676,10 @@ impl AppManager {
         Ok(removed)
     }
 
-    /// Remove an app entirely: deactivate, delete all generations, data, and
-    /// system files.
+    /// Remove an app entirely.
     pub fn remove_app(&self, app_name: &str) -> AppsResult<()> {
         // Deactivate if active (stops workload + cleans up orchestrator resources).
-        if self.current_generation(app_name).is_some() {
+        if self.current_generation(app_name)?.is_some() {
             self.deactivate(app_name)?;
         }
         let app_dir = self.app_dir(app_name);
@@ -761,13 +691,16 @@ impl AppManager {
     }
 
     /// Resolve the active generation directory from the persisted state.
-    fn resolve_current(&self, app_name: &str) -> Option<PathBuf> {
-        let gen = self.current_generation(app_name)?;
+    fn resolve_current(&self, app_name: &str) -> AppsResult<Option<PathBuf>> {
+        let Some(gen) = self.current_generation(app_name)? else {
+            return Ok(None);
+        };
         let dir = self.generation_dir(app_name, gen);
-        dir.exists().then_some(dir)
+        Ok(dir.exists().then_some(dir))
     }
 }
 
+/// Load an app manifest.
 fn load_manifest(gen_dir: &Path) -> AppsResult<AppManifest> {
     let manifest_path = gen_dir.join("app.toml");
     let content = fs::read_to_string(&manifest_path).whatever("unable to read app.toml")?;

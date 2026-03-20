@@ -14,6 +14,296 @@
   "required": [],
   "unevaluatedProperties": false,
   "$defs": {
+    "rugix_ctrl.apps.AppGeneration": {
+      "$id": "rugix_ctrl.apps.AppGeneration",
+      "type": "object",
+      "description": "Metadata for a single generation, persisted in `.rugix/generation.json`.",
+      "properties": {
+        "number": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "lastActivated": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "number",
+        "createdAt"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppState": {
+      "$id": "rugix_ctrl.apps.AppState",
+      "description": "Persisted app state.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "inactive"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "switching"
+            },
+            "from": {
+              "type": "integer",
+              "format": "uint64"
+            },
+            "to": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "active"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "starting"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "stopping"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            }
+          },
+          "required": [
+            "state",
+            "generation"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "error"
+            },
+            "generation": {
+              "type": "integer",
+              "format": "uint64"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "generation",
+            "message"
+          ]
+        }
+      ]
+    },
+    "rugix_ctrl.apps.AppStateActive": {
+      "$id": "rugix_ctrl.apps.AppStateActive",
+      "type": "object",
+      "description": "Details of an active state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppStateError": {
+      "$id": "rugix_ctrl.apps.AppStateError",
+      "type": "object",
+      "description": "Details of an error state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation",
+        "message"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppStateStarting": {
+      "$id": "rugix_ctrl.apps.AppStateStarting",
+      "type": "object",
+      "description": "Details of a starting state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppStateStopping": {
+      "$id": "rugix_ctrl.apps.AppStateStopping",
+      "type": "object",
+      "description": "Details of a stopping state.",
+      "properties": {
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "generation"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppStateSwitching": {
+      "$id": "rugix_ctrl.apps.AppStateSwitching",
+      "type": "object",
+      "description": "Details of a switching state.",
+      "properties": {
+        "from": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "to": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.apps.AppStatus": {
+      "$id": "rugix_ctrl.apps.AppStatus",
+      "description": "Live workload status.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "running"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "unhealthy"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "stopped"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "failed"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "const": "unknown"
+            }
+          },
+          "required": [
+            "state"
+          ]
+        }
+      ]
+    },
+    "rugix_ctrl.apps.AppStatusMessage": {
+      "$id": "rugix_ctrl.apps.AppStatusMessage",
+      "type": "object",
+      "description": "Details for a status with a message.",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "unevaluatedProperties": false
+    },
     "rugix_ctrl.apps.AppsConfig": {
       "$id": "rugix_ctrl.apps.AppsConfig",
       "type": "object",
@@ -289,7 +579,7 @@
           "type": "string"
         },
         "status": {
-          "$ref": "#/$defs/rugix_ctrl.output.AppWorkloadStatusOutput"
+          "$ref": "#/$defs/rugix_ctrl.apps.AppStatus"
         },
         "state": {
           "$ref": "#/$defs/rugix_ctrl.output.AppStateOutput"
@@ -315,7 +605,7 @@
       "description": "Entry in the app list output.",
       "properties": {
         "status": {
-          "$ref": "#/$defs/rugix_ctrl.output.AppWorkloadStatusOutput"
+          "$ref": "#/$defs/rugix_ctrl.apps.AppStatus"
         },
         "generation": {
           "type": "integer",
@@ -511,89 +801,6 @@
       },
       "required": [],
       "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppWorkloadMessageOutput": {
-      "$id": "rugix_ctrl.output.AppWorkloadMessageOutput",
-      "type": "object",
-      "description": "Details for a workload status with a message.",
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppWorkloadStatusOutput": {
-      "$id": "rugix_ctrl.output.AppWorkloadStatusOutput",
-      "description": "Live workload status.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "running"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "unhealthy"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "message"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "stopped"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "failed"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "message"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "unknown"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        }
-      ]
     },
     "rugix_ctrl.output.BlockDeviceInfo": {
       "$id": "rugix_ctrl.output.BlockDeviceInfo",

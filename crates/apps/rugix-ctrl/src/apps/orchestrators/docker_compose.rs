@@ -1,3 +1,5 @@
+//! Orchestrator for managing Docker Compose stacks.
+
 use std::fmt::Write;
 use std::fs;
 use std::process::Command;
@@ -5,7 +7,7 @@ use std::process::Command;
 use reportify::ResultExt;
 use tracing::info;
 
-use crate::apps::orchestrator::{AppContext, AppStatus, Orchestrator};
+use super::{AppContext, AppStatus, AppStatusMessage, Orchestrator};
 use crate::apps::AppsResult;
 
 /// Name of the env file written into the generation directory.
@@ -13,18 +15,6 @@ const ENV_FILE: &str = "rugix-app.env";
 
 /// Default timeout (in seconds) for `docker compose up --wait`.
 const DEFAULT_HEALTH_CHECK_TIMEOUT: u64 = 120;
-
-/// A single container entry from `docker compose ps --format json`.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "PascalCase")]
-struct ContainerStatus {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    state: String,
-    #[serde(default)]
-    health: Option<String>,
-}
 
 /// Docker Compose orchestrator.
 pub struct DockerCompose;
@@ -77,10 +67,8 @@ impl Orchestrator for DockerCompose {
     }
 
     fn activate(&self, ctx: &AppContext) -> AppsResult<()> {
-        // Write the env file so compose can reference Rugix variables.
         Self::write_env_file(ctx)?;
 
-        // Load all image tarballs from the images/ subdirectory.
         let images_dir = ctx.generation_dir.join("images");
         if images_dir.exists() {
             let entries = fs::read_dir(&images_dir).whatever("unable to read images directory")?;
@@ -103,12 +91,10 @@ impl Orchestrator for DockerCompose {
             }
         }
 
-        // Start the containers.
         info!(app = ctx.app_name, "starting docker compose");
         let mut cmd = Self::compose_cmd(ctx);
         cmd.arg("up").arg("-d").arg("--remove-orphans");
 
-        // Wait for containers to be healthy if a timeout is configured.
         let timeout = Self::health_check_timeout(ctx);
         if timeout > 0 {
             cmd.arg("--wait")
@@ -137,8 +123,6 @@ impl Orchestrator for DockerCompose {
         if stdout.trim().is_empty() {
             return Ok(AppStatus::Stopped);
         }
-        // Parse each container's state and health.  `docker compose ps --format json`
-        // outputs one JSON object per line.
         for line in stdout.lines() {
             let line = line.trim();
             if line.is_empty() {
@@ -148,22 +132,18 @@ impl Orchestrator for DockerCompose {
                 continue;
             };
             if !container.state.eq_ignore_ascii_case("running") {
-                return Ok(AppStatus::Failed {
-                    message: format!(
-                        "container {} is {}",
-                        container.name.as_deref().unwrap_or("unknown"),
-                        container.state
-                    ),
-                });
+                return Ok(AppStatus::Failed(AppStatusMessage::new(format!(
+                    "container {} is {}",
+                    container.name.as_deref().unwrap_or("unknown"),
+                    container.state
+                ))));
             }
-            if let Some(ref health) = container.health {
+            if let Some(health) = &container.health {
                 if health.eq_ignore_ascii_case("unhealthy") {
-                    return Ok(AppStatus::Unhealthy {
-                        message: format!(
-                            "container {} is unhealthy",
-                            container.name.as_deref().unwrap_or("unknown"),
-                        ),
-                    });
+                    return Ok(AppStatus::Unhealthy(AppStatusMessage::new(format!(
+                        "container {} is unhealthy",
+                        container.name.as_deref().unwrap_or("unknown"),
+                    ))));
                 }
             }
         }
@@ -201,4 +181,13 @@ impl Orchestrator for DockerCompose {
         }
         Ok(())
     }
+}
+
+/// A single container entry from `docker compose ps --format json`.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct ContainerStatus {
+    name: Option<String>,
+    state: String,
+    health: Option<String>,
 }

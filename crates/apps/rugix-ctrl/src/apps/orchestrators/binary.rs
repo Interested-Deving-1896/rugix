@@ -1,12 +1,13 @@
+//! Orchestrator for managing a single executable via a service manager.
+
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use reportify::ResultExt;
 use tracing::info;
 
-use crate::apps::orchestrator::{AppContext, AppStatus, Orchestrator};
-use crate::apps::AppsResult;
+use super::{AppContext, AppStatus, AppStatusMessage, Orchestrator};
+use crate::apps::{systemd, AppsResult};
 
 /// Manages a single executable via a service manager.
 pub struct Binary;
@@ -15,6 +16,7 @@ pub struct Binary;
 const UNIT_TEMPLATE: &str = "systemd.service";
 
 impl Binary {
+    /// Ensure that the service manager is systemd.
     fn require_systemd(ctx: &AppContext) -> AppsResult<()> {
         if ctx.service_manager != "systemd" {
             reportify::bail!(
@@ -31,13 +33,13 @@ impl Binary {
     }
 
     /// Directory that holds the rendered units for the active generation.
-    fn persistent_unit_dir(ctx: &AppContext) -> PathBuf {
+    fn app_units_dir(ctx: &AppContext) -> PathBuf {
         ctx.generation_dir.join(".rugix/systemd/units")
     }
 
     /// Runtime path where systemd can pick up the unit immediately.
     fn runtime_unit_path(app_name: &str) -> PathBuf {
-        Path::new("/run/systemd/system").join(Self::service_name(app_name))
+        Path::new(systemd::RUNTIME_UNITS_DIR).join(Self::service_name(app_name))
     }
 
     /// Read the unit template and substitute placeholders.
@@ -50,18 +52,6 @@ impl Binary {
             .replace("${DATA_DIR}", &ctx.data_dir.to_string_lossy());
         Ok(rendered)
     }
-
-    /// Reload Systemd.
-    fn daemon_reload() -> AppsResult<()> {
-        let status = Command::new("systemctl")
-            .arg("daemon-reload")
-            .status()
-            .whatever("unable to run systemctl daemon-reload")?;
-        if !status.success() {
-            reportify::bail!("systemctl daemon-reload failed");
-        }
-        Ok(())
-    }
 }
 
 impl Orchestrator for Binary {
@@ -73,54 +63,35 @@ impl Orchestrator for Binary {
         Self::require_systemd(ctx)?;
 
         let unit_content = Self::render_unit(ctx)?;
-        let service = Self::service_name(ctx.app_name);
+        let service_name = Self::service_name(ctx.app_name);
 
-        let persist_dir = Self::persistent_unit_dir(ctx);
-        fs::create_dir_all(&persist_dir).whatever("unable to create units directory")?;
-        let persist_path = persist_dir.join(&service);
-        fs::write(&persist_path, &unit_content).whatever("unable to write persistent unit file")?;
-        info!(app = ctx.app_name, unit = ?persist_path, "persisted unit");
+        let units_dir = Self::app_units_dir(ctx);
+        fs::create_dir_all(&units_dir).whatever("unable to create units directory")?;
+        let unit_path = units_dir.join(&service_name);
+        fs::write(&unit_path, &unit_content).whatever("unable to write persistent unit file")?;
+        info!(app = ctx.app_name, unit = ?unit_path, "persisted unit");
 
         let runtime_path = Self::runtime_unit_path(ctx.app_name);
         fs::write(&runtime_path, &unit_content).whatever("unable to write runtime unit file")?;
         info!(app = ctx.app_name, unit = ?runtime_path, "installed runtime unit");
 
-        Self::daemon_reload()?;
-
-        // Enable with --runtime to create .wants/ symlinks under
-        // /run/systemd/system/, integrating the unit into systemd's boot
-        // dependency graph.  This is restored by restore-units after reboot.
-        let _ = Command::new("systemctl")
-            .args(["enable", "--runtime", &service])
-            .status();
-
-        let start_status = Command::new("systemctl")
-            .args(["start", &service])
-            .status()
-            .whatever("unable to run systemctl start")?;
-        if !start_status.success() {
-            reportify::bail!("systemctl start {service} failed");
-        }
-        info!(app = ctx.app_name, service = %service, "enabled and started");
+        systemd::daemon_reload()?;
+        systemd::enable_runtime(&service_name);
+        systemd::start(&service_name)?;
+        info!(app = ctx.app_name, service = %service_name, "enabled and started");
 
         Ok(())
     }
 
     fn status(&self, ctx: &AppContext) -> AppsResult<AppStatus> {
         Self::require_systemd(ctx)?;
-        let service = Self::service_name(ctx.app_name);
-        let output = Command::new("systemctl")
-            .arg("is-active")
-            .arg(&service)
-            .output()
-            .whatever("unable to run systemctl is-active")?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        match stdout.trim() {
+        let service_name = Self::service_name(ctx.app_name);
+        match systemd::is_active(&service_name)?.as_str() {
             "active" => Ok(AppStatus::Running),
             "inactive" | "dead" => Ok(AppStatus::Stopped),
-            "failed" => Ok(AppStatus::Failed {
-                message: "unit failed".to_owned(),
-            }),
+            "failed" => Ok(AppStatus::Failed(AppStatusMessage::new(
+                "unit failed".to_owned(),
+            ))),
             _ => Ok(AppStatus::Unknown),
         }
     }
@@ -130,24 +101,15 @@ impl Orchestrator for Binary {
 
         let service = Self::service_name(ctx.app_name);
 
-        let _ = Command::new("systemctl").args(["stop", &service]).status();
-        let _ = Command::new("systemctl")
-            .args(["disable", "--runtime", &service])
-            .status();
+        let _ = systemd::stop(&service);
+        systemd::disable_runtime(&service);
         info!(app = ctx.app_name, service = %service, "stopped and disabled");
-
-        let persist_dir = Self::persistent_unit_dir(ctx);
-        let persist_path = persist_dir.join(&service);
-        if persist_path.exists() {
-            info!(app = ctx.app_name, unit = ?persist_path, "removing persistent unit");
-            let _ = fs::remove_file(&persist_path);
-        }
 
         let runtime_path = Self::runtime_unit_path(ctx.app_name);
         if runtime_path.exists() {
             info!(app = ctx.app_name, unit = ?runtime_path, "removing runtime unit");
             let _ = fs::remove_file(&runtime_path);
-            let _ = Self::daemon_reload();
+            let _ = systemd::daemon_reload();
         }
         Ok(())
     }
@@ -155,13 +117,7 @@ impl Orchestrator for Binary {
     fn start(&self, ctx: &AppContext) -> AppsResult<()> {
         Self::require_systemd(ctx)?;
         let service = Self::service_name(ctx.app_name);
-        let status = Command::new("systemctl")
-            .args(["start", &service])
-            .status()
-            .whatever("unable to run systemctl start")?;
-        if !status.success() {
-            reportify::bail!("systemctl start {service} failed");
-        }
+        systemd::start(&service)?;
         info!(app = ctx.app_name, service = %service, "started");
         Ok(())
     }
@@ -169,13 +125,7 @@ impl Orchestrator for Binary {
     fn stop(&self, ctx: &AppContext) -> AppsResult<()> {
         Self::require_systemd(ctx)?;
         let service = Self::service_name(ctx.app_name);
-        let status = Command::new("systemctl")
-            .args(["stop", &service])
-            .status()
-            .whatever("unable to run systemctl stop")?;
-        if !status.success() {
-            reportify::bail!("systemctl stop {service} failed");
-        }
+        systemd::stop(&service)?;
         info!(app = ctx.app_name, service = %service, "stopped");
         Ok(())
     }
