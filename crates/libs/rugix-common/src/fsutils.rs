@@ -19,8 +19,10 @@ reportify::new_whatever_type! {
 /// Atomically write `data` to `path` using a write-fsync-rename pattern.
 ///
 /// Writes to a temporary file next to `path`, fsyncs it, then atomically
-/// renames it to the final path. This ensures that the file is never
-/// partially written, even if the system crashes mid-write.
+/// renames it to the final path. The parent directory is fsynced after the
+/// rename to ensure the new directory entry is durable. This guarantees
+/// that the file is never partially written, even if the system crashes
+/// mid-write.
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Report<FsError>> {
     let tmp_path = path.with_extension("tmp");
     if let Some(parent) = path.parent() {
@@ -32,6 +34,12 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<(), Report<FsError>> {
     file.sync_all().whatever("unable to sync temporary file")?;
     drop(file);
     fs::rename(&tmp_path, path).whatever("unable to rename temporary file")?;
+    // Fsync the parent directory so that the rename is durable across crashes.
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(())
 }
 
