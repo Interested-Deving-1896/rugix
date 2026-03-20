@@ -5,7 +5,7 @@ use std::fs;
 use std::process::Command;
 
 use reportify::ResultExt;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::{AppContext, AppStatus, AppStatusMessage, Orchestrator};
 use crate::apps::AppsResult;
@@ -152,7 +152,21 @@ impl Orchestrator for DockerCompose {
 
     fn deactivate(&self, ctx: &AppContext) -> AppsResult<()> {
         info!(app = ctx.app_name, "stopping docker compose");
-        let _ = Self::compose_cmd(ctx).arg("down").status();
+        match Self::compose_cmd(ctx).arg("down").status() {
+            Ok(status) if !status.success() => {
+                warn!(
+                    app = ctx.app_name,
+                    "docker compose down failed (best-effort)"
+                );
+            }
+            Err(err) => {
+                warn!(
+                    app = ctx.app_name,
+                    "unable to run docker compose down: {err} (best-effort)"
+                );
+            }
+            _ => {}
+        }
         Ok(())
     }
 

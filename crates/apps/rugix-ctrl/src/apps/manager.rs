@@ -117,8 +117,17 @@ impl AppManager {
     /// The caller must hold the [`AppLock`] for this app.
     pub fn recover_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         match self.read_state(app_name)? {
-            AppState::Switching(AppStateSwitching { from, to }) => {
-                info!(app = app_name, ?from, ?to, "recovering interrupted switch");
+            AppState::Switching(AppStateSwitching { from, to, recovery }) => {
+                if recovery.unwrap_or(false) {
+                    warn!(
+                        app = app_name,
+                        ?from,
+                        ?to,
+                        "recovering interrupted switch that was itself a recovery"
+                    );
+                } else {
+                    info!(app = app_name, ?from, ?to, "recovering interrupted switch");
+                }
                 self.do_switch(app_name, from, to, true)?;
             }
             AppState::Starting(AppStateStarting { generation }) => {
@@ -135,8 +144,28 @@ impl AppManager {
                 }
                 self.write_state(app_name, &AppState::Active(AppStateActive::new(generation)))?;
             }
+            AppState::Error(AppStateError { from, to, message }) => {
+                // Try to recover by activating the previously working generation first. If there
+                // was none, or if that also fails, try the generation that originally failed. The
+                // underlying issue may have been transient.
+                let target = from.unwrap_or(to);
+                info!(
+                    app = app_name,
+                    from, to, target, message, "recovering from error state"
+                );
+                if let Err(e) = self.run_activate(app_name, target, true) {
+                    warn!(app = app_name, target, "recovery activation failed: {e:?}");
+                    // If we tried `from` and it failed, fall back to `to`.
+                    if from.is_some() {
+                        info!(app = app_name, to, "falling back to failed generation");
+                        if let Err(e) = self.run_activate(app_name, to, true) {
+                            warn!(app = app_name, to, "fallback activation also failed: {e:?}");
+                        }
+                    }
+                }
+            }
             // Nothing to recover.
-            AppState::Inactive | AppState::Active(..) | AppState::Error(..) => {}
+            AppState::Inactive | AppState::Active(..) => {}
         }
         Ok(())
     }
@@ -295,15 +324,6 @@ impl AppManager {
         }
 
         let from = self.current_generation(app_name)?;
-        self.write_state(
-            app_name,
-            &AppState::Switching(
-                AppStateSwitching::new()
-                    .with_from(from)
-                    .with_to(Some(gen_number)),
-            ),
-        )?;
-
         self.do_switch(app_name, from, Some(gen_number), false)
     }
 
@@ -314,11 +334,6 @@ impl AppManager {
         let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("app {app_name} has no active generation");
         };
-
-        self.write_state(
-            app_name,
-            &AppState::Switching(AppStateSwitching::new().with_from(Some(current))),
-        )?;
 
         self.do_switch(app_name, Some(current), None, false)
     }
@@ -335,8 +350,31 @@ impl AppManager {
         to: Option<u64>,
         recovery: bool,
     ) -> AppsResult<()> {
+        self.write_state(
+            app_name,
+            &AppState::Switching(
+                AppStateSwitching::new()
+                    .with_from(from)
+                    .with_to(to)
+                    .with_recovery(Some(recovery)),
+            ),
+        )?;
+
         if let Some(from_gen) = from {
-            self.run_deactivate(app_name, from_gen, recovery)?;
+            if let Err(e) = self.run_deactivate(app_name, from_gen, recovery) {
+                if to.is_some() {
+                    // We're switching to a new generation. Press on despite the deactivation
+                    // failure so we don't leave nothing running.
+                    warn!(
+                        app = app_name,
+                        generation = from_gen,
+                        "deactivation of old generation failed, continuing with activation: {e:?}"
+                    );
+                } else {
+                    // Pure deactivation with no target. Propagate the error.
+                    return Err(e);
+                }
+            }
         }
 
         let Some(to_gen) = to else {
@@ -371,10 +409,6 @@ impl AppManager {
                         to = prev,
                         "rolling back to previous generation"
                     );
-                    self.write_state(
-                        app_name,
-                        &AppState::Switching(AppStateSwitching::new().with_to(Some(prev))),
-                    )?;
                     if let Err(rollback_err) = self.run_activate(app_name, prev, true) {
                         warn!(
                             app = app_name,
@@ -383,12 +417,15 @@ impl AppManager {
                         );
                         self.write_state(
                             app_name,
-                            &AppState::Error(AppStateError::new(
-                                to_gen,
-                                format!(
-                                    "activation failed and rollback to generation {prev} also failed"
-                                ),
-                            )),
+                            &AppState::Error(
+                                AppStateError::new(
+                                    to_gen,
+                                    format!(
+                                        "activation failed and rollback to generation {prev} also failed"
+                                    ),
+                                )
+                                .with_from(Some(prev)),
+                            ),
                         )?;
                         return Err(err);
                     }
@@ -399,10 +436,10 @@ impl AppManager {
             // No previous generation to roll back to.
             self.write_state(
                 app_name,
-                &AppState::Error(AppStateError::new(
-                    to_gen,
-                    format!("activation failed: {err:?}"),
-                )),
+                &AppState::Error(
+                    AppStateError::new(to_gen, format!("activation failed: {err:?}"))
+                        .with_from(from),
+                ),
             )?;
             return Err(err);
         }

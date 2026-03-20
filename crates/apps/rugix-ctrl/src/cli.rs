@@ -557,15 +557,7 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write apps list to stdout")?;
                 }
                 AppsCommand::Info { app } => {
-                    use crate::config::apps::{
-                        AppState, AppStateActive, AppStateError, AppStateStarting,
-                        AppStateStopping, AppStateSwitching,
-                    };
-                    use crate::config::output::{
-                        AppInfoOutput, AppStateActiveOutput, AppStateErrorOutput, AppStateOutput,
-                        AppStateStartingOutput, AppStateStoppingOutput, AppStateSwitchingOutput,
-                        GenerationInfoOutput,
-                    };
+                    use crate::config::output::{AppInfoOutput, GenerationInfoOutput};
                     let status = resolve_app_status(manager.app_status(app).ok());
                     let generations = manager
                         .list_generations(app)
@@ -576,27 +568,6 @@ pub fn main() -> SystemResult<()> {
                     let state = manager
                         .read_state(app)
                         .whatever("unable to read app state")?;
-                    let state_output = match state {
-                        AppState::Inactive => AppStateOutput::Inactive,
-                        AppState::Switching(AppStateSwitching { from, to }) => {
-                            AppStateOutput::Switching(
-                                AppStateSwitchingOutput::new().with_from(from).with_to(to),
-                            )
-                        }
-                        AppState::Active(AppStateActive { generation }) => {
-                            AppStateOutput::Active(AppStateActiveOutput::new(generation))
-                        }
-                        AppState::Starting(AppStateStarting { generation }) => {
-                            AppStateOutput::Starting(AppStateStartingOutput::new(generation))
-                        }
-                        AppState::Stopping(AppStateStopping { generation }) => {
-                            AppStateOutput::Stopping(AppStateStoppingOutput::new(generation))
-                        }
-                        AppState::Error(AppStateError {
-                            generation,
-                            message,
-                        }) => AppStateOutput::Error(AppStateErrorOutput::new(generation, message)),
-                    };
                     let gen_entries: Vec<_> = generations
                         .iter()
                         .map(|gen| {
@@ -609,7 +580,7 @@ pub fn main() -> SystemResult<()> {
                             .with_last_activated(gen.meta.last_activated.clone())
                         })
                         .collect();
-                    let output = AppInfoOutput::new(app.clone(), status, state_output, gen_entries);
+                    let output = AppInfoOutput::new(app.clone(), status, state, gen_entries);
                     rugix_cli::json::print_json(&output, false)
                         .whatever("unable to write app info to stdout")?;
                 }

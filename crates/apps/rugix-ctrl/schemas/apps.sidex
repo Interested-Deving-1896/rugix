@@ -42,6 +42,8 @@ record AppStateSwitching {
     from?: u64,
     /// Generation being activated, if any.
     to?: u64,
+    /// Whether this switch is a recovery attempt.
+    recovery?: bool,
 }
 
 /// Details of an active state.
@@ -52,8 +54,10 @@ record AppStateActive {
 
 /// Details of an error state.
 record AppStateError {
+    /// The generation that was previously active before the failed switch, if any.
+    from?: u64,
     /// The generation that failed to activate.
-    generation: u64,
+    to: u64,
     /// Human-readable error description.
     message: string,
 }

@@ -79,6 +79,9 @@
             "to": {
               "type": "integer",
               "format": "uint64"
+            },
+            "recovery": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -139,7 +142,11 @@
             "state": {
               "const": "error"
             },
-            "generation": {
+            "from": {
+              "type": "integer",
+              "format": "uint64"
+            },
+            "to": {
               "type": "integer",
               "format": "uint64"
             },
@@ -149,7 +156,7 @@
           },
           "required": [
             "state",
-            "generation",
+            "to",
             "message"
           ]
         }
@@ -175,7 +182,11 @@
       "type": "object",
       "description": "Details of an error state.",
       "properties": {
-        "generation": {
+        "from": {
+          "type": "integer",
+          "format": "uint64"
+        },
+        "to": {
           "type": "integer",
           "format": "uint64"
         },
@@ -184,7 +195,7 @@
         }
       },
       "required": [
-        "generation",
+        "to",
         "message"
       ],
       "unevaluatedProperties": false
@@ -231,6 +242,9 @@
         "to": {
           "type": "integer",
           "format": "uint64"
+        },
+        "recovery": {
+          "type": "boolean"
         }
       },
       "required": [],
@@ -612,7 +626,7 @@
           "$ref": "#/$defs/rugix_ctrl.apps.AppStatus"
         },
         "state": {
-          "$ref": "#/$defs/rugix_ctrl.output.AppStateOutput"
+          "$ref": "#/$defs/rugix_ctrl.apps.AppState"
         },
         "generations": {
           "type": "array",
@@ -645,191 +659,6 @@
       "required": [
         "status"
       ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppStateActiveOutput": {
-      "$id": "rugix_ctrl.output.AppStateActiveOutput",
-      "type": "object",
-      "description": "Details of an active state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppStateErrorOutput": {
-      "$id": "rugix_ctrl.output.AppStateErrorOutput",
-      "type": "object",
-      "description": "Details of an error state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "generation",
-        "message"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppStateOutput": {
-      "$id": "rugix_ctrl.output.AppStateOutput",
-      "description": "Persisted app state.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "inactive"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "switching"
-            },
-            "from": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "to": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "active"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "starting"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "stopping"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "error"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "generation",
-            "message"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.output.AppStateStartingOutput": {
-      "$id": "rugix_ctrl.output.AppStateStartingOutput",
-      "type": "object",
-      "description": "Details of a starting state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppStateStoppingOutput": {
-      "$id": "rugix_ctrl.output.AppStateStoppingOutput",
-      "type": "object",
-      "description": "Details of a stopping state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppStateSwitchingOutput": {
-      "$id": "rugix_ctrl.output.AppStateSwitchingOutput",
-      "type": "object",
-      "description": "Details of a switching state.",
-      "properties": {
-        "from": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "to": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [],
       "unevaluatedProperties": false
     },
     "rugix_ctrl.output.BlockDeviceInfo": {
