@@ -159,11 +159,17 @@ impl Orchestrator for DockerCompose {
     fn start(&self, ctx: &AppContext) -> AppsResult<()> {
         Self::write_env_file(ctx)?;
         info!(app = ctx.app_name, "starting docker compose");
-        let status = Self::compose_cmd(ctx)
-            .arg("up")
-            .arg("-d")
-            .status()
-            .whatever("unable to run docker compose up")?;
+        let mut cmd = Self::compose_cmd(ctx);
+        cmd.arg("up").arg("-d");
+
+        let timeout = Self::health_check_timeout(ctx);
+        if timeout > 0 {
+            cmd.arg("--wait")
+                .arg("--wait-timeout")
+                .arg(timeout.to_string());
+        }
+
+        let status = cmd.status().whatever("unable to run docker compose up")?;
         if !status.success() {
             reportify::bail!("docker compose up failed");
         }
