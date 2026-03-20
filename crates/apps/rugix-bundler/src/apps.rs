@@ -341,6 +341,7 @@ fn save_images(
 /// - An `app-file` payload for the Docker images (saved via `docker save`), placed at
 ///   `images/images.tar` inside the generation directory.
 pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()> {
+    rugix_bundle::manifest::validate_app_name(&cmd.app)?;
     let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
     let payloads_dir = bundle_dir.path().join("payloads");
     fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
@@ -404,6 +405,7 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
 ///   included files/directories.
 /// - An `app-file` payload for the binary executable.
 pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
+    rugix_bundle::manifest::validate_app_name(&cmd.app)?;
     let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
     let payloads_dir = bundle_dir.path().join("payloads");
     fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
@@ -458,6 +460,7 @@ pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
 /// - An `app-archive` payload containing `app.toml`, the `orchestrator` script, and any
 ///   extra included files/directories.
 pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
+    rugix_bundle::manifest::validate_app_name(&cmd.app)?;
     let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
     let payloads_dir = bundle_dir.path().join("payloads");
     fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
