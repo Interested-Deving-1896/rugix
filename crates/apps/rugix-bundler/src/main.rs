@@ -107,6 +107,9 @@ pub struct PackDockerComposeCmd {
     /// healthy.  Set to 0 to disable.  Default: 120.
     #[clap(long)]
     health_check_timeout: Option<u64>,
+    /// Path to a JSON file with arbitrary metadata to include in the bundle.
+    #[clap(long)]
+    metadata_file: Option<PathBuf>,
     /// Path to the Docker Compose file.
     compose_file: PathBuf,
     /// Output bundle file.
@@ -126,6 +129,9 @@ pub struct PackBinaryCmd {
     /// Extra files or directories to include in the archive.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Path to a JSON file with arbitrary metadata to include in the bundle.
+    #[clap(long)]
+    metadata_file: Option<PathBuf>,
     /// Output bundle file.
     output: PathBuf,
 }
@@ -140,6 +146,9 @@ pub struct PackGenericCmd {
     /// Extra files or directories to include in the archive.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Path to a JSON file with arbitrary metadata to include in the bundle.
+    #[clap(long)]
+    metadata_file: Option<PathBuf>,
     /// Output bundle file.
     output: PathBuf,
 }

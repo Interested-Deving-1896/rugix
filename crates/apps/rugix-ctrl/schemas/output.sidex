@@ -1,6 +1,9 @@
 import apps::AppStatus
 import apps::AppState
 
+#[rust(type = "::serde_json::Value")]
+opaque JsonValue
+
 /// Information about the system.
 record SystemInfoOutput {
     /// Information about the slots.
@@ -73,6 +76,8 @@ record AppListEntryOutput {
     status: AppStatus,
     /// Currently active generation number, if any.
     generation?: u64,
+    /// Metadata of the active generation, if any.
+    metadata?: JsonValue,
 }
 
 /// Output of the app info command (`apps info`).
@@ -98,7 +103,9 @@ record GenerationInfoOutput {
     /// Timestamp of the last successful activation (RFC 3339), if any.
     last_activated?: string,
     /// Whether this is the currently active generation.
-    current: bool,
+    active: bool,
+    /// User-supplied metadata from `app-meta.json`, if present.
+    metadata?: JsonValue,
 }
 
 /// Garbage collection result for a single app.

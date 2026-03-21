@@ -5137,6 +5137,8 @@ pub mod output {
     use :: serde as __serde;
     #[allow(unused)]
     use :: sidex_serde as __sidex_serde;
+    #[doc = ""]
+    pub type JsonValue = ::serde_json::Value;
     #[doc = "Information about the system.\n"]
     #[derive(Clone, Debug)]
     pub struct SystemInfoOutput {
@@ -7205,6 +7207,8 @@ pub mod output {
         pub status: super::apps::AppStatus,
         #[doc = "Currently active generation number, if any.\n"]
         pub generation: ::std::option::Option<u64>,
+        #[doc = "Metadata of the active generation, if any.\n"]
+        pub metadata: ::std::option::Option<JsonValue>,
     }
     impl AppListEntryOutput {
         #[doc = "Creates a new [`AppListEntryOutput`]."]
@@ -7212,6 +7216,7 @@ pub mod output {
             Self {
                 status,
                 generation: ::std::default::Default::default(),
+                metadata: ::std::default::Default::default(),
             }
         }
         #[doc = "Sets the value of `status`."]
@@ -7234,6 +7239,16 @@ pub mod output {
             self.generation = generation;
             self
         }
+        #[doc = "Sets the value of `metadata`."]
+        pub fn set_metadata(&mut self, metadata: ::std::option::Option<JsonValue>) -> &mut Self {
+            self.metadata = metadata;
+            self
+        }
+        #[doc = "Sets the value of `metadata`."]
+        pub fn with_metadata(mut self, metadata: ::std::option::Option<JsonValue>) -> Self {
+            self.metadata = metadata;
+            self
+        }
     }
     #[automatically_derived]
     impl __serde::Serialize for AppListEntryOutput {
@@ -7244,12 +7259,16 @@ pub mod output {
             let mut __record = __sidex_serde::ser::RecordSerializer::new(
                 __serializer,
                 "AppListEntryOutput",
-                2usize,
+                3usize,
             )?;
             __record.serialize_field("status", &self.status)?;
             __record.serialize_optional_field(
                 "generation",
                 ::core::option::Option::as_ref(&self.generation),
+            )?;
+            __record.serialize_optional_field(
+                "metadata",
+                ::core::option::Option::as_ref(&self.metadata),
             )?;
             __record.end()
         }
@@ -7286,7 +7305,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
                             );
                         }
                     };
@@ -7297,13 +7316,25 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
+                            );
+                        }
+                    };
+                    let __field2 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<JsonValue>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
                             );
                         }
                     };
                     ::core::result::Result::Ok(AppListEntryOutput {
                         status: __field0,
                         generation: __field1,
+                        metadata: __field2,
                     })
                 }
                 #[inline]
@@ -7315,15 +7346,17 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &'static [&'static str] = &["status", "generation"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["status", "generation", "metadata"];
                     #[doc(hidden)]
                     const __EXPECTING_IDENTIFIERS: &'static str =
-                        "an identifier in [\"status\", \"generation\"]";
+                        "an identifier in [\"status\", \"generation\", \"metadata\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
                         __Identifier0,
                         __Identifier1,
+                        __Identifier2,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -7346,6 +7379,7 @@ pub mod output {
                             match __value {
                                 0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -7360,6 +7394,9 @@ pub mod output {
                                 "status" => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 "generation" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                "metadata" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -7377,6 +7414,9 @@ pub mod output {
                                 }
                                 b"generation" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                b"metadata" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -7399,6 +7439,8 @@ pub mod output {
                     let mut __field0: ::core::option::Option<super::apps::AppStatus> =
                         ::core::option::Option::None;
                     let mut __field1: ::core::option::Option<::std::option::Option<u64>> =
+                        ::core::option::Option::None;
+                    let mut __field2: ::core::option::Option<::std::option::Option<JsonValue>> =
                         ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
                         __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
@@ -7432,6 +7474,20 @@ pub mod output {
                                     )?,
                                 );
                             }
+                            __Identifier::__Identifier2 => {
+                                if ::core::option::Option::is_some(&__field2) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "metadata",
+                                        ),
+                                    );
+                                }
+                                __field2 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        ::std::option::Option<JsonValue>,
+                                    >(&mut __map)?,
+                                );
+                            }
                             _ => {
                                 __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
                                     &mut __map,
@@ -7451,14 +7507,19 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => ::core::option::Option::None,
                     };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppListEntryOutput {
                         status: __field0,
                         generation: __field1,
+                        metadata: __field2,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &'static [&'static str] = &["status", "generation"];
+            const __FIELDS: &'static [&'static str] = &["status", "generation", "metadata"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppListEntryOutput",
@@ -7871,7 +7932,9 @@ pub mod output {
         #[doc = "Timestamp of the last successful activation (RFC 3339), if any.\n"]
         pub last_activated: ::std::option::Option<::std::string::String>,
         #[doc = "Whether this is the currently active generation.\n"]
-        pub current: bool,
+        pub active: bool,
+        #[doc = "User-supplied metadata from `app-meta.json`, if present.\n"]
+        pub metadata: ::std::option::Option<JsonValue>,
     }
     impl GenerationInfoOutput {
         #[doc = "Creates a new [`GenerationInfoOutput`]."]
@@ -7879,14 +7942,15 @@ pub mod output {
             number: u64,
             created_at: ::std::string::String,
             complete: bool,
-            current: bool,
+            active: bool,
         ) -> Self {
             Self {
                 number,
                 created_at,
                 complete,
-                current,
+                active,
                 last_activated: ::std::default::Default::default(),
+                metadata: ::std::default::Default::default(),
             }
         }
         #[doc = "Sets the value of `number`."]
@@ -7935,14 +7999,24 @@ pub mod output {
             self.last_activated = last_activated;
             self
         }
-        #[doc = "Sets the value of `current`."]
-        pub fn set_current(&mut self, current: bool) -> &mut Self {
-            self.current = current;
+        #[doc = "Sets the value of `active`."]
+        pub fn set_active(&mut self, active: bool) -> &mut Self {
+            self.active = active;
             self
         }
-        #[doc = "Sets the value of `current`."]
-        pub fn with_current(mut self, current: bool) -> Self {
-            self.current = current;
+        #[doc = "Sets the value of `active`."]
+        pub fn with_active(mut self, active: bool) -> Self {
+            self.active = active;
+            self
+        }
+        #[doc = "Sets the value of `metadata`."]
+        pub fn set_metadata(&mut self, metadata: ::std::option::Option<JsonValue>) -> &mut Self {
+            self.metadata = metadata;
+            self
+        }
+        #[doc = "Sets the value of `metadata`."]
+        pub fn with_metadata(mut self, metadata: ::std::option::Option<JsonValue>) -> Self {
+            self.metadata = metadata;
             self
         }
     }
@@ -7955,7 +8029,7 @@ pub mod output {
             let mut __record = __sidex_serde::ser::RecordSerializer::new(
                 __serializer,
                 "GenerationInfoOutput",
-                5usize,
+                6usize,
             )?;
             __record.serialize_field("number", &self.number)?;
             __record.serialize_field("createdAt", &self.created_at)?;
@@ -7964,7 +8038,11 @@ pub mod output {
                 "lastActivated",
                 ::core::option::Option::as_ref(&self.last_activated),
             )?;
-            __record.serialize_field("current", &self.current)?;
+            __record.serialize_field("active", &self.active)?;
+            __record.serialize_optional_field(
+                "metadata",
+                ::core::option::Option::as_ref(&self.metadata),
+            )?;
             __record.end()
         }
     }
@@ -7997,7 +8075,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -8008,7 +8086,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(1usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -8016,7 +8094,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(2usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(2usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -8027,7 +8105,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(3usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(3usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -8035,7 +8113,18 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(4usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(4usize, &"record with 6 fields"),
+                            );
+                        }
+                    };
+                    let __field5 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<JsonValue>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(5usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -8044,7 +8133,8 @@ pub mod output {
                         created_at: __field1,
                         complete: __field2,
                         last_activated: __field3,
-                        current: __field4,
+                        active: __field4,
+                        metadata: __field5,
                     })
                 }
                 #[inline]
@@ -8061,10 +8151,11 @@ pub mod output {
                         "createdAt",
                         "complete",
                         "lastActivated",
-                        "current",
+                        "active",
+                        "metadata",
                     ];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"number\", \"createdAt\", \"complete\", \"lastActivated\", \"current\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"number\", \"createdAt\", \"complete\", \"lastActivated\", \"active\", \"metadata\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -8073,6 +8164,7 @@ pub mod output {
                         __Identifier2,
                         __Identifier3,
                         __Identifier4,
+                        __Identifier5,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -8098,6 +8190,7 @@ pub mod output {
                                 2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
                                 4u64 => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                                5u64 => ::core::result::Result::Ok(__Identifier::__Identifier5),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -8119,8 +8212,9 @@ pub mod output {
                                 "lastActivated" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier3)
                                 }
-                                "current" => {
-                                    ::core::result::Result::Ok(__Identifier::__Identifier4)
+                                "active" => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                                "metadata" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier5)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -8145,8 +8239,11 @@ pub mod output {
                                 b"lastActivated" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier3)
                                 }
-                                b"current" => {
+                                b"active" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier4)
+                                }
+                                b"metadata" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier5)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -8174,6 +8271,8 @@ pub mod output {
                         ::std::option::Option<::std::string::String>,
                     > = ::core::option::Option::None;
                     let mut __field4: ::core::option::Option<bool> = ::core::option::Option::None;
+                    let mut __field5: ::core::option::Option<::std::option::Option<JsonValue>> =
+                        ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
                         __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
                     {
@@ -8234,12 +8333,26 @@ pub mod output {
                                 if ::core::option::Option::is_some(&__field4) {
                                     return ::core::result::Result::Err(
                                         <__A::Error as __serde::de::Error>::duplicate_field(
-                                            "current",
+                                            "active",
                                         ),
                                     );
                                 }
                                 __field4 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<bool>(&mut __map)?,
+                                );
+                            }
+                            __Identifier::__Identifier5 => {
+                                if ::core::option::Option::is_some(&__field5) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "metadata",
+                                        ),
+                                    );
+                                }
+                                __field5 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        ::std::option::Option<JsonValue>,
+                                    >(&mut __map)?,
                                 );
                             }
                             _ => {
@@ -8281,16 +8394,21 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                <__A::Error as __serde::de::Error>::missing_field("current"),
+                                <__A::Error as __serde::de::Error>::missing_field("active"),
                             );
                         }
+                    };
+                    let __field5 = match __field5 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
                     };
                     ::core::result::Result::Ok(GenerationInfoOutput {
                         number: __field0,
                         created_at: __field1,
                         complete: __field2,
                         last_activated: __field3,
-                        current: __field4,
+                        active: __field4,
+                        metadata: __field5,
                     })
                 }
             }
@@ -8300,7 +8418,8 @@ pub mod output {
                 "createdAt",
                 "complete",
                 "lastActivated",
-                "current",
+                "active",
+                "metadata",
             ];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,

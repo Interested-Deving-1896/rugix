@@ -141,6 +141,22 @@ fn tar_append_includes(archive: &mut tar::Builder<File>, includes: &[PathBuf]) -
     Ok(())
 }
 
+/// Append a metadata file to the archive if provided.
+fn tar_append_metadata(
+    archive: &mut tar::Builder<File>,
+    metadata_file: Option<&Path>,
+) -> BundleResult<()> {
+    if let Some(path) = metadata_file {
+        // Validate that it's valid JSON before including it.
+        let content = fs::read_to_string(path)
+            .whatever_with(|_| format!("unable to read metadata file {}", path.display()))?;
+        let _: serde_json::Value = serde_json::from_str(&content)
+            .whatever_with(|_| format!("metadata file {} is not valid JSON", path.display()))?;
+        tar_append_bytes(archive, "app-meta.json", content.as_bytes())?;
+    }
+    Ok(())
+}
+
 /// Common block encoding configuration for app bundles.
 fn app_block_encoding() -> Option<BlockEncoding> {
     Some(
@@ -486,6 +502,7 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
             compose_content.as_bytes(),
         )?;
         tar_append_includes(&mut archive, &cmd.includes)?;
+        tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
 
@@ -534,6 +551,7 @@ pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
         tar_append_app_toml(&mut archive, &manifest)?;
         tar_append_file(&mut archive, &cmd.service, "systemd.service")?;
         tar_append_includes(&mut archive, &cmd.includes)?;
+        tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
 
@@ -589,6 +607,7 @@ pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
         tar_append_app_toml(&mut archive, &manifest)?;
         tar_append_file(&mut archive, &cmd.orchestrator, "orchestrator")?;
         tar_append_includes(&mut archive, &cmd.includes)?;
+        tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
 

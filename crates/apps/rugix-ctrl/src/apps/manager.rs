@@ -265,6 +265,26 @@ impl AppManager {
         gen_dir.join(".rugix/complete").exists()
     }
 
+    /// Read user-supplied metadata for a generation, if present.
+    pub fn read_metadata(gen_dir: &Path) -> Option<serde_json::Value> {
+        let path = gen_dir.join("app-meta.json");
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(err) => {
+                error!(path = ?path, error = %err, "unable to read metadata file");
+                return None;
+            }
+        };
+        match serde_json::from_str(&content) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                error!(path = ?path, error = %err, "unable to parse metadata file");
+                None
+            }
+        }
+    }
+
     /// Save per-payload state (hashes, sizes) for a generation.
     pub fn save_payload_states(
         gen_dir: &Path,

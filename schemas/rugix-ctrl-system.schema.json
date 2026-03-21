@@ -654,6 +654,9 @@
         "generation": {
           "type": "integer",
           "format": "uint64"
+        },
+        "metadata": {
+          "$ref": "#/$defs/rugix_ctrl.output.JsonValue"
         }
       },
       "required": [
@@ -735,17 +738,24 @@
         "lastActivated": {
           "type": "string"
         },
-        "current": {
+        "active": {
           "type": "boolean"
+        },
+        "metadata": {
+          "$ref": "#/$defs/rugix_ctrl.output.JsonValue"
         }
       },
       "required": [
         "number",
         "createdAt",
         "complete",
-        "current"
+        "active"
       ],
       "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.JsonValue": {
+      "$id": "rugix_ctrl.output.JsonValue",
+      "description": ""
     },
     "rugix_ctrl.output.SlotInfoOutput": {
       "$id": "rugix_ctrl.output.SlotInfoOutput",

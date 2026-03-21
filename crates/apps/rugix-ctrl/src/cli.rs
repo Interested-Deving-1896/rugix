@@ -547,9 +547,15 @@ pub fn main() -> SystemResult<()> {
                                     None
                                 }
                             };
+                            let metadata = generation.and_then(|gen| {
+                                let gen_dir = manager.generation_dir(app, gen);
+                                crate::apps::manager::AppManager::read_metadata(&gen_dir)
+                            });
                             (
                                 app.clone(),
-                                AppListEntryOutput::new(status).with_generation(generation),
+                                AppListEntryOutput::new(status)
+                                    .with_generation(generation)
+                                    .with_metadata(metadata),
                             )
                         })
                         .collect();
@@ -571,6 +577,9 @@ pub fn main() -> SystemResult<()> {
                     let gen_entries: Vec<_> = generations
                         .iter()
                         .map(|gen| {
+                            let gen_dir = manager.generation_dir(app, gen.meta.number);
+                            let metadata =
+                                crate::apps::manager::AppManager::read_metadata(&gen_dir);
                             GenerationInfoOutput::new(
                                 gen.meta.number,
                                 gen.meta.created_at.clone(),
@@ -578,6 +587,7 @@ pub fn main() -> SystemResult<()> {
                                 Some(gen.meta.number) == current,
                             )
                             .with_last_activated(gen.meta.last_activated.clone())
+                            .with_metadata(metadata)
                         })
                         .collect();
                     let output = AppInfoOutput::new(app.clone(), status, state, gen_entries);
