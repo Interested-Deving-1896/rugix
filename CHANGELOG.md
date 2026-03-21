@@ -1,5 +1,10 @@
 # Changelog
 
+## Version 1.1.0
+
+- Introduction of Rugix Apps to manage application workloads.
+- Prevent concurrent updates using a lock file.
+
 ## Version 1.0.0
 
 - Remove functionality for installing images.
