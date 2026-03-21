@@ -23,6 +23,18 @@ fn normalize_tar_header(header: &mut tar::Header) {
     header.set_cksum();
 }
 
+/// Append raw bytes to a tar archive with normalized metadata.
+fn tar_append_bytes(archive: &mut tar::Builder<File>, name: &str, data: &[u8]) -> BundleResult<()> {
+    let mut header = tar::Header::new_gnu();
+    header.set_size(data.len() as u64);
+    header.set_mode(0o644);
+    normalize_tar_header(&mut header);
+    archive
+        .append_data(&mut header, name, data)
+        .whatever_with(|_| format!("unable to add {name} to archive"))?;
+    Ok(())
+}
+
 /// Append a file to a tar archive with normalized metadata for reproducibility,
 /// preserving the file's permission bits.
 fn tar_append_file(archive: &mut tar::Builder<File>, path: &Path, name: &str) -> BundleResult<()> {
@@ -154,8 +166,8 @@ fn finalize_bundle(
     .whatever("unable to write manifest")?;
     rugix_bundle::builder::pack(bundle_dir, output)?;
     let hash = bundle_hash(output)?;
-    println!("{hash}");
     info!(app = %app, output = ?output, "packed app bundle");
+    println!("{hash}");
     Ok(())
 }
 
@@ -182,6 +194,20 @@ fn yaml_mapping_get<'a, 'b>(node: &'a saphyr::Yaml<'b>, key: &str) -> Option<&'a
         }
     }
     None
+}
+
+/// Rewrite image references in a Docker Compose file to use pinned digests.
+///
+/// For each saved image, replaces occurrences of the original reference (e.g.,
+/// `nginx:latest`) with the digest-pinned version (e.g., `nginx@sha256:abc...`).
+fn pin_compose_images(compose_content: &str, saved: &[SavedImage]) -> String {
+    // We currently do simple string replacement. This has the risk of matching unrelated
+    // strings, however, it trivially preserves the formatting and any comments.
+    let mut content = compose_content.to_owned();
+    for image in saved {
+        content = content.replace(&image.original, &image.pinned);
+    }
+    content
 }
 
 /// Extract image references from a Docker Compose file.
@@ -226,12 +252,72 @@ fn image_payload_filename(index: usize) -> String {
     format!("image-{index}.tar")
 }
 
-/// A saved container image with its payload filename and local path.
+/// A saved container image with its payload filename and resolved digest.
 struct SavedImage {
-    /// Path inside the generation directory (e.g., `images/registry-image-tag.tar`).
+    /// The original image reference from the compose file.
+    original: String,
+    /// The image reference pinned to a digest (e.g., `nginx@sha256:abc...`).
+    pinned: String,
+    /// Path inside the generation directory (e.g., `images/image-0.tar`).
     app_path: String,
     /// Filename of the payload file inside the payloads directory.
     payload_filename: String,
+}
+
+/// Strip the tag from an image reference, returning the repository part.
+///
+/// `nginx:latest` → `nginx`, `registry.io/app:v1` → `registry.io/app`.
+/// References that already use a digest (`@sha256:...`) are returned as-is.
+fn image_repo(image: &str) -> &str {
+    if image.contains('@') {
+        return image;
+    }
+    // The tag starts at the last colon, but only if it comes after any `/`
+    // (to avoid splitting on the port in `registry:5000/image`).
+    let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
+    match image[after_slash..].rfind(':') {
+        Some(pos) => &image[..after_slash + pos],
+        None => image,
+    }
+}
+
+/// Resolve the digest of a pulled Docker image via `docker inspect`.
+fn resolve_digest_docker(image: &str) -> BundleResult<String> {
+    let output = std::process::Command::new("docker")
+        .args(["inspect", "--format", "{{index .RepoDigests 0}}", image])
+        .output()
+        .whatever("unable to run docker inspect")?;
+    if !output.status.success() {
+        bail!("docker inspect failed for {image}");
+    }
+    let pinned = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !pinned.contains('@') {
+        bail!("docker inspect did not return a digest for {image}: {pinned}");
+    }
+    Ok(pinned)
+}
+
+/// Resolve the digest of a remote image via `skopeo inspect`.
+fn resolve_digest_skopeo(image: &str, platform: Option<&str>) -> BundleResult<String> {
+    let mut cmd = std::process::Command::new("skopeo");
+    cmd.args(["inspect", "--format", "{{.Digest}}"]);
+    if let Some(platform) = platform {
+        let parts: Vec<&str> = platform.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            cmd.arg("--override-os").arg(parts[0]);
+            cmd.arg("--override-arch").arg(parts[1]);
+        }
+    }
+    cmd.arg(format!("docker://{image}"));
+    let output = cmd.output().whatever("unable to run skopeo inspect")?;
+    if !output.status.success() {
+        bail!("skopeo inspect failed for {image}");
+    }
+    let digest = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !digest.starts_with("sha256:") {
+        bail!("skopeo inspect did not return a valid digest for {image}: {digest}");
+    }
+    Ok(format!("{}@{}", image_repo(image), digest))
 }
 
 /// Save container images using skopeo (one tar per image, pulled from registry).
@@ -261,7 +347,11 @@ fn save_images_skopeo(
         if !status.success() {
             bail!("skopeo copy failed for {image}");
         }
+        let pinned = resolve_digest_skopeo(image, platform)?;
+        info!(image, pinned = %pinned, "resolved image digest");
         saved.push(SavedImage {
+            original: image.clone(),
+            pinned,
             app_path: format!("images/{filename}"),
             payload_filename: filename,
         });
@@ -307,7 +397,11 @@ fn save_images_docker(
         if !status.success() {
             bail!("docker save failed for {image}");
         }
+        let pinned = resolve_digest_docker(image)?;
+        info!(image, pinned = %pinned, "resolved image digest");
         saved.push(SavedImage {
+            original: image.clone(),
+            pinned,
             app_path: format!("images/{filename}"),
             payload_filename: filename,
         });
@@ -337,9 +431,10 @@ fn save_images(
 ///
 /// Creates a bundle with:
 /// - An `app-archive` payload containing `app.toml`, `docker-compose.yml`, and any extra
-///   included files/directories.
-/// - An `app-file` payload for the Docker images (saved via `docker save`), placed at
-///   `images/images.tar` inside the generation directory.
+///   included files/directories. Image references in the compose file are pinned to their
+///   digest so the deployed stack always uses the exact images that were bundled.
+/// - An `app-file` payload per Docker image, placed at `images/image-N.tar` inside the
+///   generation directory.
 pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()> {
     rugix_bundle::manifest::validate_app_name(&cmd.app)?;
     let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
@@ -348,7 +443,28 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
 
     let block_encoding = app_block_encoding();
 
-    // Build the base tar archive: app.toml + docker-compose.yml + includes.
+    // Save Docker images first so we can pin digests in the compose file.
+    let saved_images = if !cmd.disable_image_bundling {
+        let images = extract_compose_images(&cmd.compose_file)?;
+        if !images.is_empty() {
+            save_images(&images, cmd.platform.as_deref(), cmd.pull, &payloads_dir)?
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Read the compose file and pin image references to their digests.
+    let compose_content =
+        fs::read_to_string(&cmd.compose_file).whatever("unable to read Docker Compose file")?;
+    let compose_content = if !cmd.disable_pinning && !saved_images.is_empty() {
+        pin_compose_images(&compose_content, &saved_images)
+    } else {
+        compose_content
+    };
+
+    // Build the base tar archive: app.toml + (pinned) docker-compose.yml + includes.
     let archive_path = payloads_dir.join("base.tar");
     {
         let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
@@ -364,7 +480,11 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
             m
         };
         tar_append_app_toml(&mut archive, &manifest)?;
-        tar_append_file(&mut archive, &cmd.compose_file, "docker-compose.yml")?;
+        tar_append_bytes(
+            &mut archive,
+            "docker-compose.yml",
+            compose_content.as_bytes(),
+        )?;
         tar_append_includes(&mut archive, &cmd.includes)?;
         archive.finish().whatever("unable to finish archive")?;
     }
@@ -376,23 +496,16 @@ pub fn pack_docker_compose(cmd: &super::PackDockerComposeCmd) -> BundleResult<()
         delta_encoding: None,
     }];
 
-    // Save and add Docker images.
-    if !cmd.no_images {
-        let images = extract_compose_images(&cmd.compose_file)?;
-        if !images.is_empty() {
-            let saved = save_images(&images, cmd.platform.as_deref(), cmd.pull, &payloads_dir)?;
-            for image in saved {
-                payloads.push(Payload {
-                    delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
-                        cmd.app.clone(),
-                        image.app_path,
-                    )),
-                    filename: image.payload_filename,
-                    block_encoding: block_encoding.clone(),
-                    delta_encoding: None,
-                });
-            }
-        }
+    for image in &saved_images {
+        payloads.push(Payload {
+            delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
+                cmd.app.clone(),
+                image.app_path.clone(),
+            )),
+            filename: image.payload_filename.clone(),
+            block_encoding: block_encoding.clone(),
+            delta_encoding: None,
+        });
     }
 
     finalize_bundle(bundle_dir.path(), &cmd.output, &cmd.app, payloads)

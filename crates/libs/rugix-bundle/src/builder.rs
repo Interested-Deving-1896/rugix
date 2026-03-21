@@ -133,7 +133,6 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
     }
     write_segment_end(&mut bundle_file, format::tags::PAYLOADS).unwrap();
     write_segment_end(&mut bundle_file, format::tags::BUNDLE).unwrap();
-    println!("{header_hash}");
     Ok(header_hash)
 }
 

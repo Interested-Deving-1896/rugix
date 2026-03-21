@@ -94,7 +94,10 @@ pub struct PackDockerComposeCmd {
     /// Skip saving Docker images (by default, images referenced in the compose
     /// file are saved via `docker save` and included in the bundle).
     #[clap(long)]
-    no_images: bool,
+    disable_image_bundling: bool,
+    /// Do not pin image references in the compose file to their digests.
+    #[clap(long)]
+    disable_pinning: bool,
     /// Extra files or directories to include in the archive.
     /// Each entry is added at the same relative path inside the generation directory.
     #[clap(long = "include")]
@@ -260,7 +263,8 @@ fn main() -> BundleResult<()> {
         .init();
     match args.cmd {
         Cmd::Bundle(create_cmd) => {
-            rugix_bundle::builder::pack(&create_cmd.src, &create_cmd.dst)?;
+            let hash = rugix_bundle::builder::pack(&create_cmd.src, &create_cmd.dst)?;
+            println!("{hash}");
         }
         Cmd::Unpack(cmd) => {
             unpack(&cmd.src, &cmd.out)?;
