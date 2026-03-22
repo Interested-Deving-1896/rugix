@@ -163,6 +163,9 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
 
     fn read(&mut self, buf: &mut [u8]) -> BundleResult<usize> {
         let max_chunk = buf.byte_len().min(self.remaining_data).unwrap_usize();
+        if max_chunk == 0 {
+            return Ok(0);
+        }
         let read = self.reader.source.read(&mut buf[..max_chunk])?;
         self.remaining_data -= NumBytes::from_usize(read);
         Ok(read)
