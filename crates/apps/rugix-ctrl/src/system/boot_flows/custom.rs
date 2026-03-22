@@ -4,7 +4,7 @@ use reportify::{bail, ResultExt};
 use serde::{Deserialize, Serialize};
 use xscript::{read_str, Run};
 
-use tracing::debug;
+use tracing::{debug, error};
 
 use super::BootFlow;
 use crate::system::boot_groups::BootGroups;

@@ -2,7 +2,7 @@ use boot_flows::BootFlow;
 use boot_groups::{BootGroup, BootGroupIdx, BootGroups};
 use config::load_system_config;
 use partitions::ConfigPartition;
-use reportify::{bail, whatever, Report, ResultExt};
+use reportify::{whatever, Report, ResultExt};
 use root::{find_system_device, SystemRoot};
 use slots::{SlotKind, SystemSlots};
 use tracing::warn;
