@@ -30,6 +30,7 @@ use rugix_common::{grub_patch_env, rpi_patch_boot};
 pub mod custom;
 pub mod mender;
 pub mod rauc;
+pub mod systemd_boot;
 
 reportify::new_whatever_type! {
     BootFlowError
@@ -111,6 +112,10 @@ pub fn from_config(
             BootFlowConfig::Grub => Box::new(GrubEfi {
                 inner: rugix_boot_flow(boot_entries)?,
             }),
+            BootFlowConfig::SystemdBoot(config) => Box::new(systemd_boot::SystemdBootFlow::new(
+                boot_entries,
+                &config.entries,
+            )?),
             BootFlowConfig::Custom(custom_boot_flow_config) => Box::new(CustomBootFlow {
                 controller: custom_boot_flow_config.controller.clone().into(),
             }),

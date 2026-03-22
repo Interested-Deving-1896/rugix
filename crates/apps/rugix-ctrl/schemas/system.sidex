@@ -94,8 +94,24 @@ variant BootFlowConfig {
     /// Mender-compatible U-Boot boot flow.
     #[json(name="mender-uboot")]
     MenderUboot: MenderBootFlowConfig,
+    /// Systemd-boot boot flow.
+    ///
+    /// Uses EFI variables (LoaderEntryDefault, LoaderEntryOneShot) to control
+    /// which boot entry is selected by systemd-boot. Requires a mapping from
+    /// boot group names to systemd-boot entry IDs.
+    #[json(name="systemd-boot")]
+    SystemdBoot: SystemdBootFlowConfig,
     /// Custom, user-defined boot flow.
     Custom: CustomBootFlowConfig,
+}
+
+/// Systemd-boot boot flow configuration.
+#[json(rename_all = "kebab-case")]
+record SystemdBootFlowConfig {
+    /// Mapping from boot group names to systemd-boot entry IDs.
+    ///
+    /// Example: `{ a = "nixos-a.efi", b = "nixos-b.efi" }`
+    entries: [string: string],
 }
 
 /// RAUC boot flow configuration.

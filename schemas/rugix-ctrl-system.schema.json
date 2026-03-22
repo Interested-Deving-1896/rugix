@@ -1107,6 +1107,24 @@
           "type": "object",
           "properties": {
             "type": {
+              "const": "systemd-boot"
+            },
+            "entries": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "entries"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
               "const": "custom"
             },
             "controller": {
@@ -1314,6 +1332,23 @@
           ]
         }
       ]
+    },
+    "rugix_ctrl.system.SystemdBootFlowConfig": {
+      "$id": "rugix_ctrl.system.SystemdBootFlowConfig",
+      "type": "object",
+      "description": "Systemd-boot boot flow configuration.",
+      "properties": {
+        "entries": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "unevaluatedProperties": false
     }
   }
 }
