@@ -53,53 +53,47 @@ impl System {
         );
         let slots = SystemSlots::from_config(system_root.as_ref(), system_config.slots.as_ref())?;
         let boot_entries = BootGroups::from_config(&slots, system_config.boot_groups.as_ref())?;
-        // Mark boot entries and slots active.
-        let mut active_boot_entry = None;
-        for (idx, entry) in boot_entries.iter() {
-            for (_, slot) in entry.slots() {
-                if let SlotKind::Block(raw) = &slots[slot].kind() {
-                    if Some(raw.device()) == system_device.as_ref() {
-                        entry.mark_active();
-                        break;
-                    }
-                }
-                /* TODO: Also look at `/proc/cmdline` to allow setting the active boot
-                entry explicitly via a flag `rugpi.boot-entry=...`. For compatibility
-                with RAUC, it makes sense to also look at `rauc.slot=...`. This holds
-                the name of a RAUC slot, which we could directly map to a Rugix slot
-                assuming that the configuration preserves these names, e.g.:
-
-                [slots."rootfs.0"]
-                partition = 2
-
-                [slots."rootfs.1"]
-                partition = 3
-
-                [boot-entries.A]
-                slots = { rootfs = "rootfs.0" }
-
-                [boot-entries.B]
-                slots = { rootfs = "rootfs.1" }
-                */
-            }
-            if entry.active() {
-                active_boot_entry = Some(idx);
-                // If the entry is active, then so are all its slots.
-                for (_, slot) in entry.slots() {
-                    slots[slot].mark_active();
-                }
-                break;
-            }
-        }
-        if active_boot_entry.is_none() {
-            warn!("unable to determine active boot group");
-        }
+        // Create boot flow before determining the active group so that the
+        // boot flow can provide this information (e.g., via EFI variables).
         let boot_flow = boot_flows::from_config(
             system_config.boot_flow.as_ref(),
             config_partition.as_ref(),
             &boot_entries,
         )
         .whatever("unable to create boot flow from config")?;
+        // Determine the active boot group. First, ask the boot flow — it may
+        // know directly (e.g., systemd-boot reads LoaderEntrySelected).
+        let mut active_boot_entry = boot_flow
+            .get_active(&boot_entries)
+            .whatever("unable to determine active boot group from boot flow")?;
+        // Fall back to matching block devices against the system device.
+        if active_boot_entry.is_none() {
+            for (idx, entry) in boot_entries.iter() {
+                for (_, slot) in entry.slots() {
+                    if let SlotKind::Block(raw) = &slots[slot].kind() {
+                        if Some(raw.device()) == system_device.as_ref() {
+                            entry.mark_active();
+                            break;
+                        }
+                    }
+                }
+                if entry.active() {
+                    active_boot_entry = Some(idx);
+                    break;
+                }
+            }
+        }
+        // Mark all slots in the active group as active.
+        if let Some(active_idx) = active_boot_entry {
+            let entry = &boot_entries[active_idx];
+            entry.mark_active();
+            for (_, slot) in entry.slots() {
+                slots[slot].mark_active();
+            }
+        }
+        if active_boot_entry.is_none() {
+            warn!("unable to determine active boot group");
+        }
         Ok(Self {
             config: system_config,
             device: system_device,

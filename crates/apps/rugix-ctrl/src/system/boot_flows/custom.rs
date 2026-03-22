@@ -4,7 +4,10 @@ use reportify::{bail, ResultExt};
 use serde::{Deserialize, Serialize};
 use xscript::{read_str, Run};
 
+use tracing::debug;
+
 use super::BootFlow;
+use crate::system::boot_groups::BootGroups;
 
 /// Custom boot flow implementation.
 #[derive(Debug)]
@@ -108,6 +111,28 @@ impl BootFlow for CustomBootFlow {
         serde_json::from_str::<OutputNone>(&output)
             .whatever("invalid output produced by custom boot flow")?;
         Ok(())
+    }
+
+    fn get_active(
+        &self,
+        boot_entries: &BootGroups,
+    ) -> super::BootFlowResult<Option<crate::system::boot_groups::BootGroupIdx>> {
+        // The controller may not implement get_active. Per the custom boot flow
+        // contract, unknown operations produce empty stdout (and may print to
+        // stderr). Treat empty output or parse failure as "unknown".
+        let Ok(output) = read_str!([&self.controller, "get_active"]) else {
+            error!("custom boot flow controller failed for `get_active`");
+            return Ok(None);
+        };
+        if output.trim().is_empty() {
+            debug!("custom boot flow does not implement `get_active`");
+            return Ok(None);
+        }
+        let Ok(output) = serde_json::from_str::<OutputGroup>(&output) else {
+            debug!("custom boot flow returned invalid output for `get_active`");
+            return Ok(None);
+        };
+        Ok(boot_entries.find_by_name(&output.group).map(|(idx, _)| idx))
     }
 }
 

@@ -79,6 +79,17 @@ pub trait BootFlow: Debug {
     fn mark_bad(&self, system: &System, group: BootGroupIdx) -> BootFlowResult<()> {
         Ok(())
     }
+
+    /// Determine which boot group is currently running.
+    ///
+    /// Unlike [`get_default`](Self::get_default) (which reflects what will boot *next
+    /// time* and can change at runtime), this reflects what actually booted *this time*.
+    ///
+    /// Returns `None` to fall back to block device matching.
+    #[allow(unused_variables)]
+    fn get_active(&self, boot_entries: &BootGroups) -> BootFlowResult<Option<BootGroupIdx>> {
+        Ok(None)
+    }
 }
 
 /// Boot group status.

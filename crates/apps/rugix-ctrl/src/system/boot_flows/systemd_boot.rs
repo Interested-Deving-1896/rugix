@@ -11,7 +11,7 @@ use tracing::warn;
 use xscript::{read_str, Run};
 
 use super::{BootFlow, BootFlowResult};
-use crate::system::boot_groups::BootGroupIdx;
+use crate::system::boot_groups::{BootGroupIdx, BootGroups};
 use crate::system::System;
 
 /// The GUID for systemd's loader EFI variables.
@@ -114,5 +114,16 @@ impl BootFlow for SystemdBootFlow {
         read_str!(["bootctl", "set-default", entry_id])
             .whatever("error running `bootctl set-default`")?;
         Ok(())
+    }
+
+    fn get_active(&self, _boot_entries: &BootGroups) -> BootFlowResult<Option<BootGroupIdx>> {
+        // LoaderEntrySelected is set by systemd-boot at boot time and is
+        // immutable for the lifetime of the session — it always reflects
+        // what was actually booted, regardless of subsequent set_try_next
+        // or commit calls.
+        if let Some(entry_id) = read_loader_efi_var("LoaderEntrySelected") {
+            return Ok(self.group_for_entry_id(&entry_id));
+        }
+        Ok(None)
     }
 }
