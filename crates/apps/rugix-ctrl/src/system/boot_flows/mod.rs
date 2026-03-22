@@ -95,7 +95,7 @@ pub enum BootGroupStatus {
 
 pub fn from_config(
     config: Option<&BootFlowConfig>,
-    config_partition: &ConfigPartition,
+    config_partition: Option<&ConfigPartition>,
     boot_entries: &BootGroups,
 ) -> BootFlowResult<Box<dyn BootFlow>> {
     if let Some(config) = config {
@@ -128,6 +128,9 @@ pub fn from_config(
         });
     }
     let inner = rugix_boot_flow(boot_entries)?;
+    let Some(config_partition) = config_partition else {
+        bail!("boot flow auto-detection requires a config partition; set boot-flow type explicitly or configure a config partition");
+    };
     if config_partition.path().join("autoboot.txt").exists() {
         Ok(Box::new(RpiTryboot { inner }))
     } else if config_partition

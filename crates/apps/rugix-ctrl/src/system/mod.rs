@@ -51,9 +51,6 @@ impl System {
                 .as_ref()
                 .unwrap_or(&PartitionConfig::new()),
         );
-        let Some(config_partition) = config_partition else {
-            bail!("config partition cannot currently be disabled");
-        };
         let slots = SystemSlots::from_config(system_root.as_ref(), system_config.slots.as_ref())?;
         let boot_entries = BootGroups::from_config(&slots, system_config.boot_groups.as_ref())?;
         // Mark boot entries and slots active.
@@ -99,7 +96,7 @@ impl System {
         }
         let boot_flow = boot_flows::from_config(
             system_config.boot_flow.as_ref(),
-            &config_partition,
+            config_partition.as_ref(),
             &boot_entries,
         )
         .whatever("unable to create boot flow from config")?;
@@ -111,7 +108,7 @@ impl System {
             boot_entries,
             active_boot_entry,
             boot_flow,
-            config_partition: Some(config_partition),
+            config_partition,
         })
     }
 
