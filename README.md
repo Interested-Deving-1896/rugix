@@ -52,7 +52,7 @@ Robust over-the-air updates require system images built to support atomic update
 
 **Rugix is fully open-source**, including all features like delta updates. We integrate with different fleet management solutions and build systems, so **you stay in control without vendor lock-in**.
 
-Rugix empowers teams to **ship robust products fast and without compromising on best practices** like read-only root filesystems, atomic OTA updates, and reproducible builds.
+Rugix empowers teams to **ship robust products fast and without compromising on best practices** like read-only root filesystems, atomic OTA updates, reliable application deployment, and reproducible builds.
 
 ## Commercial Support
 
