@@ -4,6 +4,8 @@
 
 - Introduction of Rugix Apps to manage application workloads.
 - Prevent concurrent updates using a lock file.
+- Support for systemd-boot.
+- Fix panic when extracting payload file.
 
 ## Version 1.0.0
 
