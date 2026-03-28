@@ -67,12 +67,16 @@ pub fn allocate_file(path: &Path, size: u64) -> Result<(), Report<FsError>> {
     Ok(())
 }
 
+#[allow(
+    clippy::useless_conversion,
+    reason = "needed on 32-bit targets where off_t is i32"
+)]
 pub fn punch_hole(fd: RawFd, offset: off64_t, size: off64_t) -> Result<(), Report<FsError>> {
     nix::fcntl::fallocate(
         fd,
         FallocateFlags::FALLOC_FL_PUNCH_HOLE | FallocateFlags::FALLOC_FL_KEEP_SIZE,
-        offset,
-        size,
+        offset.try_into().unwrap(),
+        size.try_into().unwrap(),
     )
     .whatever("unable to punch hole into file")?;
     Ok(())
