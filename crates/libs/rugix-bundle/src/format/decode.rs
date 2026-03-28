@@ -1,7 +1,5 @@
 //! High-level data structure decoding API.
 
-use std::u64;
-
 use reportify::{ErrorExt, bail};
 
 use byte_calc::NumBytes;
@@ -91,8 +89,7 @@ impl<S: BundleSource> Decoder<S> {
     pub fn read_value(&mut self) -> BundleResult<Vec<u8>> {
         let length = self.value_length.take().expect("no current value");
         self.check_and_subtract_size(length)?;
-        let mut buffer = Vec::with_capacity(length.raw as usize);
-        buffer.resize(length.raw as usize, 0);
+        let mut buffer = vec![0; length.raw as usize];
         self.source.read_exact(&mut buffer)?;
         Ok(buffer)
     }

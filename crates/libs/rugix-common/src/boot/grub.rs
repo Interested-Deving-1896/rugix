@@ -19,7 +19,7 @@ const ENVBLK_SIZE: usize = 1024;
 
 /// Decode a Grub environment block.
 pub fn grub_envblk_decode(blk: &str) -> Result<HashMap<String, String>, InvalidEnvblk> {
-    if blk.as_bytes().len() != ENVBLK_SIZE {
+    if blk.len() != ENVBLK_SIZE {
         return Err(InvalidEnvblk::InvalidLength);
     }
     let mut values = HashMap::new();
@@ -88,10 +88,10 @@ pub fn grub_envblk_encode(values: &HashMap<String, String>) -> Result<String, In
         }
         encoded.push('\n');
     }
-    if encoded.as_bytes().len() > ENVBLK_SIZE {
+    if encoded.len() > ENVBLK_SIZE {
         return Err(InvalidEnvblk::InvalidLength);
     }
-    while encoded.as_bytes().len() < ENVBLK_SIZE {
+    while encoded.len() < ENVBLK_SIZE {
         encoded.push('#');
     }
     Ok(encoded)

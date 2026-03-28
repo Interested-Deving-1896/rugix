@@ -43,7 +43,7 @@ impl<F: Future> Future for TaskContextFuture<F> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.project();
-        TASK_CONTEXT.set(&this.context, || this.future.poll(cx))
+        TASK_CONTEXT.set(this.context, || this.future.poll(cx))
     }
 }
 
@@ -82,7 +82,7 @@ pub fn block_on<F: Future>(future: F) -> F::Output {
 /// Unwind the stack with [`Canceled`].
 #[inline(never)]
 #[cold]
-fn throw_canceled() -> () {
+fn throw_canceled() {
     // Canceling a future will unwind the stack. We use the same mechanism here to cancel
     // non-asynchronous tasks. Note that this requires unwinding support. If unwinding is
     // not supported, we will simply ignore the cancellation signal.
@@ -95,7 +95,7 @@ fn throw_canceled() -> () {
 /// Log a warning in case the task context is missing.
 #[inline(never)]
 #[cold]
-fn log_missing_context() -> () {
+fn log_missing_context() {
     tracing::warn!("task context is required but not available");
 }
 

@@ -33,7 +33,7 @@ pub trait BundleSource {
 
     /// Read an exact number of bytes into the provided slice.
     fn read_exact(&mut self, mut slice: &mut [u8]) -> BundleResult<()> {
-        while slice.len() > 0 {
+        while !slice.is_empty() {
             let read = self.read(slice)?;
             if read == 0 {
                 bail!("unexpected end of bundle");

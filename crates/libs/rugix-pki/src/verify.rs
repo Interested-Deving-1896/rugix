@@ -146,7 +146,7 @@ impl CmsVerifier {
         let signing_time = signer_info
             .signed_attrs
             .as_ref()
-            .and_then(|attrs| extract_signing_time_attribute(attrs));
+            .and_then(extract_signing_time_attribute);
 
         Ok(VerificationResult {
             content,

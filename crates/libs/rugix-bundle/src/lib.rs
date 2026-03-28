@@ -67,7 +67,7 @@ pub fn bundle_hash(bundle: &Path) -> BundleResult<HashDigest> {
 }
 
 pub fn signed_metadata(bundle: &Path) -> BundleResult<Vec<u8>> {
-    let hash = bundle_hash(&bundle).unwrap();
+    let hash = bundle_hash(bundle).unwrap();
     let metadata = SignedMetadata { header_hash: hash };
     Ok(format::encode::to_vec(
         &metadata,

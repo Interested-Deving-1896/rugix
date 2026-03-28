@@ -1,3 +1,9 @@
+#[allow(
+    clippy::redundant_static_lifetimes,
+    clippy::empty_docs,
+    clippy::manual_unwrap_or_default,
+    clippy::match_single_binding
+)]
 mod generated;
 pub use generated::manifest::*;
 

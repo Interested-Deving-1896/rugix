@@ -39,8 +39,8 @@ impl Read for PipeReader {
                 state = self.shared.condvar.wait(state).unwrap();
             } else {
                 let size = buf.len().min(state.buffer.len());
-                for i in 0..size {
-                    buf[i] = state.buffer.pop_front().unwrap();
+                for item in buf.iter_mut().take(size) {
+                    *item = state.buffer.pop_front().unwrap();
                 }
                 self.shared.condvar.notify_all();
                 break Ok(size);

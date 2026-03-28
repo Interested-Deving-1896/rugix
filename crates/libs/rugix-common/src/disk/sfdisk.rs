@@ -98,7 +98,7 @@ pub(crate) fn sfdisk_read(dev: &Path) -> Result<PartitionTable, Report<DiskError
             })
         })
         .collect::<Result<Vec<_>, Report<DiskError>>>()?;
-    partitions.sort_by(|x, y| x.start.cmp(&y.start));
+    partitions.sort_by_key(|x| x.start);
     Ok(PartitionTable {
         disk_id: id,
         disk_size: size,

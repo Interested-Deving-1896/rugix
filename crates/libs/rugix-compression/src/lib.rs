@@ -92,7 +92,7 @@ impl XzEncoder {
     ) -> std::io::Result<xz2::stream::Status> {
         self.stream
             .process_vec(input, &mut self.buffer, action)
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))
+            .map_err(std::io::Error::other)
     }
 }
 
@@ -153,7 +153,7 @@ impl XzDecoder {
     ) -> std::io::Result<xz2::stream::Status> {
         self.stream
             .process_vec(input, &mut self.buffer, action)
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))
+            .map_err(std::io::Error::other)
     }
 }
 

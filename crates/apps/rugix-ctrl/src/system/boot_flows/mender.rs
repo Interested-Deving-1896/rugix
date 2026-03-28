@@ -107,7 +107,7 @@ fn mender_save_grub_env(boot_root: &Path, env: &GrubEnv) -> BootFlowResult<()> {
     std::fs::write(boot_root.join(MENDER_GRUB_LOCK1_SHA256), MENDER_LOCK_SHA256).ok();
     // Secondary environment file.
     save_grub_env(boot_root.join(MENDER_GRUB_LOCK2), &locked).ok();
-    save_grub_env(boot_root.join(MENDER_GRUB_ENV2), &env)
+    save_grub_env(boot_root.join(MENDER_GRUB_ENV2), env)
         .whatever("unable to save Grub environment")?;
     save_grub_env(&boot_root.join(MENDER_GRUB_LOCK2), &unlocked).ok();
     std::fs::write(boot_root.join(MENDER_GRUB_LOCK2_SHA256), MENDER_LOCK_SHA256).ok();
@@ -116,16 +116,10 @@ fn mender_save_grub_env(boot_root: &Path, env: &GrubEnv) -> BootFlowResult<()> {
 
 fn mender_load_grub_env(system: &System, boot_root: &Path) -> BootFlowResult<GrubEnv> {
     let primary_ok = load_grub_env(boot_root.join(MENDER_GRUB_LOCK1))
-        .map(|env| match env.get("editing").as_deref() {
-            Some(value) if value == "0" => true,
-            _ => false,
-        })
+        .map(|env| matches!(env.get("editing"), Some(value) if value == "0"))
         .unwrap_or(false);
     let secondary_ok = load_grub_env(boot_root.join(MENDER_GRUB_LOCK2))
-        .map(|env| match env.get("editing").as_deref() {
-            Some(value) if value == "0" => true,
-            _ => false,
-        })
+        .map(|env| matches!(env.get("editing"), Some(value) if value == "0"))
         .unwrap_or(false);
     let boot_env = if primary_ok {
         load_grub_env(boot_root.join(MENDER_GRUB_ENV1))

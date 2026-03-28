@@ -590,7 +590,7 @@ fn write_varint(writer: &mut dyn Write, integer: u64) -> io::Result<()> {
 const fn compute_varint_size(integer: u64) -> usize {
     // This is at most 64 and should therefore fit into `usize`.
     let bits = (64 - integer.leading_zeros()) as usize;
-    if bits == 0 { 1 } else { (bits + 6) / 7 }
+    if bits == 0 { 1 } else { bits.div_ceil(7) }
 }
 
 #[cfg(test)]

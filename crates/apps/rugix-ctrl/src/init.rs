@@ -62,7 +62,7 @@ fn init() -> SystemResult<()> {
     rugix_cli::CliBuilder::new().init();
 
     const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-    if let Some(path) = std::env::var("PATH").ok() {
+    if let Ok(path) = std::env::var("PATH") {
         let mut paths = path.split(':').collect::<Vec<_>>();
         for default_path in DEFAULT_PATH.split(':').rev() {
             if !paths.contains(&default_path) {
@@ -628,10 +628,7 @@ fn create_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("path `{path:?}` has no parent"),
-            ))
+            Err(io::Error::other(format!("path `{path:?}` has no parent")))
         }
     }
     _create_parent_dir(path.as_ref())

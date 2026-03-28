@@ -107,7 +107,7 @@ impl ChunkCollector {
 
     /// Flushes the current group.
     pub fn flush(&mut self) {
-        if self.pending_data.len() > 0 {
+        if !self.pending_data.is_empty() {
             let data = std::mem::take(&mut self.pending_data);
             let compressed = compress_bytes(&data);
             self.groups.push(ChunkGroup { data, compressed });

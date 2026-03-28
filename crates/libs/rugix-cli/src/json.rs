@@ -17,11 +17,9 @@ use crate::style::{Color, Modifier, RESET_ALL};
 pub fn print_json(value: &impl Serialize, compact: bool) -> io::Result<()> {
     let mut stdout = io::stdout().lock();
     if compact || crate::stdout_is_piped() {
-        serde_json::to_writer(&mut stdout, value)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        serde_json::to_writer(&mut stdout, value).map_err(io::Error::other)?;
     } else {
-        let json_value =
-            serde_json::to_value(value).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let json_value = serde_json::to_value(value).map_err(io::Error::other)?;
         let colored = format_colored(&json_value, 0);
         stdout.write_all(colored.as_bytes())?;
     }

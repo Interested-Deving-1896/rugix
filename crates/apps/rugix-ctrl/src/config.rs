@@ -1,3 +1,4 @@
+#[allow(clippy::redundant_static_lifetimes, clippy::empty_docs)]
 mod generated;
 use std::fs;
 use std::path::Path;

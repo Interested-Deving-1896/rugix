@@ -60,13 +60,10 @@ fn get_reboot_flags(vcio: &Vcio) -> io::Result<u32> {
         vcio.ioctl_property(&mut buffer)?;
     }
     if buffer[BUFFER_STATUS_OFFSET] != RPI_FIRMWARE_STATUS_SUCCESS {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Unable to retrieve reboot flags from Raspberry Pi's firmware (0x{:08X}).",
-                buffer[BUFFER_STATUS_OFFSET]
-            ),
-        ));
+        return Err(io::Error::other(format!(
+            "Unable to retrieve reboot flags from Raspberry Pi's firmware (0x{:08X}).",
+            buffer[BUFFER_STATUS_OFFSET]
+        )));
     }
     Ok(buffer[BUFFER_REBOOT_FLAGS_OFFSET])
 }
@@ -79,13 +76,10 @@ fn set_reboot_flags(vcio: &Vcio, flags: u32) -> io::Result<u32> {
         vcio.ioctl_property(&mut buffer)?;
     }
     if buffer[BUFFER_STATUS_OFFSET] != RPI_FIRMWARE_STATUS_SUCCESS {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!(
-                "Unable to set reboot flags via Raspberry Pi's firmware (0x{:08X}).",
-                buffer[BUFFER_STATUS_OFFSET]
-            ),
-        ));
+        return Err(io::Error::other(format!(
+            "Unable to set reboot flags via Raspberry Pi's firmware (0x{:08X}).",
+            buffer[BUFFER_STATUS_OFFSET]
+        )));
     }
     Ok(buffer[BUFFER_REBOOT_FLAGS_OFFSET])
 }

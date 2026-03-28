@@ -39,10 +39,10 @@ impl<S: BundleSource> BundleReader<S> {
             header_head,
             BUNDLE_HEADER_SIZE_LIMIT,
         )?;
-        if let Some(digest) = header_hash {
-            if digest.algorithm().hash(&bundle_header) != digest {
-                bail!("invalid header hash");
-            }
+        if let Some(digest) = header_hash
+            && digest.algorithm().hash(&bundle_header) != digest
+        {
+            bail!("invalid header hash");
         }
         let header = decode_slice::<format::BundleHeader>(&bundle_header)?;
         let signatures = read_optional_metadata(&mut source)?;
@@ -477,10 +477,9 @@ pub fn skip_until_value(source: &mut dyn BundleSource, tag: Tag) -> BundleResult
             tag: value_tag,
             length,
         } = head
+            && value_tag == tag
         {
-            if value_tag == tag {
-                break Ok(length);
-            }
+            break Ok(length);
         }
         if tags::is_required(head.tag()) {
             bail!("found unexpected required tag {}", head.tag());

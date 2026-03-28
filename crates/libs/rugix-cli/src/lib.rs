@@ -711,7 +711,7 @@ impl VisualWidth {
     /// Measure the width of the last line of a string when displayed on a terminal
     /// screen.
     pub fn measure_last_line(s: &str, line_width: VisualWidth) -> VisualWidth {
-        if let Some(last_line) = s.split('\n').last() {
+        if let Some(last_line) = s.split('\n').next_back() {
             VisualWidth::measure(last_line) % line_width
         } else {
             VisualWidth::ZERO

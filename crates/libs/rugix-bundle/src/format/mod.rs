@@ -132,17 +132,10 @@ define_struct! {
 
 define_struct! {
     /// Signatures.
+    #[derive(Default)]
     pub struct Signatures {
         /// Embedded CMS signatures.
         pub cms_signatures[SIGNATURES_CMS_SIGNATURE]: Vec<Bytes>,
-    }
-}
-
-impl Default for Signatures {
-    fn default() -> Self {
-        Self {
-            cms_signatures: Default::default(),
-        }
     }
 }
 

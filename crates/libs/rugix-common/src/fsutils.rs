@@ -71,8 +71,8 @@ pub fn punch_hole(fd: RawFd, offset: off64_t, size: off64_t) -> Result<(), Repor
     nix::fcntl::fallocate(
         fd,
         FallocateFlags::FALLOC_FL_PUNCH_HOLE | FallocateFlags::FALLOC_FL_KEEP_SIZE,
-        offset.try_into().unwrap(),
-        size.try_into().unwrap(),
+        offset,
+        size,
     )
     .whatever("unable to punch hole into file")?;
     Ok(())

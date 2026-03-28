@@ -402,7 +402,7 @@ fn main() -> BundleResult<()> {
                         .payloads
                         .iter()
                         .position(|p| match &p.delivery {
-                            DeliveryConfig::Slot(config) => &config.slot == new_slot,
+                            DeliveryConfig::Slot(config) => config.slot == new_slot,
                             _ => false,
                         })
                 else {
@@ -416,7 +416,7 @@ fn main() -> BundleResult<()> {
                         .payloads
                         .iter()
                         .position(|p| match &p.delivery {
-                            DeliveryConfig::Slot(config) => &config.slot == old_slot,
+                            DeliveryConfig::Slot(config) => config.slot == old_slot,
                             _ => false,
                         })
                 else {
@@ -639,7 +639,7 @@ pub fn unpack(src: &Path, dst: &Path) -> BundleResult<()> {
     let Some(manifest) = &reader.header().manifest else {
         panic!("unpacking requires a manifest");
     };
-    let manifest = serde_json::from_str::<BundleManifest>(&manifest).unwrap();
+    let manifest = serde_json::from_str::<BundleManifest>(manifest).unwrap();
     std::fs::write(
         dst.join("rugix-bundle.toml"),
         toml::to_string_pretty(&manifest).unwrap(),

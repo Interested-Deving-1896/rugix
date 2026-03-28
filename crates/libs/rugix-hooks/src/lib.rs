@@ -104,8 +104,8 @@ impl HooksLoader {
     pub fn load_hooks(&self, operation: &'static str) -> Result<Hooks, Report<HooksLoadError>> {
         let mut stages = HashMap::new();
         match std::fs::read_dir(&self.directory.join(operation)) {
-            Ok(mut read_dir) => {
-                while let Some(entry) = read_dir.next() {
+            Ok(read_dir) => {
+                for entry in read_dir {
                     rugix_tasks::check_canceled();
                     let entry = entry.whatever("unable to read stage")?;
                     if entry.file_type().map(|t| !t.is_dir()).unwrap_or(true) {
@@ -115,10 +115,10 @@ impl HooksLoader {
                     let stage_name = entry.file_name().to_string_lossy().into_owned();
                     let stage_dir = entry.path();
                     let mut stage_hooks = Vec::new();
-                    let mut read_dir = std::fs::read_dir(&stage_dir).whatever_with(|_| {
+                    let read_dir = std::fs::read_dir(&stage_dir).whatever_with(|_| {
                         format!("unable to read stage hooks for \"{operation}/{stage_name}\"")
                     })?;
-                    while let Some(entry) = read_dir.next() {
+                    for entry in read_dir {
                         let entry = entry.whatever("unable to read hook")?;
                         if entry.file_type().map(|t| !t.is_file()).unwrap_or(true) {
                             // Skip any entries that are not files.
@@ -154,7 +154,7 @@ impl HooksLoader {
                 // If the directory does not exist, then there are simply no hooks.
             }
         }
-        return Ok(Hooks { operation, stages });
+        Ok(Hooks { operation, stages })
     }
 }
 

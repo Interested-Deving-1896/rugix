@@ -810,7 +810,7 @@ fn install_app_bundle<S: BundleSource>(
             if c.roots.len() > 1 {
                 warn!("multiple root certificates in config, using only the first")
             };
-            c.roots.first().map(|p| Path::new(p))
+            c.roots.first().map(Path::new)
         })
     });
 
@@ -1090,6 +1090,7 @@ fn install_app_bundle<S: BundleSource>(
     Ok(())
 }
 
+#[expect(clippy::too_many_arguments)]
 fn install_update_stream(
     system: &System,
     config: &Config,
@@ -1231,7 +1232,7 @@ fn install_update_bundle<R: BundleSource>(
             if c.roots.len() > 1 {
                 warn!("multiple root certificates in config, using only the first")
             };
-            c.roots.get(0).map(|p| Path::new(p))
+            c.roots.first().map(Path::new)
         })
     });
 
@@ -1287,7 +1288,7 @@ fn install_update_bundle<R: BundleSource>(
                 if let Err(error) = hooks.run_hooks(
                     "progress",
                     hook_vars.clone(),
-                    &RunOptions::default().with_silent(true),
+                    RunOptions::default().with_silent(true),
                 ) {
                     warn!("error running 'update-install/progress' hooks: {error:?}");
                 }

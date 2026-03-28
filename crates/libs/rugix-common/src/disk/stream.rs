@@ -105,7 +105,7 @@ impl<R: Read> ImgStream<R> {
     /// Fill the buffer with the next sector.
     fn read_next_sector(&mut self) -> io::Result<()> {
         assert!(
-            self.position % SECTOR_SIZE_U64 == 0,
+            self.position.is_multiple_of(SECTOR_SIZE_U64),
             "invalid sector reading at unaligned position"
         );
         self.reader.read_exact(&mut self.buffer[..SECTOR_SIZE])?;

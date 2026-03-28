@@ -18,7 +18,7 @@ pub fn restore_units(manager: &AppManager) -> AppsResult<()> {
     }
     let mut restored_units = Vec::new();
     for app_name in &apps {
-        if let Err(err) = restore_app_units(&manager, app_name, &mut restored_units) {
+        if let Err(err) = restore_app_units(manager, app_name, &mut restored_units) {
             error!(app = app_name, error = ?err, "failed to restore units");
         }
     }
