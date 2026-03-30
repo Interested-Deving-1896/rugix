@@ -509,8 +509,27 @@ pub fn main() -> SystemResult<()> {
                     insecure_skip_bundle_verification,
                     root_cert,
                     bundle_hash,
+                    http_max_retries,
+                    http_retry_initial_backoff,
+                    http_retry_max_backoff,
                 } => {
-                    if bundle == "-" {
+                    if bundle.starts_with("http") {
+                        let retry_config = RetryConfig {
+                            max_retries: *http_max_retries,
+                            initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
+                            max_backoff: Duration::from_secs(*http_retry_max_backoff),
+                        };
+                        let source = HttpSource::new(bundle, false, retry_config)
+                            .whatever("unable to create HTTP source")?;
+                        install_app_bundle(
+                            &config,
+                            &manager,
+                            source,
+                            bundle_hash,
+                            root_cert.as_deref(),
+                            *insecure_skip_bundle_verification,
+                        )?;
+                    } else if bundle == "-" {
                         let source = ReaderSource::<_, SkipRead>::from_unbuffered(std::io::stdin());
                         install_app_bundle(
                             &config,
@@ -1847,7 +1866,7 @@ pub enum UtilsCommand {
 pub enum AppsCommand {
     /// Install apps from a bundle.
     Install {
-        /// Path of the app bundle, or `-` to read from stdin.
+        /// Path of the app bundle, `-` to read from stdin, or an HTTP(S) URL.
         bundle: String,
         /// Skip bundle verification (insecure, do not use in production).
         ///
@@ -1864,6 +1883,15 @@ pub enum AppsCommand {
         /// Expected bundle hash.
         #[clap(long)]
         bundle_hash: Option<HashDigest>,
+        /// Maximum number of retry attempts for transient HTTP errors.
+        #[clap(long, default_value_t = 5)]
+        http_max_retries: u32,
+        /// Initial HTTP retry backoff duration in seconds.
+        #[clap(long, default_value_t = 1)]
+        http_retry_initial_backoff: u64,
+        /// Maximum HTTP retry backoff duration in seconds.
+        #[clap(long, default_value_t = 30)]
+        http_retry_max_backoff: u64,
     },
     /// List all installed apps.
     List,
