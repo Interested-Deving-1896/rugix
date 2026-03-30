@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 1.1.1
+
+- Allow Rugix App bundles to be installed via HTTP.
+
 ## Version 1.1.0
 
 - Introduction of Rugix Apps to manage application workloads.
