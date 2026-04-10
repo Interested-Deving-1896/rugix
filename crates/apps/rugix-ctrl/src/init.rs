@@ -32,7 +32,7 @@ use rugix_common::partitions::mkfs_ext4;
 use rugix_hooks::HooksLoader;
 use xscript::{cmd_os, run, vars, ParentEnv, Run, Vars};
 
-use crate::utils::{clear_flag, is_flag_set, is_init_process, reboot, DEFERRED_SPARE_REBOOT_FLAG};
+use crate::utils::{clear_flag, is_flag_set, is_init_process, DEFERRED_SPARE_REBOOT_FLAG};
 
 pub fn main() -> SystemResult<()> {
     ensure!(is_init_process(), "process must be the init process");
@@ -707,7 +707,7 @@ fn check_deferred_spare_reboot(system: &System) -> SystemResult<()> {
                     .boot_flow()
                     .set_try_next(system, spare)
                     .whatever("unable to set next boot group")?;
-                reboot()?;
+                system.reboot()?;
             }
         }
     }

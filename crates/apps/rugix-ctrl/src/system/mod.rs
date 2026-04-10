@@ -162,4 +162,11 @@ impl System {
             .commit(self)
             .whatever("unable to commit to active boot group")
     }
+
+    /// Reboot the system via the configured boot flow.
+    pub fn reboot(&self) -> SystemResult<()> {
+        self.boot_flow
+            .reboot(self)
+            .whatever("unable to reboot system")
+    }
 }

@@ -90,6 +90,14 @@ pub trait BootFlow: Debug {
     fn get_active(&self, boot_entries: &BootGroups) -> BootFlowResult<Option<BootGroupIdx>> {
         Ok(None)
     }
+
+    /// Reboot the system.
+    ///
+    /// The default implementation performs a software-level Linux reboot.
+    #[allow(unused_variables)]
+    fn reboot(&self, system: &System) -> BootFlowResult<()> {
+        crate::utils::reboot().whatever("unable to reboot system")
+    }
 }
 
 /// Boot group status.

@@ -237,7 +237,7 @@ pub fn main() -> SystemResult<()> {
                                 .set_try_next(&system, entry_idx)
                                 .whatever("unable to set next boot group")?;
                             info!("rebooting");
-                            reboot()?;
+                            system.reboot()?;
                         }
                         UpdateRebootType::No => { /* nothing to do */ }
                         UpdateRebootType::Set => {
@@ -293,7 +293,7 @@ pub fn main() -> SystemResult<()> {
                             .whatever("unable to set next boot group")?;
                     }
                 }
-                reboot()?;
+                system.reboot()?;
             }
         },
         Command::Unstable(command) => match command {

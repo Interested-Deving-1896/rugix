@@ -134,6 +134,20 @@ impl BootFlow for CustomBootFlow {
         };
         Ok(boot_entries.find_by_name(&output.group).map(|(idx, _)| idx))
     }
+
+    fn reboot(&self, _system: &crate::system::System) -> super::BootFlowResult<()> {
+        // Fall back to the default reboot if the controller doesn't implement
+        // `reboot`, mirroring the contract used by `get_active`.
+        let output = read_str!([&self.controller, "reboot"])
+            .whatever("error running `reboot` on custom boot flow")?;
+        if output.trim().is_empty() {
+            debug!("custom boot flow does not implement `reboot`; using default");
+            return crate::utils::reboot().whatever("unable to reboot system");
+        }
+        serde_json::from_str::<OutputNone>(&output)
+            .whatever("invalid output produced by custom boot flow")?;
+        Ok(())
+    }
 }
 
 /// Output type for operations that output a boot group.
