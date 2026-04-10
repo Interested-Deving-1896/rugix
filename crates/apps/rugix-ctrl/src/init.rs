@@ -123,10 +123,16 @@ fn init() -> SystemResult<()> {
     ])
     .whatever("unable to mount config partition")?;
 
-    if Path::new(MOUNT_POINT_CONFIG)
-        .join(".rugix/bootstrap")
-        .exists()
-    {
+    let dotted_marker = Path::new(MOUNT_POINT_CONFIG).join(".rugix/bootstrap");
+    let plain_marker = Path::new(MOUNT_POINT_CONFIG).join("rugix/bootstrap");
+    let marker = if dotted_marker.exists() {
+        Some(dotted_marker)
+    } else if plain_marker.exists() {
+        Some(plain_marker)
+    } else {
+        None
+    };
+    if let Some(marker) = marker {
         bootstrap(&root)?;
         run!([
             "/usr/bin/env",
@@ -136,8 +142,8 @@ fn init() -> SystemResult<()> {
             MOUNT_POINT_CONFIG
         ])
         .whatever("unable to mount config partition as read-write")?;
-        std::fs::remove_file(Path::new(MOUNT_POINT_CONFIG).join(".rugix/bootstrap"))
-            .whatever("unable to remove bootstrap marker")?;
+        std::fs::remove_file(&marker).whatever("unable to remove bootstrap marker")?;
+
         run!([
             "/usr/bin/env",
             "mount",
