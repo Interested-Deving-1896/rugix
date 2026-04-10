@@ -1,5 +1,14 @@
 # Changelog
 
+## UNRELEASED
+
+- Add `reboot` operation to boot flow interface.
+- Allow the bootstrap marker to be placed in `rugix` instead of `.rugix`.
+
+## Version 1.1.2
+
+- Fix PARTUUID issue when using an initramfs and the `tryboot` mechanism.
+
 ## Version 1.1.1
 
 - Allow Rugix App bundles to be installed via HTTP.
