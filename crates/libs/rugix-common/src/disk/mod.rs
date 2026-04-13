@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use rand::Rng;
+use rand::RngExt;
 use reportify::{bail, Report};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -38,11 +38,11 @@ pub enum DiskId {
 
 impl DiskId {
     pub fn random_mbr() -> Self {
-        Self::Mbr(mbr::MbrId::new(rand::thread_rng().gen()))
+        Self::Mbr(mbr::MbrId::new(rand::rng().random()))
     }
 
     pub fn random_gpt() -> Self {
-        Self::Gpt(gpt::Guid::from_random_bytes(rand::thread_rng().gen()))
+        Self::Gpt(gpt::Guid::from_random_bytes(rand::rng().random()))
     }
 }
 
