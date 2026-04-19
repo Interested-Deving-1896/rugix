@@ -1369,6 +1369,18 @@ fn install_update_bundle<R: BundleSource>(
                     }
                     block_provider = Some(provider);
                 }
+                // If the target is a file on the config partition, ensure
+                // it is writable for the duration of the payload write.
+                let _write_guard = if let SlotKind::File { path } = slot.kind() {
+                    system
+                        .config_partition()
+                        .filter(|cp| path.starts_with(cp.path()))
+                        .map(|cp| cp.acquire_write_guard())
+                        .transpose()
+                        .whatever("unable to make config partition writable")?
+                } else {
+                    None
+                };
                 let decoded_payload_info = if let Some(delta_encoding) =
                     &payload_entry.delta_encoding
                 {
