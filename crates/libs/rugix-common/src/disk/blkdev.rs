@@ -147,6 +147,19 @@ impl BlockDevice {
                 return Self::from_sysfs_path(parent).map(Some);
             }
         }
+        // For virtual block devices (e.g., dm-verity, dm-crypt), there is
+        // no parent in the sysfs hierarchy. Resolve through the backing
+        // device listed in /sys/block/<name>/slaves/ instead.
+        let slaves = PathBuf::from(format!("/sys/block/{}/slaves", self.name()));
+        if slaves.is_dir() {
+            for entry in fs::read_dir(&slaves)? {
+                let entry = entry?;
+                let slave = Self::new(format!("/dev/{}", entry.file_name().to_string_lossy()))?;
+                if let Some(parent) = slave.find_parent()? {
+                    return Ok(Some(parent));
+                }
+            }
+        }
         Ok(None)
     }
 
