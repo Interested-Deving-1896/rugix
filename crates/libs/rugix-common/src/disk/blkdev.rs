@@ -136,6 +136,7 @@ impl BlockDevice {
         let sysfs_path = self.sysfs_path()?;
         let mut path = sysfs_path.parent();
         while let Some(parent) = path {
+            path = parent.parent();
             let Ok(subsystem) = fs::read_link(parent.join("subsystem")) else {
                 continue;
             };
@@ -145,7 +146,6 @@ impl BlockDevice {
             if subsystem == OsStr::new("block") {
                 return Self::from_sysfs_path(parent).map(Some);
             }
-            path = parent.parent();
         }
         Ok(None)
     }
