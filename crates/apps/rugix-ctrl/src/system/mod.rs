@@ -5,7 +5,7 @@ use partitions::ConfigPartition;
 use reportify::{whatever, Report, ResultExt};
 use root::{find_system_device, SystemRoot};
 use slots::{SlotKind, SystemSlots};
-use tracing::warn;
+use tracing::{error, warn};
 
 use rugix_common::disk::blkdev::BlockDevice;
 
@@ -61,11 +61,15 @@ impl System {
             &boot_entries,
         )
         .whatever("unable to create boot flow from config")?;
-        // Determine the active boot group. First, ask the boot flow — it may
-        // know directly (e.g., systemd-boot reads LoaderEntrySelected).
-        let mut active_boot_entry = boot_flow
-            .get_active(&boot_entries)
-            .whatever("unable to determine active boot group from boot flow")?;
+        // Determine the active boot group. Check the kernel cmdline first
+        // (rugix.boot_group=<name>), then ask the boot flow, then fall back
+        // to block device matching.
+        let mut active_boot_entry = get_active_from_cmdline(&boot_entries);
+        if active_boot_entry.is_none() {
+            active_boot_entry = boot_flow
+                .get_active(&boot_entries)
+                .whatever("unable to determine active boot group from boot flow")?;
+        }
         // Fall back to matching block devices against the system device.
         if active_boot_entry.is_none() {
             for (idx, entry) in boot_entries.iter() {
@@ -169,4 +173,28 @@ impl System {
             .reboot(self)
             .whatever("unable to reboot system")
     }
+}
+
+/// Read `rugix.boot_group=<name>` from the kernel cmdline and resolve
+/// it to a boot group index.
+fn get_active_from_cmdline(boot_entries: &BootGroups) -> Option<BootGroupIdx> {
+    let cmdline = match std::fs::read_to_string("/proc/cmdline") {
+        Ok(cmdline) => cmdline,
+        Err(err) => {
+            warn!("unable to read /proc/cmdline: {err}");
+            return None;
+        }
+    };
+    for param in cmdline.split_whitespace() {
+        if let Some(group_name) = param.strip_prefix("rugix.boot_group=") {
+            for (idx, entry) in boot_entries.iter() {
+                if entry.name() == group_name {
+                    return Some(idx);
+                }
+            }
+            error!("rugix.boot_group={group_name} does not match any boot group");
+            return None;
+        }
+    }
+    None
 }
