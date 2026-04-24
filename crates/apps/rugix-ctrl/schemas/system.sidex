@@ -48,6 +48,8 @@ record BlockSlotConfig {
     /// Partition number of the block device.
     partition?: u32,
     immutable?: bool,
+    /// If true, the slot is allowed to be absent.
+    optional?: bool,
 }
 
 /// File slot configuration.

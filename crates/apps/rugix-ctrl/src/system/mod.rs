@@ -71,11 +71,14 @@ impl System {
                 .whatever("unable to determine active boot group from boot flow")?;
         }
         // Fall back to matching block devices against the system device.
+        // Absent (optional) slots are skipped — they have no resolved
+        // device to compare against, so they can never be "the one we
+        // booted from".
         if active_boot_entry.is_none() {
             for (idx, entry) in boot_entries.iter() {
                 for (_, slot) in entry.slots() {
                     if let SlotKind::Block(raw) = &slots[slot].kind() {
-                        if Some(raw.device()) == system_device.as_ref() {
+                        if raw.device().is_some() && raw.device() == system_device.as_ref() {
                             entry.mark_active();
                             break;
                         }

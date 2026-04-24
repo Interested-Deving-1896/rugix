@@ -450,11 +450,14 @@ fn tryboot_uboot_post_install(
     };
     let boot_slot = &system.slots()[boot_slot];
     let _system_slot = &system.slots()[system_slot];
-    let SlotKind::Block(boot_raw) = boot_slot.kind() else {
+    let SlotKind::Block(_) = boot_slot.kind() else {
         bail!("boot slot must be of type `block`")
     };
-    let _mounted_boot = Mounted::mount(boot_raw.device(), temp_dir_spare)
-        .whatever("unable to mount boot device")?;
+    let boot_device = boot_slot
+        .require_available_block()
+        .whatever("spare boot slot is not available")?;
+    let _mounted_boot =
+        Mounted::mount(boot_device, temp_dir_spare).whatever("unable to mount boot device")?;
     let Some(root) = &system.root else {
         bail!("no parent block device");
     };
@@ -562,10 +565,13 @@ impl BootFlow for GrubEfi {
         };
         let boot_slot = &system.slots()[boot_slot];
         let _system_slot = &system.slots()[system_slot];
-        let SlotKind::Block(boot_raw) = boot_slot.kind() else {
+        let SlotKind::Block(_) = boot_slot.kind() else {
             bail!("boot slot must be of type `block`")
         };
-        let _mounted_boot = Mounted::mount(boot_raw.device(), temp_dir_spare)
+        let boot_device = boot_slot
+            .require_available_block()
+            .whatever("spare boot slot is not available")?;
+        let _mounted_boot = Mounted::mount(boot_device, temp_dir_spare)
             .whatever("unable to mount boot partition")?;
         let Some(table) = system.root.as_ref().and_then(|root| root.table.as_ref()) else {
             bail!("no partition table");

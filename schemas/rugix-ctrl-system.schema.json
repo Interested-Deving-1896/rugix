@@ -964,6 +964,9 @@
         },
         "immutable": {
           "type": "boolean"
+        },
+        "optional": {
+          "type": "boolean"
         }
       },
       "required": [],
@@ -1288,6 +1291,9 @@
               "format": "uint32"
             },
             "immutable": {
+              "type": "boolean"
+            },
+            "optional": {
               "type": "boolean"
             }
           },

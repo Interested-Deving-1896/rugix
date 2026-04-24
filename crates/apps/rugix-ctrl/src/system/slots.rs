@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use indexmap::IndexMap;
-use reportify::{bail, ResultExt};
+use reportify::{bail, whatever};
+use tracing::warn;
 
 use crate::config::system::{BlockSlotConfig, SlotConfig};
 
@@ -33,22 +34,33 @@ impl SystemSlots {
         for (name, config) in iter {
             let kind = match config {
                 SlotConfig::Block(block_slot_config) => {
-                    let device = if let Some(device) = &block_slot_config.device {
-                        BlockDevice::new(device)
-                            .whatever("slot device is not a block device")
-                            .with_info(|_| format!("device: {device:?}"))?
+                    let optional = block_slot_config.optional.unwrap_or(false);
+                    // Human-readable identifier for diagnostics when the slot is absent.
+                    let intended = if let Some(device) = &block_slot_config.device {
+                        device.clone()
                     } else if let Some(partition) = &block_slot_config.partition {
-                        let Some(root) = root else {
-                            bail!("no system root")
-                        };
-                        let Some(device) = root.resolve_partition(*partition) else {
-                            bail!("partition {partition} for slot {name:?} not found");
-                        };
-                        device
+                        format!("partition {partition} of the root device")
                     } else {
                         bail!("invalid configuration: no device and partition for {name}");
                     };
-                    SlotKind::Block(BlockSlot { device })
+                    let resolution = resolve_block_slot(root, block_slot_config);
+                    let device = match resolution {
+                        Ok(device) => Some(device),
+                        Err(reason) if optional => {
+                            warn!(
+                                "slot {name:?} is marked optional and could not be \
+                                 resolved ({intended}): {reason}"
+                            );
+                            None
+                        }
+                        Err(reason) => {
+                            bail!("unable to resolve slot {name:?} ({intended}): {reason}")
+                        }
+                    };
+                    SlotKind::Block(BlockSlot {
+                        device,
+                        intended_path: intended,
+                    })
                 }
                 SlotConfig::File(file_slot_config) => SlotKind::File {
                     path: file_slot_config.path.clone().into(),
@@ -167,8 +179,63 @@ impl Slot {
         }
     }
 
-    /// Mark the slot as active.
+    /// Indicates whether the slot is marked optional in the configuration.
+    pub fn is_optional(&self) -> bool {
+        match &self.config {
+            SlotConfig::Block(config) => config.optional.unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    /// Indicates whether the slot is available (i.e., its underlying
+    /// resource is currently resolvable).
+    ///
+    /// Non-block slots are always considered available. Block slots that
+    /// are marked optional and whose device is missing at init time are
+    /// reported as unavailable.
+    pub fn is_available(&self) -> bool {
+        match &self.kind {
+            SlotKind::Block(block) => block.device.is_some(),
+            SlotKind::File { .. } | SlotKind::Custom { .. } => true,
+        }
+    }
+
+    /// Returns the resolved block device if the slot is an available
+    /// block slot; returns `None` for absent or non-block slots.
+    pub fn block_device(&self) -> Option<&BlockDevice> {
+        match &self.kind {
+            SlotKind::Block(block) => block.device.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Require that the slot is an available block slot, returning its
+    /// device. Used at write sites (update / install), where an absent
+    /// target must be a hard error.
+    pub fn require_available_block(&self) -> SystemResult<&BlockDevice> {
+        match &self.kind {
+            SlotKind::Block(block) => block.device.as_ref().ok_or_else(|| {
+                whatever!(
+                    "slot {:?} is not available: {} is not present",
+                    self.name,
+                    block.intended_path
+                )
+            }),
+            _ => bail!("slot {:?} is not a block slot", self.name),
+        }
+    }
+
+    /// Mark the slot as active. No-op (with a warning) if the slot is
+    /// not currently available — absent slots cannot be the running
+    /// system.
     pub fn mark_active(&self) {
+        if !self.is_available() {
+            warn!(
+                "refusing to mark slot {:?} active: slot is not available",
+                self.name
+            );
+            return;
+        }
         *self.active.lock().unwrap() = true;
     }
 }
@@ -180,14 +247,50 @@ pub enum SlotKind {
     Custom { handler: Vec<String> },
 }
 
+/// Block device slot.
+///
+/// A block slot always records the device path declared in the system
+/// configuration (`intended_path`); the actual [`BlockDevice`] handle
+/// is `None` if the slot is marked optional and the device could not
+/// be resolved at construction time.
 #[derive(Debug)]
 pub struct BlockSlot {
-    device: BlockDevice,
+    device: Option<BlockDevice>,
+    intended_path: String,
 }
 
 impl BlockSlot {
-    pub fn device(&self) -> &BlockDevice {
-        &self.device
+    /// Returns the resolved block device, or `None` if the slot is
+    /// currently absent.
+    pub fn device(&self) -> Option<&BlockDevice> {
+        self.device.as_ref()
+    }
+
+    /// The device path or partition descriptor declared in the
+    /// configuration. Useful for diagnostics even when the slot is
+    /// absent.
+    pub fn intended_path(&self) -> &str {
+        &self.intended_path
+    }
+}
+
+/// Resolve the block device for a block slot configuration.
+///
+/// Returns a human-readable reason string on failure — these end up in
+/// log lines when the slot is optional, and in the returned error when
+/// it isn't.
+fn resolve_block_slot(
+    root: Option<&SystemRoot>,
+    config: &BlockSlotConfig,
+) -> Result<BlockDevice, String> {
+    if let Some(device) = &config.device {
+        BlockDevice::new(device).map_err(|err| format!("{err}"))
+    } else if let Some(partition) = &config.partition {
+        let root = root.ok_or_else(|| "no system root".to_owned())?;
+        root.resolve_partition(*partition)
+            .ok_or_else(|| format!("partition {partition} not found on root device"))
+    } else {
+        Err("no device and no partition specified".to_owned())
     }
 }
 
@@ -213,5 +316,6 @@ const fn default_slot_config(partition: u32, immutable: bool) -> SlotConfig {
         device: None,
         partition: Some(partition),
         immutable: Some(immutable),
+        optional: None,
     })
 }

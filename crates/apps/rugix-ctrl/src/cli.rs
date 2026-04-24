@@ -335,10 +335,11 @@ pub fn main() -> SystemResult<()> {
                     bail!("slot {slot} not found")
                 };
                 match slot.kind() {
-                    SlotKind::Block(block_slot) => {
+                    SlotKind::Block(_) => {
+                        let device = slot.require_available_block()?;
                         payload_db::add_index(
                             slot.name(),
-                            block_slot.device().path(),
+                            device.path(),
                             chunker_algorithm,
                             hash_algorithm,
                         )?;
@@ -372,8 +373,9 @@ pub fn main() -> SystemResult<()> {
                 };
                 let mut hasher = hash.algorithm().hasher();
                 let mut file = match slot.kind() {
-                    SlotKind::Block(block_slot) => {
-                        File::open(block_slot.device()).whatever("error opening block device")?
+                    SlotKind::Block(_) => {
+                        let device = slot.require_available_block()?;
+                        File::open(device).whatever("error opening block device")?
                     }
                     SlotKind::File { path } => File::open(path).whatever("error opening file")?,
                     SlotKind::Custom { .. } => {
@@ -1356,10 +1358,13 @@ fn install_update_bundle<R: BundleSource>(
                         // is fine to also add the target slot here.
                         match slot.kind() {
                             SlotKind::Block(block_slot) => {
-                                provider.add_slot(
-                                    slot.name(),
-                                    block_slot.device().path().to_path_buf(),
-                                )?;
+                                // Skip absent optional slots silently — they
+                                // can't contribute as a delta-encoding source
+                                // if we don't have a device handle.
+                                let Some(device) = block_slot.device() else {
+                                    continue;
+                                };
+                                provider.add_slot(slot.name(), device.path().to_path_buf())?;
                             }
                             SlotKind::File { path } => {
                                 provider.add_slot(slot.name(), path.to_path_buf())?;
@@ -1419,18 +1424,21 @@ fn install_update_bundle<R: BundleSource>(
                         rugix_bundle::manifest::DeltaEncodingFormat::Xdelta => { /* do nothing */ }
                     }
                     let source = match source.kind() {
-                        SlotKind::Block(block_slot) => block_slot.device().path().to_owned(),
+                        SlotKind::Block(_) => source.require_available_block()?.path().to_owned(),
                         SlotKind::File { path } => path.to_owned(),
                         SlotKind::Custom { .. } => {
                             bail!("source slot must not be a custom slot");
                         }
                     };
                     let target = match slot.kind() {
-                        SlotKind::Block(block_slot) => std::fs::OpenOptions::new()
-                            .read(true)
-                            .write(true)
-                            .open(block_slot.device())
-                            .whatever("unable to open payload target")?,
+                        SlotKind::Block(_) => {
+                            let device = slot.require_available_block()?;
+                            std::fs::OpenOptions::new()
+                                .read(true)
+                                .write(true)
+                                .open(device)
+                                .whatever("unable to open payload target")?
+                        }
                         SlotKind::File { path } => std::fs::OpenOptions::new()
                             .read(true)
                             .write(true)
@@ -1482,11 +1490,12 @@ fn install_update_bundle<R: BundleSource>(
                     }
                 } else {
                     match slot.kind() {
-                        SlotKind::Block(block_slot) => {
+                        SlotKind::Block(_) => {
+                            let device = slot.require_available_block()?;
                             let target = std::fs::OpenOptions::new()
                                 .read(true)
                                 .write(true)
-                                .open(block_slot.device())
+                                .open(device)
                                 .whatever("unable to open payload target")?;
                             payload
                                 .decode_into(

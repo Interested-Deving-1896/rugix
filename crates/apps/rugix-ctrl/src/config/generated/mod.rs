@@ -105,9 +105,10 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["service-manager"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["service-manager"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"service-manager\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"service-manager\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -207,14 +208,17 @@ pub mod apps {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppsConfig {
                         service_manager: __field0,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["service-manager"];
+            const __FIELDS: &'static [&'static str] = &["service-manager"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppsConfig",
@@ -274,7 +278,7 @@ pub mod apps {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &[
+            const __IDENTIFIERS: &'static [&'static str] = &[
                 "inactive",
                 "switching",
                 "active",
@@ -283,7 +287,7 @@ pub mod apps {
                 "error",
             ];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"inactive\", \"switching\", \"active\", \"starting\", \"stopping\", \"error\"]" ;
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"inactive\", \"switching\", \"active\", \"starting\", \"stopping\", \"error\"]" ;
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -375,7 +379,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &[
+            const __VARIANTS: &'static [&'static str] = &[
                 "inactive",
                 "switching",
                 "active",
@@ -580,9 +584,10 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["generation"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["generation"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"generation\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"generation\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -692,7 +697,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["generation"];
+            const __FIELDS: &'static [&'static str] = &["generation"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStateStarting",
@@ -786,9 +791,10 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["generation"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["generation"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"generation\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"generation\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -898,7 +904,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["generation"];
+            const __FIELDS: &'static [&'static str] = &["generation"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStateStopping",
@@ -1058,9 +1064,9 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["from", "to", "recovery"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["from", "to", "recovery"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"from\", \"to\", \"recovery\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -1196,9 +1202,18 @@ pub mod apps {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppStateSwitching {
                         from: __field0,
                         to: __field1,
@@ -1207,7 +1222,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["from", "to", "recovery"];
+            const __FIELDS: &'static [&'static str] = &["from", "to", "recovery"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStateSwitching",
@@ -1298,9 +1313,10 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["generation"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["generation"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"generation\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"generation\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -1410,7 +1426,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["generation"];
+            const __FIELDS: &'static [&'static str] = &["generation"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStateActive",
@@ -1556,9 +1572,9 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["from", "to", "message"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["from", "to", "message"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"from\", \"to\", \"message\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -1691,7 +1707,10 @@ pub mod apps {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     let __field1 = match __field1 {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
@@ -1716,7 +1735,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["from", "to", "message"];
+            const __FIELDS: &'static [&'static str] = &["from", "to", "message"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStateError",
@@ -1768,10 +1787,10 @@ pub mod apps {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] =
+            const __IDENTIFIERS: &'static [&'static str] =
                 &["running", "unhealthy", "stopped", "failed", "unknown"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"running\", \"unhealthy\", \"stopped\", \"failed\", \"unknown\"]" ;
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"running\", \"unhealthy\", \"stopped\", \"failed\", \"unknown\"]" ;
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -1859,7 +1878,8 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["running", "unhealthy", "stopped", "failed", "unknown"];
+            const __VARIANTS: &'static [&'static str] =
+                &["running", "unhealthy", "stopped", "failed", "unknown"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -2049,9 +2069,9 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["message"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["message"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"message\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"message\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -2162,7 +2182,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["message"];
+            const __FIELDS: &'static [&'static str] = &["message"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppStatusMessage",
@@ -2316,9 +2336,10 @@ pub mod apps {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["number", "createdAt", "lastActivated"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["number", "createdAt", "lastActivated"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"number\", \"createdAt\", \"lastActivated\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -2478,7 +2499,10 @@ pub mod apps {
                             );
                         }
                     };
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppGeneration {
                         number: __field0,
                         created_at: __field1,
@@ -2487,7 +2511,7 @@ pub mod apps {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["number", "createdAt", "lastActivated"];
+            const __FIELDS: &'static [&'static str] = &["number", "createdAt", "lastActivated"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppGeneration",
@@ -2635,9 +2659,9 @@ pub mod bootstrapping {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["disabled", "layout"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["disabled", "layout"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"disabled\", \"layout\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -2760,8 +2784,14 @@ pub mod bootstrapping {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(BootstrappingConfig {
                         disabled: __field0,
                         layout: __field1,
@@ -2769,7 +2799,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["disabled", "layout"];
+            const __FIELDS: &'static [&'static str] = &["disabled", "layout"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BootstrappingConfig",
@@ -2820,9 +2850,9 @@ pub mod bootstrapping {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["mbr", "gpt", "default", "none"];
+            const __IDENTIFIERS: &'static [&'static str] = &["mbr", "gpt", "default", "none"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str =
+            const __EXPECTING_IDENTIFIERS: &'static str =
                 "an identifier in [\"mbr\", \"gpt\", \"default\", \"none\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
@@ -2907,7 +2937,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["mbr", "gpt", "default", "none"];
+            const __VARIANTS: &'static [&'static str] = &["mbr", "gpt", "default", "none"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -3109,9 +3139,10 @@ pub mod bootstrapping {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["partitions"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["partitions"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"partitions\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"partitions\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -3225,7 +3256,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["partitions"];
+            const __FIELDS: &'static [&'static str] = &["partitions"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "PartitionLayoutConfig",
@@ -3418,9 +3449,10 @@ pub mod bootstrapping {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["name", "size", "type", "filesystem"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["name", "size", "type", "filesystem"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"name\", \"size\", \"type\", \"filesystem\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -3575,10 +3607,22 @@ pub mod bootstrapping {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
-                    let __field3 = __field3.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(LayoutPartitionConfig {
                         name: __field0,
                         size: __field1,
@@ -3588,7 +3632,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["name", "size", "type", "filesystem"];
+            const __FIELDS: &'static [&'static str] = &["name", "size", "type", "filesystem"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "LayoutPartitionConfig",
@@ -3626,9 +3670,9 @@ pub mod bootstrapping {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["ext4"];
+            const __IDENTIFIERS: &'static [&'static str] = &["ext4"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"ext4\"]";
+            const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"ext4\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -3700,7 +3744,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["ext4"];
+            const __VARIANTS: &'static [&'static str] = &["ext4"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -3734,10 +3778,12 @@ pub mod bootstrapping {
                     {
                         let __identifier = __IdentifierVisitor.visit_str(__value)?;
                         #[allow(unreachable_patterns)]
-                        Err(__E::invalid_value(
-                            __serde::de::Unexpected::Str(__value),
-                            &self,
-                        ))
+                        match __identifier {
+                            _ => Err(__E::invalid_value(
+                                __serde::de::Unexpected::Str(__value),
+                                &self,
+                            )),
+                        }
                     }
                     #[inline]
                     fn visit_enum<__A>(
@@ -3897,9 +3943,9 @@ pub mod bootstrapping {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["label", "additional-options"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["label", "additional-options"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"label\", \"additional-options\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -4023,8 +4069,14 @@ pub mod bootstrapping {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(Ext4Filesystem {
                         label: __field0,
                         additional_options: __field1,
@@ -4032,7 +4084,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["label", "additional-options"];
+            const __FIELDS: &'static [&'static str] = &["label", "additional-options"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "Ext4Filesystem",
@@ -4130,9 +4182,10 @@ pub mod bootstrapping {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["system-size"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["system-size"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"system-size\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"system-size\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -4243,7 +4296,7 @@ pub mod bootstrapping {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["system-size"];
+            const __FIELDS: &'static [&'static str] = &["system-size"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "DefaultLayoutConfig",
@@ -4360,9 +4413,10 @@ pub mod config {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["signatures"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["signatures"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"signatures\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"signatures\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -4462,14 +4516,17 @@ pub mod config {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(Config {
                         signatures: __field0,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["signatures"];
+            const __FIELDS: &'static [&'static str] = &["signatures"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "Config",
@@ -4564,9 +4621,9 @@ pub mod config {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["roots"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["roots"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"roots\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"roots\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -4674,7 +4731,7 @@ pub mod config {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["roots"];
+            const __FIELDS: &'static [&'static str] = &["roots"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "SignaturesConfig",
@@ -4721,9 +4778,9 @@ pub mod events {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["UpdateProgress"];
+            const __IDENTIFIERS: &'static [&'static str] = &["UpdateProgress"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"UpdateProgress\"]";
+            const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"UpdateProgress\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -4797,7 +4854,7 @@ pub mod events {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["UpdateProgress"];
+            const __VARIANTS: &'static [&'static str] = &["UpdateProgress"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -4835,10 +4892,12 @@ pub mod events {
                     {
                         let __identifier = __IdentifierVisitor.visit_str(__value)?;
                         #[allow(unreachable_patterns)]
-                        Err(__E::invalid_value(
-                            __serde::de::Unexpected::Str(__value),
-                            &self,
-                        ))
+                        match __identifier {
+                            _ => Err(__E::invalid_value(
+                                __serde::de::Unexpected::Str(__value),
+                                &self,
+                            )),
+                        }
                     }
                     #[inline]
                     fn visit_enum<__A>(
@@ -4950,9 +5009,9 @@ pub mod events {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["progress"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["progress"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"progress\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"progress\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -5060,7 +5119,7 @@ pub mod events {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["progress"];
+            const __FIELDS: &'static [&'static str] = &["progress"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "UpdateProgressEvent",
@@ -5229,9 +5288,9 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["slots", "boot", "state"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["slots", "boot", "state"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"slots\", \"boot\", \"state\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -5375,7 +5434,10 @@ pub mod output {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     let __field2 = match __field2 {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
@@ -5392,7 +5454,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["slots", "boot", "state"];
+            const __FIELDS: &'static [&'static str] = &["slots", "boot", "state"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "SystemInfoOutput",
@@ -5436,9 +5498,9 @@ pub mod output {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["Disabled", "Active", "Error"];
+            const __IDENTIFIERS: &'static [&'static str] = &["Disabled", "Active", "Error"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str =
+            const __EXPECTING_IDENTIFIERS: &'static str =
                 "an identifier in [\"Disabled\", \"Active\", \"Error\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
@@ -5519,7 +5581,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["Disabled", "Active", "Error"];
+            const __VARIANTS: &'static [&'static str] = &["Disabled", "Active", "Error"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -5715,9 +5777,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["dataPartition"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["dataPartition"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"dataPartition\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"dataPartition\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -5817,14 +5880,17 @@ pub mod output {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(StateInfoActiveOutput {
                         data_partition: __field0,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["dataPartition"];
+            const __FIELDS: &'static [&'static str] = &["dataPartition"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "StateInfoActiveOutput",
@@ -6028,9 +6094,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["active", "hashes", "size", "updatedAt"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["active", "hashes", "size", "updatedAt"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"active\", \"hashes\", \"size\", \"updatedAt\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -6201,10 +6268,22 @@ pub mod output {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
-                    let __field3 = __field3.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(SlotInfoOutput {
                         active: __field0,
                         hashes: __field1,
@@ -6214,7 +6293,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["active", "hashes", "size", "updatedAt"];
+            const __FIELDS: &'static [&'static str] = &["active", "hashes", "size", "updatedAt"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "SlotInfoOutput",
@@ -6415,10 +6494,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] =
+                    const __IDENTIFIERS: &'static [&'static str] =
                         &["bootFlow", "activeGroup", "defaultGroup", "groups"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"bootFlow\", \"activeGroup\", \"defaultGroup\", \"groups\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"bootFlow\", \"activeGroup\", \"defaultGroup\", \"groups\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -6601,8 +6680,14 @@ pub mod output {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     let __field3 = match __field3 {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
@@ -6620,7 +6705,8 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["bootFlow", "activeGroup", "defaultGroup", "groups"];
+            const __FIELDS: &'static [&'static str] =
+                &["bootFlow", "activeGroup", "defaultGroup", "groups"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BootInfoOutput",
@@ -6695,9 +6781,9 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &[];
+                    const __IDENTIFIERS: &'static [&'static str] = &[];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in []";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in []";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -6720,7 +6806,9 @@ pub mod output {
                         where
                             __E: __serde::de::Error,
                         {
-                            ::core::result::Result::Ok(__Identifier::__Unknown)
+                            match __value {
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
                         }
                         fn visit_str<__E>(
                             self,
@@ -6729,7 +6817,9 @@ pub mod output {
                         where
                             __E: __serde::de::Error,
                         {
-                            ::core::result::Result::Ok(__Identifier::__Unknown)
+                            match __value {
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
                         }
                         fn visit_bytes<__E>(
                             self,
@@ -6738,7 +6828,9 @@ pub mod output {
                         where
                             __E: __serde::de::Error,
                         {
-                            ::core::result::Result::Ok(__Identifier::__Unknown)
+                            match __value {
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
                         }
                     }
                     impl<'de> __serde::Deserialize<'de> for __Identifier {
@@ -6758,17 +6850,19 @@ pub mod output {
                     while let ::core::option::Option::Some(__key) =
                         __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
                     {
-                        {
-                            __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
-                                &mut __map,
-                            )?;
+                        match __key {
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
                         }
                     }
                     ::core::result::Result::Ok(BootGroupInfoOutput {})
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &[];
+            const __FIELDS: &'static [&'static str] = &[];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BootGroupInfoOutput",
@@ -6923,9 +7017,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["device", "parent", "partition"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["device", "parent", "partition"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"device\", \"parent\", \"partition\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -7078,8 +7173,14 @@ pub mod output {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(BlockDeviceInfo {
                         device: __field0,
                         parent: __field1,
@@ -7088,7 +7189,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["device", "parent", "partition"];
+            const __FIELDS: &'static [&'static str] = &["device", "parent", "partition"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BlockDeviceInfo",
@@ -7245,9 +7346,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["status", "generation", "metadata"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["status", "generation", "metadata"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"status\", \"generation\", \"metadata\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -7401,8 +7503,14 @@ pub mod output {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(AppListEntryOutput {
                         status: __field0,
                         generation: __field1,
@@ -7411,7 +7519,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["status", "generation", "metadata"];
+            const __FIELDS: &'static [&'static str] = &["status", "generation", "metadata"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppListEntryOutput",
@@ -7596,9 +7704,10 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["name", "status", "state", "generations"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["name", "status", "state", "generations"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"name\", \"status\", \"state\", \"generations\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -7800,7 +7909,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["name", "status", "state", "generations"];
+            const __FIELDS: &'static [&'static str] = &["name", "status", "state", "generations"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppInfoOutput",
@@ -8037,7 +8146,7 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &[
+                    const __IDENTIFIERS: &'static [&'static str] = &[
                         "number",
                         "createdAt",
                         "complete",
@@ -8046,7 +8155,7 @@ pub mod output {
                         "metadata",
                     ];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"number\", \"createdAt\", \"complete\", \"lastActivated\", \"active\", \"metadata\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"number\", \"createdAt\", \"complete\", \"lastActivated\", \"active\", \"metadata\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -8277,7 +8386,10 @@ pub mod output {
                             );
                         }
                     };
-                    let __field3 = __field3.unwrap_or_default();
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     let __field4 = match __field4 {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
@@ -8286,7 +8398,10 @@ pub mod output {
                             );
                         }
                     };
-                    let __field5 = __field5.unwrap_or_default();
+                    let __field5 = match __field5 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(GenerationInfoOutput {
                         number: __field0,
                         created_at: __field1,
@@ -8298,7 +8413,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &[
+            const __FIELDS: &'static [&'static str] = &[
                 "number",
                 "createdAt",
                 "complete",
@@ -8396,9 +8511,9 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["removed"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["removed"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"removed\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"removed\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -8509,7 +8624,7 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["removed"];
+            const __FIELDS: &'static [&'static str] = &["removed"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "AppGcAppOutput",
@@ -8655,9 +8770,9 @@ pub mod state {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["overlay", "persist"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["overlay", "persist"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"overlay\", \"persist\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -8782,8 +8897,14 @@ pub mod state {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(StateConfig {
                         overlay: __field0,
                         persist: __field1,
@@ -8791,7 +8912,7 @@ pub mod state {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["overlay", "persist"];
+            const __FIELDS: &'static [&'static str] = &["overlay", "persist"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "StateConfig",
@@ -8836,9 +8957,10 @@ pub mod state {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["persist", "discard", "in-memory", "disabled"];
+            const __IDENTIFIERS: &'static [&'static str] =
+                &["persist", "discard", "in-memory", "disabled"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str =
+            const __EXPECTING_IDENTIFIERS: &'static str =
                 "an identifier in [\"persist\", \"discard\", \"in-memory\", \"disabled\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
@@ -8923,7 +9045,8 @@ pub mod state {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["persist", "discard", "in-memory", "disabled"];
+            const __VARIANTS: &'static [&'static str] =
+                &["persist", "discard", "in-memory", "disabled"];
             #[doc(hidden)]
             struct __Visitor {
                 __phantom_vars: ::core::marker::PhantomData<fn(&())>,
@@ -9032,9 +9155,10 @@ pub mod state {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["File", "Directory"];
+            const __IDENTIFIERS: &'static [&'static str] = &["File", "Directory"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"File\", \"Directory\"]";
+            const __EXPECTING_IDENTIFIERS: &'static str =
+                "an identifier in [\"File\", \"Directory\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -9110,23 +9234,25 @@ pub mod state {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["File", "Directory"];
+            const __VARIANTS: &'static [&'static str] = &["File", "Directory"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __content =
                     __sidex_serde::de::content::deserialize_into_content(__deserializer)?;
-                if let Ok(__value) = __sidex_serde::de::content::deserialize_content_ref::<
+                match __sidex_serde::de::content::deserialize_content_ref::<
                     PersistFileConfig,
                     __D::Error,
                 >(&__content)
                 {
-                    return Ok(PersistConfig::File(__value));
+                    Ok(__value) => return Ok(PersistConfig::File(__value)),
+                    Err(_) => {}
                 };
-                if let Ok(__value) = __sidex_serde::de::content::deserialize_content_ref::<
+                match __sidex_serde::de::content::deserialize_content_ref::<
                     PersistDirectoryConfig,
                     __D::Error,
                 >(&__content)
                 {
-                    return Ok(PersistConfig::Directory(__value));
+                    Ok(__value) => return Ok(PersistConfig::Directory(__value)),
+                    Err(_) => {}
                 };
                 Err(<__D::Error as __serde::de::Error>::custom(
                     "no matching variant found",
@@ -9154,10 +9280,12 @@ pub mod state {
                     {
                         let __identifier = __IdentifierVisitor.visit_str(__value)?;
                         #[allow(unreachable_patterns)]
-                        Err(__E::invalid_value(
-                            __serde::de::Unexpected::Str(__value),
-                            &self,
-                        ))
+                        match __identifier {
+                            _ => Err(__E::invalid_value(
+                                __serde::de::Unexpected::Str(__value),
+                                &self,
+                            )),
+                        }
                     }
                     #[inline]
                     fn visit_enum<__A>(
@@ -9317,9 +9445,9 @@ pub mod state {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["file", "default"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["file", "default"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"file\", \"default\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -9446,7 +9574,10 @@ pub mod state {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(PersistFileConfig {
                         file: __field0,
                         default: __field1,
@@ -9454,7 +9585,7 @@ pub mod state {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["file", "default"];
+            const __FIELDS: &'static [&'static str] = &["file", "default"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "PersistFileConfig",
@@ -9551,9 +9682,10 @@ pub mod state {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["directory"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["directory"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"directory\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"directory\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -9666,7 +9798,7 @@ pub mod state {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["directory"];
+            const __FIELDS: &'static [&'static str] = &["directory"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "PersistDirectoryConfig",
@@ -9927,7 +10059,7 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &[
+                    const __IDENTIFIERS: &'static [&'static str] = &[
                         "config-partition",
                         "data-partition",
                         "slots",
@@ -9935,7 +10067,7 @@ pub mod system {
                         "boot-flow",
                     ];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"config-partition\", \"data-partition\", \"slots\", \"boot-groups\", \"boot-flow\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"config-partition\", \"data-partition\", \"slots\", \"boot-groups\", \"boot-flow\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -10142,11 +10274,26 @@ pub mod system {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
-                    let __field3 = __field3.unwrap_or_default();
-                    let __field4 = __field4.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field4 = match __field4 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(SystemConfig {
                         config_partition: __field0,
                         data_partition: __field1,
@@ -10157,7 +10304,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &[
+            const __FIELDS: &'static [&'static str] = &[
                 "config-partition",
                 "data-partition",
                 "slots",
@@ -10420,7 +10567,7 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &[
+                    const __IDENTIFIERS: &'static [&'static str] = &[
                         "disabled",
                         "device",
                         "partition",
@@ -10429,7 +10576,7 @@ pub mod system {
                         "protected",
                     ];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"disabled\", \"device\", \"partition\", \"mount-script\", \"path\", \"protected\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"disabled\", \"device\", \"partition\", \"mount-script\", \"path\", \"protected\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -10643,12 +10790,30 @@ pub mod system {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
-                    let __field3 = __field3.unwrap_or_default();
-                    let __field4 = __field4.unwrap_or_default();
-                    let __field5 = __field5.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field4 = match __field4 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field5 = match __field5 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(PartitionConfig {
                         disabled: __field0,
                         device: __field1,
@@ -10660,7 +10825,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &[
+            const __FIELDS: &'static [&'static str] = &[
                 "disabled",
                 "device",
                 "partition",
@@ -10715,9 +10880,9 @@ pub mod system {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &["block", "file", "custom"];
+            const __IDENTIFIERS: &'static [&'static str] = &["block", "file", "custom"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &str =
+            const __EXPECTING_IDENTIFIERS: &'static str =
                 "an identifier in [\"block\", \"file\", \"custom\"]";
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
@@ -10798,7 +10963,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &["block", "file", "custom"];
+            const __VARIANTS: &'static [&'static str] = &["block", "file", "custom"];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -10838,10 +11003,12 @@ pub mod system {
                     {
                         let __identifier = __IdentifierVisitor.visit_str(__value)?;
                         #[allow(unreachable_patterns)]
-                        Err(__E::invalid_value(
-                            __serde::de::Unexpected::Str(__value),
-                            &self,
-                        ))
+                        match __identifier {
+                            _ => Err(__E::invalid_value(
+                                __serde::de::Unexpected::Str(__value),
+                                &self,
+                            )),
+                        }
                     }
                     #[inline]
                     fn visit_enum<__A>(
@@ -10893,6 +11060,8 @@ pub mod system {
         pub partition: ::std::option::Option<u32>,
         #[doc = ""]
         pub immutable: ::std::option::Option<bool>,
+        #[doc = "If true, the slot is allowed to be absent.\n"]
+        pub optional: ::std::option::Option<bool>,
     }
     impl BlockSlotConfig {
         #[doc = "Creates a new [`BlockSlotConfig`]."]
@@ -10901,6 +11070,7 @@ pub mod system {
                 device: ::std::default::Default::default(),
                 partition: ::std::default::Default::default(),
                 immutable: ::std::default::Default::default(),
+                optional: ::std::default::Default::default(),
             }
         }
         #[doc = "Sets the value of `device`."]
@@ -10936,6 +11106,16 @@ pub mod system {
             self.immutable = immutable;
             self
         }
+        #[doc = "Sets the value of `optional`."]
+        pub fn set_optional(&mut self, optional: ::std::option::Option<bool>) -> &mut Self {
+            self.optional = optional;
+            self
+        }
+        #[doc = "Sets the value of `optional`."]
+        pub fn with_optional(mut self, optional: ::std::option::Option<bool>) -> Self {
+            self.optional = optional;
+            self
+        }
     }
     impl ::std::default::Default for BlockSlotConfig {
         fn default() -> Self {
@@ -10949,7 +11129,7 @@ pub mod system {
             __serializer: __S,
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
-                __sidex_serde::ser::RecordSerializer::new(__serializer, "BlockSlotConfig", 3usize)?;
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "BlockSlotConfig", 4usize)?;
             __record
                 .serialize_optional_field("device", ::core::option::Option::as_ref(&self.device))?;
             __record.serialize_optional_field(
@@ -10959,6 +11139,10 @@ pub mod system {
             __record.serialize_optional_field(
                 "immutable",
                 ::core::option::Option::as_ref(&self.immutable),
+            )?;
+            __record.serialize_optional_field(
+                "optional",
+                ::core::option::Option::as_ref(&self.optional),
             )?;
             __record.end()
         }
@@ -10995,7 +11179,7 @@ pub mod system {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 4 fields"),
                             );
                         }
                     };
@@ -11006,7 +11190,7 @@ pub mod system {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
+                                __serde::de::Error::invalid_length(1usize, &"record with 4 fields"),
                             );
                         }
                     };
@@ -11017,7 +11201,18 @@ pub mod system {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
+                                __serde::de::Error::invalid_length(2usize, &"record with 4 fields"),
+                            );
+                        }
+                    };
+                    let __field3 = match __serde::de::SeqAccess::next_element::<
+                        ::std::option::Option<bool>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(3usize, &"record with 4 fields"),
                             );
                         }
                     };
@@ -11025,6 +11220,7 @@ pub mod system {
                         device: __field0,
                         partition: __field1,
                         immutable: __field2,
+                        optional: __field3,
                     })
                 }
                 #[inline]
@@ -11036,16 +11232,18 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["device", "partition", "immutable"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["device", "partition", "immutable", "optional"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
-                        "an identifier in [\"device\", \"partition\", \"immutable\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"device\", \"partition\", \"immutable\", \"optional\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
                         __Identifier0,
                         __Identifier1,
                         __Identifier2,
+                        __Identifier3,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -11069,6 +11267,7 @@ pub mod system {
                                 0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
                                 2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                                3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -11086,6 +11285,9 @@ pub mod system {
                                 }
                                 "immutable" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier2)
+                                }
+                                "optional" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier3)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -11106,6 +11308,9 @@ pub mod system {
                                 }
                                 b"immutable" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier2)
+                                }
+                                b"optional" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier3)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -11131,6 +11336,8 @@ pub mod system {
                     let mut __field1: ::core::option::Option<::std::option::Option<u32>> =
                         ::core::option::Option::None;
                     let mut __field2: ::core::option::Option<::std::option::Option<bool>> =
+                        ::core::option::Option::None;
+                    let mut __field3: ::core::option::Option<::std::option::Option<bool>> =
                         ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
                         __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
@@ -11178,6 +11385,20 @@ pub mod system {
                                     >(&mut __map)?,
                                 );
                             }
+                            __Identifier::__Identifier3 => {
+                                if ::core::option::Option::is_some(&__field3) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "optional",
+                                        ),
+                                    );
+                                }
+                                __field3 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        ::std::option::Option<bool>,
+                                    >(&mut __map)?,
+                                );
+                            }
                             _ => {
                                 __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
                                     &mut __map,
@@ -11185,18 +11406,33 @@ pub mod system {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field3 = match __field3 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(BlockSlotConfig {
                         device: __field0,
                         partition: __field1,
                         immutable: __field2,
+                        optional: __field3,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["device", "partition", "immutable"];
+            const __FIELDS: &'static [&'static str] =
+                &["device", "partition", "immutable", "optional"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BlockSlotConfig",
@@ -11321,9 +11557,9 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["path", "immutable"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["path", "immutable"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"path\", \"immutable\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -11449,7 +11685,10 @@ pub mod system {
                             );
                         }
                     };
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(FileSlotConfig {
                         path: __field0,
                         immutable: __field1,
@@ -11457,7 +11696,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["path", "immutable"];
+            const __FIELDS: &'static [&'static str] = &["path", "immutable"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "FileSlotConfig",
@@ -11555,9 +11794,9 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["handler"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["handler"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"handler\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"handler\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -11669,7 +11908,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["handler"];
+            const __FIELDS: &'static [&'static str] = &["handler"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "CustomSlotConfig",
@@ -11769,9 +12008,9 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["slots"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["slots"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"slots\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"slots\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -11882,7 +12121,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["slots"];
+            const __FIELDS: &'static [&'static str] = &["slots"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "BootGroupConfig",
@@ -11959,7 +12198,7 @@ pub mod system {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &[&str] = &[
+            const __IDENTIFIERS: &'static [&'static str] = &[
                 "rpi-tryboot",
                 "rpi-uboot",
                 "uboot",
@@ -11972,7 +12211,7 @@ pub mod system {
                 "custom",
             ];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS : &str = "an identifier in [\"rpi-tryboot\", \"rpi-uboot\", \"uboot\", \"grub\", \"rauc-uboot\", \"rauc-grub\", \"mender-grub\", \"mender-uboot\", \"systemd-boot\", \"custom\"]" ;
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"rpi-tryboot\", \"rpi-uboot\", \"uboot\", \"grub\", \"rauc-uboot\", \"rauc-grub\", \"mender-grub\", \"mender-uboot\", \"systemd-boot\", \"custom\"]" ;
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -12080,7 +12319,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &[&str] = &[
+            const __VARIANTS: &'static [&'static str] = &[
                 "rpi-tryboot",
                 "rpi-uboot",
                 "uboot",
@@ -12360,9 +12599,9 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["entries"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["entries"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"entries\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"entries\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -12477,7 +12716,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["entries"];
+            const __FIELDS: &'static [&'static str] = &["entries"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "SystemdBootFlowConfig",
@@ -12625,9 +12864,10 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["group-names", "default-attempts"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["group-names", "default-attempts"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"group-names\", \"default-attempts\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -12754,8 +12994,14 @@ pub mod system {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(RaucBootFlowConfig {
                         group_names: __field0,
                         default_attempts: __field1,
@@ -12763,7 +13009,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["group-names", "default-attempts"];
+            const __FIELDS: &'static [&'static str] = &["group-names", "default-attempts"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "RaucBootFlowConfig",
@@ -12934,9 +13180,10 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["boot-dir", "boot-part-a", "boot-part-b"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["boot-dir", "boot-part-a", "boot-part-b"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str =
+                    const __EXPECTING_IDENTIFIERS: &'static str =
                         "an identifier in [\"boot-dir\", \"boot-part-a\", \"boot-part-b\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
@@ -13085,9 +13332,18 @@ pub mod system {
                             }
                         }
                     }
-                    let __field0 = __field0.unwrap_or_default();
-                    let __field1 = __field1.unwrap_or_default();
-                    let __field2 = __field2.unwrap_or_default();
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(MenderBootFlowConfig {
                         boot_dir: __field0,
                         boot_part_a: __field1,
@@ -13096,7 +13352,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["boot-dir", "boot-part-a", "boot-part-b"];
+            const __FIELDS: &'static [&'static str] = &["boot-dir", "boot-part-a", "boot-part-b"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "MenderBootFlowConfig",
@@ -13193,9 +13449,10 @@ pub mod system {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &[&str] = &["controller"];
+                    const __IDENTIFIERS: &'static [&'static str] = &["controller"];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS: &str = "an identifier in [\"controller\"]";
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"controller\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -13308,7 +13565,7 @@ pub mod system {
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &[&str] = &["controller"];
+            const __FIELDS: &'static [&'static str] = &["controller"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "CustomBootFlowConfig",
