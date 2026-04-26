@@ -480,8 +480,13 @@ fn setup_root_overlay(
 
     let (overlay_dir, overlay_root_dir, overlay_work_dir, upper) = match overlay_config {
         OverlayConfig::Persist | OverlayConfig::Discard => {
-            let active_boot_entry = &system.boot_entries()[system.active_boot_entry().unwrap()];
-            let hot_overlay_state = overlay_state.join(active_boot_entry.name());
+            let hot_overlay_state = match system.active_boot_entry() {
+                Some(idx) => overlay_state.join(system.boot_entries()[idx].name()),
+                None => {
+                    warn!("active boot group unknown; using shared overlay state under '_unknown'");
+                    overlay_state.join("_unknown")
+                }
+            };
             const OVERLAY_DIR: &str = "/run/rugix/mounts/data/overlay";
             const OVERLAY_ROOT_DIR: &str = "/run/rugix/mounts/data/overlay/root";
             const OVERLAY_WORK_DIR: &str = "/run/rugix/mounts/data/overlay/work";
