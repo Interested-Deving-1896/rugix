@@ -144,6 +144,8 @@ Architecture: ${deb_arch}
 Maintainer: Silitics GmbH <info@silitics.com>
 Installed-Size: ${installed_size}
 Conflicts: ${conflicts}
+Priority: optional
+Section: embedded
 Description: ${description}
 Homepage: https://rugix.org/
 License: MIT or Apache-2.0
