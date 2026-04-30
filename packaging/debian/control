@@ -1,0 +1,58 @@
+Source: rugix-debian
+Section: embedded
+Priority: optional
+Maintainer: Silitics GmbH <info@silitics.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://rugix.org/
+Vcs-Browser: https://github.com/rugix/rugix
+Vcs-Git: https://github.com/rugix/rugix.git
+Rules-Requires-Root: no
+
+Package: rugix-ctrl-gnu
+Architecture: any
+Conflicts: rugix-ctrl-musl
+Description: Rugix system management tool (glibc build)
+ Rugix is a suite of open-source tools for building reliable, secure,
+ and over-the-air updatable embedded Linux devices. This package
+ provides rugix-ctrl, the system management tool, linked against
+ glibc.
+ .
+ This source package is metadata-only; see /usr/share/doc/rugix-ctrl-gnu
+ and the upstream repository for the buildable source.
+
+Package: rugix-ctrl-musl
+Architecture: any
+Conflicts: rugix-ctrl-gnu
+Description: Rugix system management tool (musl build)
+ Rugix is a suite of open-source tools for building reliable, secure,
+ and over-the-air updatable embedded Linux devices. This package
+ provides rugix-ctrl, the system management tool, statically linked
+ against musl libc.
+ .
+ This source package is metadata-only; see /usr/share/doc/rugix-ctrl-musl
+ and the upstream repository for the buildable source.
+
+Package: rugix-bundler-gnu
+Architecture: any
+Conflicts: rugix-bundler-musl
+Description: Rugix bundle creation tool (glibc build)
+ Rugix is a suite of open-source tools for building reliable, secure,
+ and over-the-air updatable embedded Linux devices. This package
+ provides rugix-bundler, the bundle creation tool, linked against
+ glibc.
+ .
+ This source package is metadata-only; see /usr/share/doc/rugix-bundler-gnu
+ and the upstream repository for the buildable source.
+
+Package: rugix-bundler-musl
+Architecture: any
+Conflicts: rugix-bundler-gnu
+Description: Rugix bundle creation tool (musl build)
+ Rugix is a suite of open-source tools for building reliable, secure,
+ and over-the-air updatable embedded Linux devices. This package
+ provides rugix-bundler, the bundle creation tool, statically linked
+ against musl libc.
+ .
+ This source package is metadata-only; see /usr/share/doc/rugix-bundler-musl
+ and the upstream repository for the buildable source.

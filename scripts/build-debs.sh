@@ -139,6 +139,7 @@ COPY
     mkdir -p "${staging_dir}/DEBIAN"
     cat > "${staging_dir}/DEBIAN/control" <<EOF
 Package: ${package_name}
+Source: rugix-debian
 Version: ${version}
 Architecture: ${deb_arch}
 Maintainer: Silitics GmbH <info@silitics.com>

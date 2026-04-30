@@ -1,0 +1,17 @@
+rugix — metadata-only Debian source package
+=============================================
+
+This source package exists to satisfy archives and image builders such
+as ELBE that require a source package to accompany every binary
+package. It is not buildable.
+
+The shipped rugix-ctrl-* and rugix-bundler-* binaries are
+cross-compiled by the upstream release pipeline; see
+scripts/build-binaries.sh and scripts/build-debs.sh in the upstream
+repository for the actual build process.
+
+The exact upstream commit that produced the binaries is recorded in
+the GIT_COMMIT file at the top of this source package. The Cargo.lock
+file captures the resolved Rust dependency graph at that commit.
+
+Upstream source: https://github.com/rugix/rugix/
