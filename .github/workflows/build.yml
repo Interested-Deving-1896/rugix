@@ -34,7 +34,7 @@ jobs:
           - riscv64gc-unknown-linux-gnu
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-tags: true
           fetch-depth: 0
@@ -44,7 +44,7 @@ jobs:
       - name: Build Binaries
         run: ./scripts/build-binaries.sh ${{ matrix.target }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.target }}
           path: build/binaries/binaries-${{ matrix.target }}.tar
@@ -61,7 +61,7 @@ jobs:
           - x86_64-apple-darwin
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-tags: true
           fetch-depth: 0
@@ -78,7 +78,7 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar -cf ../../../binaries-${{ matrix.target }}.tar rugix-bundler
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.target }}
           path: binaries-${{ matrix.target }}.tar
@@ -94,11 +94,11 @@ jobs:
       - build_binaries_linux
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Download Binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: binaries-*
           path: build/binaries
@@ -130,7 +130,7 @@ jobs:
           ./run-all-tests.sh
       - name: Upload Test Logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs
           path: tests/.rugix/test.log
@@ -153,12 +153,12 @@ jobs:
           - x86_64-unknown-linux-gnu
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-tags: true
           fetch-depth: 0
       - name: Download Binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binaries-${{ matrix.target }}
           path: build/binaries
@@ -171,7 +171,7 @@ jobs:
       - name: Build Debian Packages
         run: ./scripts/build-debs.sh ${{ matrix.target }}
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debs-${{ matrix.target }}
           path: build/debs/*.deb
@@ -182,14 +182,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-tags: true
           fetch-depth: 0
       - name: Build Source Package
         run: ./scripts/build-source-package.sh
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: source-package
           path: build/source/*
@@ -208,21 +208,21 @@ jobs:
       - test
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Download Binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: binaries-*
           path: build/binaries
           merge-multiple: true
       - name: Download Debian Packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: debs-*
           path: build/debs
           merge-multiple: true
       - name: Download Source Package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: source-package
           path: build/source
