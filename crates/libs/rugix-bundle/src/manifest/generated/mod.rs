@@ -2,6 +2,13 @@
 
 pub mod manifest {
     #![doc = ""]
+    #![allow(
+        clippy::all,
+        clippy::pedantic,
+        clippy::nursery,
+        clippy::cargo,
+        dead_code
+    )]
     #[allow(unused)]
     use :: serde as __serde;
     #[allow(unused)]
@@ -71,6 +78,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for BundleManifest {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for BundleManifest {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -78,12 +89,33 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "BundleManifest", 3usize)?;
-            __record.serialize_field("update-type", &self.update_type)?;
-            __record.serialize_optional_field(
-                "hash-algorithm",
-                ::core::option::Option::as_ref(&self.hash_algorithm),
+            __record.serialize_field(
+                "update-type",
+                &__sidex_serde::SerializeAsWrap::<UpdateType, __sidex_serde::AsSelf>::new(
+                    &self.update_type,
+                ),
             )?;
-            __record.serialize_field("payloads", &self.payloads)?;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.hash_algorithm),
+                    |__v| {
+                        __sidex_serde::SerializeAsWrap::<HashAlgorithm, __sidex_serde::AsSelf>::new(
+                            __v,
+                        )
+                    },
+                );
+                __record.serialize_optional_field(
+                    "hash-algorithm",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
+            __record.serialize_field(
+                "payloads",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<Payload>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.payloads),
+            )?;
             __record.end()
         }
     }
@@ -112,23 +144,25 @@ pub mod manifest {
                 where
                     __A: __serde::de::SeqAccess<'de>,
                 {
-                    let __field0 =
-                        match __serde::de::SeqAccess::next_element::<UpdateType>(&mut __seq)? {
-                            ::core::option::Option::Some(__value) => __value,
-                            ::core::option::Option::None => {
-                                return ::core::result::Result::Err(
-                                    __serde::de::Error::invalid_length(
-                                        0usize,
-                                        &"record with 3 fields",
-                                    ),
-                                );
-                            }
-                        };
-                    let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<HashAlgorithm>,
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<UpdateType, __sidex_serde::AsSelf>,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<HashAlgorithm>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
@@ -136,10 +170,13 @@ pub mod manifest {
                         }
                     };
                     let __field2 = match __serde::de::SeqAccess::next_element::<
-                        ::std::vec::Vec<Payload>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<Payload>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
@@ -272,7 +309,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<UpdateType>(&mut __map)?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            UpdateType,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -285,8 +328,12 @@ pub mod manifest {
                                 }
                                 __field1 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<HashAlgorithm>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<HashAlgorithm>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier2 => {
@@ -298,9 +345,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field2 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::vec::Vec<Payload>>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<Payload>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -357,6 +408,10 @@ pub mod manifest {
         Full,
         #[doc = ""]
         Incremental,
+    }
+    #[automatically_derived]
+    impl __sidex_serde::SidexType for UpdateType {
+        type Encoding = __sidex_serde::AsSelf;
     }
     #[automatically_derived]
     impl __serde::Serialize for UpdateType {
@@ -594,6 +649,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for Payload {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for Payload {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -601,16 +660,41 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "Payload", 4usize)?;
-            __record.serialize_field("delivery", &self.delivery)?;
-            __record.serialize_field("filename", &self.filename)?;
-            __record.serialize_optional_field(
-                "block-encoding",
-                ::core::option::Option::as_ref(&self.block_encoding),
+            __record.serialize_field(
+                "delivery",
+                &__sidex_serde::SerializeAsWrap::<DeliveryConfig, __sidex_serde::AsSelf>::new(
+                    &self.delivery,
+                ),
             )?;
-            __record.serialize_optional_field(
-                "delta-encoding",
-                ::core::option::Option::as_ref(&self.delta_encoding),
-            )?;
+            __record . serialize_field ("filename" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . filename) ,) ? ;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.block_encoding),
+                    |__v| {
+                        __sidex_serde::SerializeAsWrap::<BlockEncoding, __sidex_serde::AsSelf>::new(
+                            __v,
+                        )
+                    },
+                );
+                __record.serialize_optional_field(
+                    "block-encoding",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.delta_encoding),
+                    |__v| {
+                        __sidex_serde::SerializeAsWrap::<DeltaEncoding, __sidex_serde::AsSelf>::new(
+                            __v,
+                        )
+                    },
+                );
+                __record.serialize_optional_field(
+                    "delta-encoding",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
             __record.end()
         }
     }
@@ -639,23 +723,25 @@ pub mod manifest {
                 where
                     __A: __serde::de::SeqAccess<'de>,
                 {
-                    let __field0 =
-                        match __serde::de::SeqAccess::next_element::<DeliveryConfig>(&mut __seq)? {
-                            ::core::option::Option::Some(__value) => __value,
-                            ::core::option::Option::None => {
-                                return ::core::result::Result::Err(
-                                    __serde::de::Error::invalid_length(
-                                        0usize,
-                                        &"record with 4 fields",
-                                    ),
-                                );
-                            }
-                        };
-                    let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<DeliveryConfig, __sidex_serde::AsSelf>,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 4 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 4 fields"),
@@ -663,10 +749,13 @@ pub mod manifest {
                         }
                     };
                     let __field2 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<BlockEncoding>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<BlockEncoding>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(2usize, &"record with 4 fields"),
@@ -674,10 +763,13 @@ pub mod manifest {
                         }
                     };
                     let __field3 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<DeltaEncoding>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<DeltaEncoding>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(3usize, &"record with 4 fields"),
@@ -820,9 +912,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<DeliveryConfig>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            DeliveryConfig,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -834,9 +930,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field1 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier2 => {
@@ -849,8 +949,12 @@ pub mod manifest {
                                 }
                                 __field2 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<BlockEncoding>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<BlockEncoding>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier3 => {
@@ -863,8 +967,12 @@ pub mod manifest {
                                 }
                                 __field3 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<DeltaEncoding>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<DeltaEncoding>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -974,6 +1082,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for DeltaEncoding {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for DeltaEncoding {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -981,9 +1093,25 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "DeltaEncoding", 3usize)?;
-            __record.serialize_field("inputs", &self.inputs)?;
-            __record.serialize_field("format", &self.format)?;
-            __record.serialize_field("original-hash", &self.original_hash)?;
+            __record.serialize_field(
+                "inputs",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<DeltaEncodingInput>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.inputs),
+            )?;
+            __record.serialize_field(
+                "format",
+                &__sidex_serde::SerializeAsWrap::<DeltaEncodingFormat, __sidex_serde::AsSelf>::new(
+                    &self.format,
+                ),
+            )?;
+            __record.serialize_field(
+                "original-hash",
+                &__sidex_serde::SerializeAsWrap::<HashDigest, __sidex_serde::AsSelf>::new(
+                    &self.original_hash,
+                ),
+            )?;
             __record.end()
         }
     }
@@ -1013,38 +1141,44 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::vec::Vec<DeltaEncodingInput>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<DeltaEncodingInput>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
                             );
                         }
                     };
-                    let __field1 = match __serde::de::SeqAccess::next_element::<DeltaEncodingFormat>(
-                        &mut __seq,
-                    )? {
-                        ::core::option::Option::Some(__value) => __value,
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            DeltaEncodingFormat,
+                            __sidex_serde::AsSelf,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
                             );
                         }
                     };
-                    let __field2 =
-                        match __serde::de::SeqAccess::next_element::<HashDigest>(&mut __seq)? {
-                            ::core::option::Option::Some(__value) => __value,
-                            ::core::option::Option::None => {
-                                return ::core::result::Result::Err(
-                                    __serde::de::Error::invalid_length(
-                                        2usize,
-                                        &"record with 3 fields",
-                                    ),
-                                );
-                            }
-                        };
+                    let __field2 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<HashDigest, __sidex_serde::AsSelf>,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
+                            );
+                        }
+                    };
                     ::core::result::Result::Ok(DeltaEncoding {
                         inputs: __field0,
                         format: __field1,
@@ -1168,8 +1302,12 @@ pub mod manifest {
                                 }
                                 __field0 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::vec::Vec<DeltaEncodingInput>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<DeltaEncodingInput>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -1181,9 +1319,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field1 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<DeltaEncodingFormat>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            DeltaEncodingFormat,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier2 => {
@@ -1195,7 +1337,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field2 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<HashDigest>(&mut __map)?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            HashDigest,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -1253,6 +1401,10 @@ pub mod manifest {
     pub enum DeltaEncodingFormat {
         #[doc = "Format emitted by Xdelta.\n\nWhile Xdelta claims to use the VCDIFF format, the patches it produces are non-compliant.\n"]
         Xdelta,
+    }
+    #[automatically_derived]
+    impl __sidex_serde::SidexType for DeltaEncodingFormat {
+        type Encoding = __sidex_serde::AsSelf;
     }
     #[automatically_derived]
     impl __serde::Serialize for DeltaEncodingFormat {
@@ -1426,6 +1578,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for DeltaEncodingInput {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for DeltaEncodingInput {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -1436,7 +1592,13 @@ pub mod manifest {
                 "DeltaEncodingInput",
                 1usize,
             )?;
-            __record.serialize_field("hashes", &self.hashes)?;
+            __record.serialize_field(
+                "hashes",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<HashDigest>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.hashes),
+            )?;
             __record.end()
         }
     }
@@ -1466,10 +1628,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::vec::Vec<HashDigest>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<HashDigest>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -1575,8 +1740,12 @@ pub mod manifest {
                                 }
                                 __field0 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::vec::Vec<HashDigest>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<HashDigest>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -1622,6 +1791,10 @@ pub mod manifest {
         AppArchive(AppArchiveDeliveryConfig),
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for DeliveryConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for DeliveryConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -1629,20 +1802,7 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let __serializer =
                 __sidex_serde::ser::VariantSerializer::new(__serializer, "DeliveryConfig");
-            match self {
-                Self::Slot(__value) => {
-                    __serializer.serialize_internally_tagged("type", "slot", 0u32, __value)
-                }
-                Self::Execute(__value) => {
-                    __serializer.serialize_internally_tagged("type", "execute", 1u32, __value)
-                }
-                Self::AppFile(__value) => {
-                    __serializer.serialize_internally_tagged("type", "app-file", 2u32, __value)
-                }
-                Self::AppArchive(__value) => {
-                    __serializer.serialize_internally_tagged("type", "app-archive", 3u32, __value)
-                }
-            }
+            match self { Self :: Slot (__value) => { __serializer . serialize_internally_tagged ("type" , "slot" , 0u32 , & __sidex_serde :: SerializeAsWrap :: < SlotDeliveryConfig < > , __sidex_serde :: AsSelf > :: new (__value)) } , Self :: Execute (__value) => { __serializer . serialize_internally_tagged ("type" , "execute" , 1u32 , & __sidex_serde :: SerializeAsWrap :: < ExecuteDeliveryConfig < > , __sidex_serde :: AsSelf > :: new (__value)) } , Self :: AppFile (__value) => { __serializer . serialize_internally_tagged ("type" , "app-file" , 2u32 , & __sidex_serde :: SerializeAsWrap :: < AppFileDeliveryConfig < > , __sidex_serde :: AsSelf > :: new (__value)) } , Self :: AppArchive (__value) => { __serializer . serialize_internally_tagged ("type" , "app-archive" , 3u32 , & __sidex_serde :: SerializeAsWrap :: < AppArchiveDeliveryConfig < > , __sidex_serde :: AsSelf > :: new (__value)) } }
         }
     }
     #[automatically_derived]
@@ -1746,7 +1906,48 @@ pub mod manifest {
                     __Identifier,
                     __D,
                 >(__deserializer, "type")?;
-                match __tagged . tag { __Identifier :: __Identifier0 => { :: core :: result :: Result :: Ok (DeliveryConfig :: Slot (__tagged . deserialize_internally_tagged :: < SlotDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier1 => { :: core :: result :: Result :: Ok (DeliveryConfig :: Execute (__tagged . deserialize_internally_tagged :: < ExecuteDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier2 => { :: core :: result :: Result :: Ok (DeliveryConfig :: AppFile (__tagged . deserialize_internally_tagged :: < AppFileDeliveryConfig < > , __D :: Error > () ?)) } , __Identifier :: __Identifier3 => { :: core :: result :: Result :: Ok (DeliveryConfig :: AppArchive (__tagged . deserialize_internally_tagged :: < AppArchiveDeliveryConfig < > , __D :: Error > () ?)) } , }
+                match __tagged.tag {
+                    __Identifier::__Identifier0 => {
+                        ::core::result::Result::Ok(DeliveryConfig::Slot(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    SlotDeliveryConfig,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
+                    __Identifier::__Identifier1 => {
+                        ::core::result::Result::Ok(DeliveryConfig::Execute(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    ExecuteDeliveryConfig,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
+                    __Identifier::__Identifier2 => {
+                        ::core::result::Result::Ok(DeliveryConfig::AppFile(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    AppFileDeliveryConfig,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
+                    __Identifier::__Identifier3 => {
+                        ::core::result::Result::Ok(DeliveryConfig::AppArchive(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    AppArchiveDeliveryConfig,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
+                }
             } else {
                 #[doc(hidden)]
                 struct __Visitor {
@@ -1788,27 +1989,47 @@ pub mod manifest {
                         match __serde::de::EnumAccess::variant::<__Identifier>(__data)? {
                             (__Identifier::__Identifier0, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
-                                    SlotDeliveryConfig,
+                                    __sidex_serde::DeserializeAsWrap<
+                                        SlotDeliveryConfig,
+                                        __sidex_serde::AsSelf,
+                                    >,
                                 >(__variant)?;
-                                ::core::result::Result::Ok(DeliveryConfig::Slot(__value))
+                                ::core::result::Result::Ok(DeliveryConfig::Slot(
+                                    __value.into_inner(),
+                                ))
                             }
                             (__Identifier::__Identifier1, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
-                                    ExecuteDeliveryConfig,
+                                    __sidex_serde::DeserializeAsWrap<
+                                        ExecuteDeliveryConfig,
+                                        __sidex_serde::AsSelf,
+                                    >,
                                 >(__variant)?;
-                                ::core::result::Result::Ok(DeliveryConfig::Execute(__value))
+                                ::core::result::Result::Ok(DeliveryConfig::Execute(
+                                    __value.into_inner(),
+                                ))
                             }
                             (__Identifier::__Identifier2, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
-                                    AppFileDeliveryConfig,
+                                    __sidex_serde::DeserializeAsWrap<
+                                        AppFileDeliveryConfig,
+                                        __sidex_serde::AsSelf,
+                                    >,
                                 >(__variant)?;
-                                ::core::result::Result::Ok(DeliveryConfig::AppFile(__value))
+                                ::core::result::Result::Ok(DeliveryConfig::AppFile(
+                                    __value.into_inner(),
+                                ))
                             }
                             (__Identifier::__Identifier3, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
-                                    AppArchiveDeliveryConfig,
+                                    __sidex_serde::DeserializeAsWrap<
+                                        AppArchiveDeliveryConfig,
+                                        __sidex_serde::AsSelf,
+                                    >,
                                 >(__variant)?;
-                                ::core::result::Result::Ok(DeliveryConfig::AppArchive(__value))
+                                ::core::result::Result::Ok(DeliveryConfig::AppArchive(
+                                    __value.into_inner(),
+                                ))
                             }
                         }
                     }
@@ -1847,6 +2068,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for SlotDeliveryConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for SlotDeliveryConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -1857,7 +2082,7 @@ pub mod manifest {
                 "SlotDeliveryConfig",
                 1usize,
             )?;
-            __record.serialize_field("slot", &self.slot)?;
+            __record . serialize_field ("slot" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . slot) ,) ? ;
             __record.end()
         }
     }
@@ -1887,10 +2112,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -1991,9 +2219,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -2052,6 +2284,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for ExecuteDeliveryConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for ExecuteDeliveryConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -2062,7 +2298,13 @@ pub mod manifest {
                 "ExecuteDeliveryConfig",
                 1usize,
             )?;
-            __record.serialize_field("handler", &self.handler)?;
+            __record.serialize_field(
+                "handler",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<::std::string::String>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.handler),
+            )?;
             __record.end()
         }
     }
@@ -2092,10 +2334,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::vec::Vec<::std::string::String>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<::std::string::String>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -2204,8 +2449,12 @@ pub mod manifest {
                                 }
                                 __field0 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::vec::Vec<::std::string::String>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<::std::string::String>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -2289,6 +2538,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for AppFileDeliveryConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for AppFileDeliveryConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -2299,10 +2552,16 @@ pub mod manifest {
                 "AppFileDeliveryConfig",
                 3usize,
             )?;
-            __record.serialize_field("app", &self.app)?;
-            __record.serialize_field("path", &self.path)?;
-            __record
-                .serialize_optional_field("mode", ::core::option::Option::as_ref(&self.mode))?;
+            __record . serialize_field ("app" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . app) ,) ? ;
+            __record . serialize_field ("path" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . path) ,) ? ;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.mode),
+                    |__v| __sidex_serde::SerializeAsWrap::<u32, __sidex_serde::AsSelf>::new(__v),
+                );
+                __record
+                    .serialize_optional_field("mode", ::core::option::Option::as_ref(&__wrapped))?;
+            }
             __record.end()
         }
     }
@@ -2332,10 +2591,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
@@ -2343,10 +2605,13 @@ pub mod manifest {
                         }
                     };
                     let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
@@ -2354,10 +2619,13 @@ pub mod manifest {
                         }
                     };
                     let __field2 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<u32>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<u32>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
@@ -2475,9 +2743,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -2487,9 +2759,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field1 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier2 => {
@@ -2499,9 +2775,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field2 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::option::Option<u32>>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<u32>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -2573,6 +2853,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for AppArchiveDeliveryConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for AppArchiveDeliveryConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -2583,7 +2867,7 @@ pub mod manifest {
                 "AppArchiveDeliveryConfig",
                 1usize,
             )?;
-            __record.serialize_field("app", &self.app)?;
+            __record . serialize_field ("app" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . app) ,) ? ;
             __record.end()
         }
     }
@@ -2616,10 +2900,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -2720,9 +3007,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -2828,6 +3119,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for BlockEncoding {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for BlockEncoding {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -2835,19 +3130,50 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "BlockEncoding", 4usize)?;
-            __record.serialize_field("chunker", &self.chunker)?;
-            __record.serialize_optional_field(
-                "hash-algorithm",
-                ::core::option::Option::as_ref(&self.hash_algorithm),
+            __record.serialize_field(
+                "chunker",
+                &__sidex_serde::SerializeAsWrap::<ChunkerAlgorithm, __sidex_serde::AsSelf>::new(
+                    &self.chunker,
+                ),
             )?;
-            __record.serialize_optional_field(
-                "deduplicate",
-                ::core::option::Option::as_ref(&self.deduplicate),
-            )?;
-            __record.serialize_optional_field(
-                "compression",
-                ::core::option::Option::as_ref(&self.compression),
-            )?;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.hash_algorithm),
+                    |__v| {
+                        __sidex_serde::SerializeAsWrap::<HashAlgorithm, __sidex_serde::AsSelf>::new(
+                            __v,
+                        )
+                    },
+                );
+                __record.serialize_optional_field(
+                    "hash-algorithm",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.deduplicate),
+                    |__v| __sidex_serde::SerializeAsWrap::<bool, __sidex_serde::AsSelf>::new(__v),
+                );
+                __record.serialize_optional_field(
+                    "deduplicate",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.compression),
+                    |__v| {
+                        __sidex_serde::SerializeAsWrap::<Compression, __sidex_serde::AsSelf>::new(
+                            __v,
+                        )
+                    },
+                );
+                __record.serialize_optional_field(
+                    "compression",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
             __record.end()
         }
     }
@@ -2876,24 +3202,25 @@ pub mod manifest {
                 where
                     __A: __serde::de::SeqAccess<'de>,
                 {
-                    let __field0 =
-                        match __serde::de::SeqAccess::next_element::<ChunkerAlgorithm>(&mut __seq)?
-                        {
-                            ::core::option::Option::Some(__value) => __value,
-                            ::core::option::Option::None => {
-                                return ::core::result::Result::Err(
-                                    __serde::de::Error::invalid_length(
-                                        0usize,
-                                        &"record with 4 fields",
-                                    ),
-                                );
-                            }
-                        };
-                    let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<HashAlgorithm>,
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<ChunkerAlgorithm, __sidex_serde::AsSelf>,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 4 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<HashAlgorithm>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 4 fields"),
@@ -2901,10 +3228,13 @@ pub mod manifest {
                         }
                     };
                     let __field2 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<bool>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<bool>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(2usize, &"record with 4 fields"),
@@ -2912,10 +3242,13 @@ pub mod manifest {
                         }
                     };
                     let __field3 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<Compression>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<Compression>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(3usize, &"record with 4 fields"),
@@ -3058,9 +3391,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<ChunkerAlgorithm>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ChunkerAlgorithm,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -3073,8 +3410,12 @@ pub mod manifest {
                                 }
                                 __field1 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<HashAlgorithm>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<HashAlgorithm>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier2 => {
@@ -3087,8 +3428,12 @@ pub mod manifest {
                                 }
                                 __field2 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<bool>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<bool>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier3 => {
@@ -3101,8 +3446,12 @@ pub mod manifest {
                                 }
                                 __field3 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<Compression>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<Compression>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -3160,6 +3509,10 @@ pub mod manifest {
         Xz(XzCompression),
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for Compression {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for Compression {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -3168,9 +3521,14 @@ pub mod manifest {
             let __serializer =
                 __sidex_serde::ser::VariantSerializer::new(__serializer, "Compression");
             match self {
-                Self::Xz(__value) => {
-                    __serializer.serialize_internally_tagged("type", "xz", 0u32, __value)
-                }
+                Self::Xz(__value) => __serializer.serialize_internally_tagged(
+                    "type",
+                    "xz",
+                    0u32,
+                    &__sidex_serde::SerializeAsWrap::<XzCompression, __sidex_serde::AsSelf>::new(
+                        __value,
+                    ),
+                ),
             }
         }
     }
@@ -3261,9 +3619,16 @@ pub mod manifest {
                     __D,
                 >(__deserializer, "type")?;
                 match __tagged.tag {
-                    __Identifier::__Identifier0 => ::core::result::Result::Ok(Compression::Xz(
-                        __tagged.deserialize_internally_tagged::<XzCompression, __D::Error>()?,
-                    )),
+                    __Identifier::__Identifier0 => {
+                        ::core::result::Result::Ok(Compression::Xz(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    XzCompression,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
                 }
             } else {
                 #[doc(hidden)]
@@ -3306,9 +3671,12 @@ pub mod manifest {
                         match __serde::de::EnumAccess::variant::<__Identifier>(__data)? {
                             (__Identifier::__Identifier0, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
-                                    XzCompression,
+                                    __sidex_serde::DeserializeAsWrap<
+                                        XzCompression,
+                                        __sidex_serde::AsSelf,
+                                    >,
                                 >(__variant)?;
-                                ::core::result::Result::Ok(Compression::Xz(__value))
+                                ::core::result::Result::Ok(Compression::Xz(__value.into_inner()))
                             }
                         }
                     }
@@ -3354,6 +3722,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for XzCompression {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for XzCompression {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -3361,8 +3733,16 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "XzCompression", 1usize)?;
-            __record
-                .serialize_optional_field("level", ::core::option::Option::as_ref(&self.level))?;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.level),
+                    |__v| __sidex_serde::SerializeAsWrap::<u8, __sidex_serde::AsSelf>::new(__v),
+                );
+                __record.serialize_optional_field(
+                    "level",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
             __record.end()
         }
     }
@@ -3392,10 +3772,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<u8>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<u8>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -3498,9 +3881,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::option::Option<u8>>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<u8>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -3573,6 +3960,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for AppManifest {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for AppManifest {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -3580,11 +3971,19 @@ pub mod manifest {
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
                 __sidex_serde::ser::RecordSerializer::new(__serializer, "AppManifest", 2usize)?;
-            __record.serialize_field("orchestrator", &self.orchestrator)?;
-            __record.serialize_optional_field(
-                "health-check",
-                ::core::option::Option::as_ref(&self.health_check),
-            )?;
+            __record . serialize_field ("orchestrator" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . orchestrator) ,) ? ;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.health_check),
+                    |__v| {
+                        __sidex_serde :: SerializeAsWrap :: < AppHealthCheckConfig < > , __sidex_serde :: AsSelf > :: new (__v)
+                    },
+                );
+                __record.serialize_optional_field(
+                    "health-check",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
             __record.end()
         }
     }
@@ -3614,10 +4013,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::string::String,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
@@ -3625,10 +4027,13 @@ pub mod manifest {
                         }
                     };
                     let __field1 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<AppHealthCheckConfig>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<AppHealthCheckConfig>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
@@ -3751,9 +4156,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::string::String>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             __Identifier::__Identifier1 => {
@@ -3766,8 +4175,12 @@ pub mod manifest {
                                 }
                                 __field1 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
-                                        ::std::option::Option<AppHealthCheckConfig>,
-                                    >(&mut __map)?,
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<AppHealthCheckConfig>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {
@@ -3837,6 +4250,10 @@ pub mod manifest {
         }
     }
     #[automatically_derived]
+    impl __sidex_serde::SidexType for AppHealthCheckConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
     impl __serde::Serialize for AppHealthCheckConfig {
         fn serialize<__S: __serde::Serializer>(
             &self,
@@ -3847,10 +4264,16 @@ pub mod manifest {
                 "AppHealthCheckConfig",
                 1usize,
             )?;
-            __record.serialize_optional_field(
-                "timeout",
-                ::core::option::Option::as_ref(&self.timeout),
-            )?;
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.timeout),
+                    |__v| __sidex_serde::SerializeAsWrap::<u64, __sidex_serde::AsU64>::new(__v),
+                );
+                __record.serialize_optional_field(
+                    "timeout",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
             __record.end()
         }
     }
@@ -3880,10 +4303,13 @@ pub mod manifest {
                     __A: __serde::de::SeqAccess<'de>,
                 {
                     let __field0 = match __serde::de::SeqAccess::next_element::<
-                        ::std::option::Option<u64>,
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<u64>,
+                            ::std::option::Option<__sidex_serde::AsU64>,
+                        >,
                     >(&mut __seq)?
                     {
-                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
                                 __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
@@ -3990,9 +4416,13 @@ pub mod manifest {
                                     );
                                 }
                                 __field0 = ::core::option::Option::Some(
-                                    __serde::de::MapAccess::next_value::<::std::option::Option<u64>>(
-                                        &mut __map,
-                                    )?,
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<u64>,
+                                            ::std::option::Option<__sidex_serde::AsU64>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
                                 );
                             }
                             _ => {

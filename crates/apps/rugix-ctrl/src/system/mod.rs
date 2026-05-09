@@ -14,6 +14,7 @@ use crate::config::system::{PartitionConfig, SystemConfig};
 pub mod boot_flows;
 pub mod boot_groups;
 pub mod config;
+pub mod data_partition;
 pub mod partitions;
 pub mod paths;
 pub mod root;

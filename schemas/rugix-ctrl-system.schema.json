@@ -29,949 +29,6 @@
   "required": [],
   "unevaluatedProperties": false,
   "$defs": {
-    "rugix_ctrl.apps.AppGeneration": {
-      "$id": "rugix_ctrl.apps.AppGeneration",
-      "type": "object",
-      "description": "Metadata for a single generation, persisted in `.rugix/generation.json`.",
-      "properties": {
-        "number": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "createdAt": {
-          "type": "string"
-        },
-        "lastActivated": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "number",
-        "createdAt"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppState": {
-      "$id": "rugix_ctrl.apps.AppState",
-      "description": "Persisted app state.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "inactive"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "switching"
-            },
-            "from": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "to": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "recovery": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "active"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "starting"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "stopping"
-            },
-            "generation": {
-              "type": "integer",
-              "format": "uint64"
-            }
-          },
-          "required": [
-            "state",
-            "generation"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "error"
-            },
-            "from": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "to": {
-              "type": "integer",
-              "format": "uint64"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "to",
-            "message"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.apps.AppStateActive": {
-      "$id": "rugix_ctrl.apps.AppStateActive",
-      "type": "object",
-      "description": "Details of an active state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppStateError": {
-      "$id": "rugix_ctrl.apps.AppStateError",
-      "type": "object",
-      "description": "Details of an error state.",
-      "properties": {
-        "from": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "to": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "to",
-        "message"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppStateStarting": {
-      "$id": "rugix_ctrl.apps.AppStateStarting",
-      "type": "object",
-      "description": "Details of a starting state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppStateStopping": {
-      "$id": "rugix_ctrl.apps.AppStateStopping",
-      "type": "object",
-      "description": "Details of a stopping state.",
-      "properties": {
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        }
-      },
-      "required": [
-        "generation"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppStateSwitching": {
-      "$id": "rugix_ctrl.apps.AppStateSwitching",
-      "type": "object",
-      "description": "Details of a switching state.",
-      "properties": {
-        "from": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "to": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "recovery": {
-          "type": "boolean"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppStatus": {
-      "$id": "rugix_ctrl.apps.AppStatus",
-      "description": "Live workload status.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "running"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "unhealthy"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "message"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "stopped"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "failed"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "state",
-            "message"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "state": {
-              "const": "unknown"
-            }
-          },
-          "required": [
-            "state"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.apps.AppStatusMessage": {
-      "$id": "rugix_ctrl.apps.AppStatusMessage",
-      "type": "object",
-      "description": "Details for a status with a message.",
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.apps.AppsConfig": {
-      "$id": "rugix_ctrl.apps.AppsConfig",
-      "type": "object",
-      "description": "Rugix Apps configuration.",
-      "properties": {
-        "service-manager": {
-          "type": "string"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.BootstrappingConfig": {
-      "$id": "rugix_ctrl.bootstrapping.BootstrappingConfig",
-      "type": "object",
-      "description": "Bootstrapping configuration.",
-      "properties": {
-        "disabled": {
-          "type": "boolean"
-        },
-        "layout": {
-          "$ref": "#/$defs/rugix_ctrl.bootstrapping.SystemLayoutConfig"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.DefaultLayoutConfig": {
-      "$id": "rugix_ctrl.bootstrapping.DefaultLayoutConfig",
-      "type": "object",
-      "description": "Default layout configuration.",
-      "properties": {
-        "system-size": {
-          "$ref": "#/$defs/rugix_ctrl.bootstrapping.NumBytes"
-        }
-      },
-      "required": [
-        "system-size"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.Ext4Filesystem": {
-      "$id": "rugix_ctrl.bootstrapping.Ext4Filesystem",
-      "type": "object",
-      "description": "",
-      "properties": {
-        "label": {
-          "type": "string"
-        },
-        "additional-options": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.Filesystem": {
-      "$id": "rugix_ctrl.bootstrapping.Filesystem",
-      "description": "",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "ext4"
-            },
-            "label": {
-              "type": "string"
-            },
-            "additional-options": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "required": [
-            "type"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.bootstrapping.LayoutPartitionConfig": {
-      "$id": "rugix_ctrl.bootstrapping.LayoutPartitionConfig",
-      "type": "object",
-      "description": "Configuration of a partition of a layout.",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "size": {
-          "$ref": "#/$defs/rugix_ctrl.bootstrapping.NumBytes"
-        },
-        "type": {
-          "$ref": "#/$defs/rugix_ctrl.bootstrapping.PartitionType"
-        },
-        "filesystem": {
-          "$ref": "#/$defs/rugix_ctrl.bootstrapping.Filesystem"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.NumBytes": {
-      "$id": "rugix_ctrl.bootstrapping.NumBytes",
-      "description": ""
-    },
-    "rugix_ctrl.bootstrapping.PartitionLayoutConfig": {
-      "$id": "rugix_ctrl.bootstrapping.PartitionLayoutConfig",
-      "type": "object",
-      "description": "Partition layout configuration.",
-      "properties": {
-        "partitions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/rugix_ctrl.bootstrapping.LayoutPartitionConfig"
-          }
-        }
-      },
-      "required": [
-        "partitions"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.bootstrapping.PartitionType": {
-      "$id": "rugix_ctrl.bootstrapping.PartitionType",
-      "description": ""
-    },
-    "rugix_ctrl.bootstrapping.SystemLayoutConfig": {
-      "$id": "rugix_ctrl.bootstrapping.SystemLayoutConfig",
-      "description": "System layout configuration.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "mbr"
-            },
-            "partitions": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/rugix_ctrl.bootstrapping.LayoutPartitionConfig"
-              }
-            }
-          },
-          "required": [
-            "type",
-            "partitions"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "gpt"
-            },
-            "partitions": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/rugix_ctrl.bootstrapping.LayoutPartitionConfig"
-              }
-            }
-          },
-          "required": [
-            "type",
-            "partitions"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "default"
-            },
-            "system-size": {
-              "$ref": "#/$defs/rugix_ctrl.bootstrapping.NumBytes"
-            }
-          },
-          "required": [
-            "type",
-            "system-size"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "none"
-            }
-          },
-          "required": [
-            "type"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.config.Config": {
-      "$id": "rugix_ctrl.config.Config",
-      "type": "object",
-      "description": "Rugix Ctrl configuration.",
-      "properties": {
-        "signatures": {
-          "$ref": "#/$defs/rugix_ctrl.config.SignaturesConfig"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.config.SignaturesConfig": {
-      "$id": "rugix_ctrl.config.SignaturesConfig",
-      "type": "object",
-      "description": "",
-      "properties": {
-        "roots": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "roots"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.events.Event": {
-      "$id": "rugix_ctrl.events.Event",
-      "description": "Events emitted by CLI tools.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "event": {
-              "const": "UpdateProgress"
-            },
-            "progress": {
-              "type": "number"
-            }
-          },
-          "required": [
-            "event",
-            "progress"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.events.UpdateProgressEvent": {
-      "$id": "rugix_ctrl.events.UpdateProgressEvent",
-      "type": "object",
-      "description": "Event emitted when the update progress changes.",
-      "properties": {
-        "progress": {
-          "type": "number"
-        }
-      },
-      "required": [
-        "progress"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppGcAppOutput": {
-      "$id": "rugix_ctrl.output.AppGcAppOutput",
-      "type": "object",
-      "description": "Garbage collection result for a single app.",
-      "properties": {
-        "removed": {
-          "type": "array",
-          "items": {
-            "type": "integer",
-            "format": "uint64"
-          }
-        }
-      },
-      "required": [
-        "removed"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppInfoOutput": {
-      "$id": "rugix_ctrl.output.AppInfoOutput",
-      "type": "object",
-      "description": "Output of the app info command (`apps info`).",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/$defs/rugix_ctrl.apps.AppStatus"
-        },
-        "state": {
-          "$ref": "#/$defs/rugix_ctrl.apps.AppState"
-        },
-        "generations": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/rugix_ctrl.output.GenerationInfoOutput"
-          }
-        }
-      },
-      "required": [
-        "name",
-        "status",
-        "state",
-        "generations"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.AppListEntryOutput": {
-      "$id": "rugix_ctrl.output.AppListEntryOutput",
-      "type": "object",
-      "description": "Entry in the app list output.",
-      "properties": {
-        "status": {
-          "$ref": "#/$defs/rugix_ctrl.apps.AppStatus"
-        },
-        "generation": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "metadata": {
-          "$ref": "#/$defs/rugix_ctrl.output.JsonValue"
-        }
-      },
-      "required": [
-        "status"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.BlockDeviceInfo": {
-      "$id": "rugix_ctrl.output.BlockDeviceInfo",
-      "type": "object",
-      "description": "Information about a block device.",
-      "properties": {
-        "device": {
-          "type": "string"
-        },
-        "parent": {
-          "type": "string"
-        },
-        "partition": {
-          "type": "integer",
-          "format": "uint32"
-        }
-      },
-      "required": [
-        "device"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.BootGroupInfoOutput": {
-      "$id": "rugix_ctrl.output.BootGroupInfoOutput",
-      "type": "object",
-      "description": "Information about a boot group.",
-      "properties": {},
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.BootInfoOutput": {
-      "$id": "rugix_ctrl.output.BootInfoOutput",
-      "type": "object",
-      "description": "Information about the boot flow.",
-      "properties": {
-        "bootFlow": {
-          "type": "string"
-        },
-        "activeGroup": {
-          "type": "string"
-        },
-        "defaultGroup": {
-          "type": "string"
-        },
-        "groups": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/rugix_ctrl.output.BootGroupInfoOutput"
-          }
-        }
-      },
-      "required": [
-        "bootFlow",
-        "groups"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.GenerationInfoOutput": {
-      "$id": "rugix_ctrl.output.GenerationInfoOutput",
-      "type": "object",
-      "description": "Information about a generation.",
-      "properties": {
-        "number": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "createdAt": {
-          "type": "string"
-        },
-        "complete": {
-          "type": "boolean"
-        },
-        "lastActivated": {
-          "type": "string"
-        },
-        "active": {
-          "type": "boolean"
-        },
-        "metadata": {
-          "$ref": "#/$defs/rugix_ctrl.output.JsonValue"
-        }
-      },
-      "required": [
-        "number",
-        "createdAt",
-        "complete",
-        "active"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.JsonValue": {
-      "$id": "rugix_ctrl.output.JsonValue",
-      "description": ""
-    },
-    "rugix_ctrl.output.SlotInfoOutput": {
-      "$id": "rugix_ctrl.output.SlotInfoOutput",
-      "type": "object",
-      "description": "Information about a slot.",
-      "properties": {
-        "active": {
-          "type": "boolean"
-        },
-        "hashes": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "size": {
-          "type": "integer",
-          "format": "uint64"
-        },
-        "updatedAt": {
-          "type": "string"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.StateInfoActiveOutput": {
-      "$id": "rugix_ctrl.output.StateInfoActiveOutput",
-      "type": "object",
-      "description": "Information about the state management mechanism, if state management is active.",
-      "properties": {
-        "dataPartition": {
-          "type": "string"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.output.StateInfoOutput": {
-      "$id": "rugix_ctrl.output.StateInfoOutput",
-      "description": "Information about the state management mechanism.",
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "status": {
-              "const": "Disabled"
-            }
-          },
-          "required": [
-            "status"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "status": {
-              "const": "Active"
-            },
-            "dataPartition": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "status"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "status": {
-              "const": "Error"
-            }
-          },
-          "required": [
-            "status"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.output.SystemInfoOutput": {
-      "$id": "rugix_ctrl.output.SystemInfoOutput",
-      "type": "object",
-      "description": "Information about the system.",
-      "properties": {
-        "slots": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/rugix_ctrl.output.SlotInfoOutput"
-          }
-        },
-        "boot": {
-          "$ref": "#/$defs/rugix_ctrl.output.BootInfoOutput"
-        },
-        "state": {
-          "$ref": "#/$defs/rugix_ctrl.output.StateInfoOutput"
-        }
-      },
-      "required": [
-        "slots",
-        "state"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.state.OverlayConfig": {
-      "$id": "rugix_ctrl.state.OverlayConfig",
-      "enum": [
-        "persist",
-        "discard",
-        "in-memory",
-        "disabled"
-      ],
-      "description": "Configuration of the root overlay."
-    },
-    "rugix_ctrl.state.PersistConfig": {
-      "$id": "rugix_ctrl.state.PersistConfig",
-      "description": "Configuration to persist a file or directory.",
-      "anyOf": [
-        {
-          "type": "object",
-          "properties": {
-            "file": {
-              "type": "string"
-            },
-            "default": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "file"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "directory": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "directory"
-          ]
-        }
-      ]
-    },
-    "rugix_ctrl.state.PersistDirectoryConfig": {
-      "$id": "rugix_ctrl.state.PersistDirectoryConfig",
-      "type": "object",
-      "description": "Configuration to persist a directory.",
-      "properties": {
-        "directory": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "directory"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.state.PersistFileConfig": {
-      "$id": "rugix_ctrl.state.PersistFileConfig",
-      "type": "object",
-      "description": "Configuration to persist a file.",
-      "properties": {
-        "file": {
-          "type": "string"
-        },
-        "default": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "file"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.state.StateConfig": {
-      "$id": "rugix_ctrl.state.StateConfig",
-      "type": "object",
-      "description": "State management configuration.",
-      "properties": {
-        "overlay": {
-          "$ref": "#/$defs/rugix_ctrl.state.OverlayConfig"
-        },
-        "persist": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/rugix_ctrl.state.PersistConfig"
-          }
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.system.BlockSlotConfig": {
-      "$id": "rugix_ctrl.system.BlockSlotConfig",
-      "type": "object",
-      "description": "Block device slot configuration.",
-      "properties": {
-        "device": {
-          "type": "string"
-        },
-        "partition": {
-          "type": "integer",
-          "format": "uint32"
-        },
-        "immutable": {
-          "type": "boolean"
-        },
-        "optional": {
-          "type": "boolean"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
     "rugix_ctrl.system.BootFlowConfig": {
       "$id": "rugix_ctrl.system.BootFlowConfig",
       "description": "Boot flow configuration",
@@ -1158,73 +215,112 @@
       ],
       "unevaluatedProperties": false
     },
-    "rugix_ctrl.system.CustomBootFlowConfig": {
-      "$id": "rugix_ctrl.system.CustomBootFlowConfig",
-      "type": "object",
-      "description": "Custom boot flow configuration.",
-      "properties": {
-        "controller": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "controller"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.system.CustomSlotConfig": {
-      "$id": "rugix_ctrl.system.CustomSlotConfig",
-      "type": "object",
-      "description": "Custom slot configuration.",
-      "properties": {
-        "handler": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "handler"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.system.FileSlotConfig": {
-      "$id": "rugix_ctrl.system.FileSlotConfig",
-      "type": "object",
-      "description": "File slot configuration.",
-      "properties": {
-        "path": {
-          "type": "string"
+    "rugix_ctrl.system.DataPartitionDriverConfig": {
+      "$id": "rugix_ctrl.system.DataPartitionDriverConfig",
+      "description": "Data partition driver configuration.\n\nThe driver owns the data partition's lifecycle: bootstrap-time format,\nper-boot mount, and cryptographic erasure on wipe. When unset, the\npartition is treated as a plain Ext4 filesystem.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "plaintext-ext4"
+            },
+            "label": {
+              "type": "string"
+            },
+            "additional-options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
         },
-        "immutable": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.system.MenderBootFlowConfig": {
-      "$id": "rugix_ctrl.system.MenderBootFlowConfig",
-      "type": "object",
-      "description": "Mender boot flow configuration.",
-      "properties": {
-        "boot-dir": {
-          "type": "string"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "luks2-passphrase"
+            },
+            "passphrase-file": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "mapper-name": {
+              "type": "string"
+            },
+            "additional-mkfs-options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "passphrase-file"
+          ]
         },
-        "boot-part-a": {
-          "type": "integer",
-          "format": "uint32"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "luks2-tpm2"
+            },
+            "pcrs": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint32"
+              }
+            },
+            "device": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "mapper-name": {
+              "type": "string"
+            },
+            "additional-mkfs-options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
         },
-        "boot-part-b": {
-          "type": "integer",
-          "format": "uint32"
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "custom"
+            },
+            "format-script": {
+              "type": "string"
+            },
+            "mount-script": {
+              "type": "string"
+            },
+            "wipe-script": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "mount-script"
+          ]
         }
-      },
-      "required": [],
-      "unevaluatedProperties": false
+      ]
     },
     "rugix_ctrl.system.PartitionConfig": {
       "$id": "rugix_ctrl.system.PartitionConfig",
@@ -1249,25 +345,9 @@
         },
         "protected": {
           "type": "boolean"
-        }
-      },
-      "required": [],
-      "unevaluatedProperties": false
-    },
-    "rugix_ctrl.system.RaucBootFlowConfig": {
-      "$id": "rugix_ctrl.system.RaucBootFlowConfig",
-      "type": "object",
-      "description": "RAUC boot flow configuration.",
-      "properties": {
-        "group-names": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         },
-        "default-attempts": {
-          "type": "integer",
-          "format": "uint32"
+        "driver": {
+          "$ref": "#/$defs/rugix_ctrl.system.DataPartitionDriverConfig"
         }
       },
       "required": [],
@@ -1338,23 +418,6 @@
           ]
         }
       ]
-    },
-    "rugix_ctrl.system.SystemdBootFlowConfig": {
-      "$id": "rugix_ctrl.system.SystemdBootFlowConfig",
-      "type": "object",
-      "description": "Systemd-boot boot flow configuration.",
-      "properties": {
-        "entries": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "entries"
-      ],
-      "unevaluatedProperties": false
     }
   }
 }

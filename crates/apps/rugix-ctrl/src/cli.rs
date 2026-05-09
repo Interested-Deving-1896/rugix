@@ -296,6 +296,11 @@ pub fn main() -> SystemResult<()> {
                 system.reboot()?;
             }
         },
+        Command::Data(cmd) => match cmd {
+            DataCommand::Wipe { yes, no_reboot } => {
+                run_data_wipe(*yes, *no_reboot)?;
+            }
+        },
         Command::Unstable(command) => match command {
             UnstableCommand::SetDeferredSpareReboot { value } => match value {
                 Boolean::True => set_flag(DEFERRED_SPARE_REBOOT_FLAG)?,
@@ -1726,9 +1731,29 @@ pub enum Command {
     /// Manage applications.
     #[clap(subcommand)]
     Apps(AppsCommand),
+    /// Manage the data partition.
+    #[clap(subcommand)]
+    Data(DataCommand),
     /// Unstable experimental commands.
     #[clap(subcommand)]
     Unstable(UnstableCommand),
+}
+
+#[derive(Debug, Parser)]
+pub enum DataCommand {
+    /// Cryptographically wipe the data partition.
+    ///
+    /// Renders existing contents unrecoverable (LUKS drivers destroy the
+    /// master key; the plaintext driver discards and reformats) and reboots.
+    /// **Destructive:** all state profiles, app data, and metadata are lost.
+    Wipe {
+        /// Skip the interactive confirmation. Required when not on a TTY.
+        #[clap(long)]
+        yes: bool,
+        /// Do not reboot after writing the wipe marker.
+        #[clap(long)]
+        no_reboot: bool,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -2005,4 +2030,38 @@ pub enum AppsServiceManagerCommand {
 pub enum AppsSystemdCommand {
     /// Restore app units into the systemd runtime directory.
     RestoreUnits,
+}
+
+/// Wipe the data partition by writing a `wipe-data` marker on the config
+/// partition and rebooting. Pre-init runs the actual erase + reformat
+/// before mounting; we can't safely do it here because the data
+/// partition is currently mounted.
+fn run_data_wipe(yes: bool, no_reboot: bool) -> SystemResult<()> {
+    let _update_lock = lock_update()?;
+
+    if !yes {
+        eprintln!(
+            "Refusing to wipe the data partition without `--yes`. \
+             This is destructive: all state profiles, app data, and metadata \
+             on the data partition will be lost."
+        );
+        bail!("`--yes` required");
+    }
+
+    let system = System::initialize()?;
+    let config_partition = system.require_config_partition()?;
+    config_partition
+        .ensure_writable(|| -> SystemResult<()> {
+            let rugix_dir = config_partition.path().join(".rugix");
+            fs::create_dir_all(&rugix_dir).whatever("unable to create `.rugix` directory")?;
+            fs::write(rugix_dir.join("wipe-data"), "")
+                .whatever("unable to write `wipe-data` marker")?;
+            Ok(())
+        })
+        .whatever("unable to make config partition writable for `data wipe`")??;
+
+    if !no_reboot {
+        reboot()?;
+    }
+    Ok(())
 }

@@ -15,9 +15,10 @@ use crate::config::bootstrapping::{BootstrappingConfig, DefaultLayoutConfig, Sys
 use crate::config::state::{
     OverlayConfig, PersistConfig, PersistDirectoryConfig, PersistFileConfig, StateConfig,
 };
-use crate::config::system::PartitionConfig;
+use crate::config::system::SystemConfig;
 use crate::state::load_state_config;
 use crate::system::config::load_system_config;
+use crate::system::data_partition::{resolve_driver, DriverContext};
 use crate::system::partitions::resolve_data_partition;
 use crate::system::paths::{MOUNT_POINT_CONFIG, MOUNT_POINT_DATA, MOUNT_POINT_SYSTEM};
 use crate::system::root::{find_system_device, SystemRoot};
@@ -30,7 +31,7 @@ use rugix_common::disk::repart::{
 use rugix_common::disk::PartitionTable;
 use rugix_common::partitions::mkfs_ext4;
 use rugix_hooks::HooksLoader;
-use xscript::{cmd_os, run, vars, ParentEnv, Run, Vars};
+use xscript::{run, vars, Run, Vars};
 
 use crate::utils::{clear_flag, is_flag_set, is_init_process, DEFERRED_SPARE_REBOOT_FLAG};
 
@@ -97,11 +98,11 @@ fn init() -> SystemResult<()> {
         bail!("unable to determine system root");
     };
 
-    let Some(config_partition) = (match system_config.config_partition {
+    let Some(config_partition) = (match system_config.config_partition.as_ref() {
         Some(partition) => {
             if let Some(partition) = partition.partition {
                 root.resolve_partition(partition)
-            } else if let Some(device) = partition.device {
+            } else if let Some(device) = partition.device.as_deref() {
                 Some(BlockDevice::new(device).whatever("unable to find config partition device")?)
             } else {
                 None
@@ -125,15 +126,17 @@ fn init() -> SystemResult<()> {
 
     let dotted_marker = Path::new(MOUNT_POINT_CONFIG).join(".rugix/bootstrap");
     let plain_marker = Path::new(MOUNT_POINT_CONFIG).join("rugix/bootstrap");
-    let marker = if dotted_marker.exists() {
+    let bootstrap_marker = if dotted_marker.exists() {
         Some(dotted_marker)
     } else if plain_marker.exists() {
         Some(plain_marker)
     } else {
         None
     };
-    if let Some(marker) = marker {
-        bootstrap(&root)?;
+    let wipe_data_marker = Path::new(MOUNT_POINT_CONFIG).join(".rugix/wipe-data");
+    let wipe_pending = wipe_data_marker.exists();
+
+    if bootstrap_marker.is_some() || wipe_pending {
         run!([
             "/usr/bin/env",
             "mount",
@@ -142,7 +145,19 @@ fn init() -> SystemResult<()> {
             MOUNT_POINT_CONFIG
         ])
         .whatever("unable to mount config partition as read-write")?;
-        std::fs::remove_file(&marker).whatever("unable to remove bootstrap marker")?;
+
+        if let Some(marker) = bootstrap_marker {
+            bootstrap(&root, &system_config)?;
+            std::fs::remove_file(&marker).whatever("unable to remove bootstrap marker")?;
+            info!("Done bootstrapping");
+        }
+
+        if wipe_pending {
+            info!("processing deferred data wipe");
+            run_deferred_data_wipe(&root, &system_config)?;
+            std::fs::remove_file(&wipe_data_marker)
+                .whatever("unable to clear `wipe-data` marker")?;
+        }
 
         run!([
             "/usr/bin/env",
@@ -152,62 +167,32 @@ fn init() -> SystemResult<()> {
             MOUNT_POINT_CONFIG
         ])
         .whatever("unable to mount config partition as readonly")?;
-        info!("Done bootstrapping")
     }
 
     fs::create_dir_all(MOUNT_POINT_DATA).ok();
-    let data_partition = resolve_data_partition(
-        Some(&root),
-        system_config
-            .data_partition
-            .as_ref()
-            .unwrap_or(&PartitionConfig::new()),
-    );
-    if let Some(mount_script) = system_config
-        .data_partition
-        .as_ref()
-        .and_then(|part| part.mount_script.as_deref())
-    {
-        let mut cmd = cmd_os!(mount_script, MOUNT_POINT_DATA);
-        if let Some(data_partition) = data_partition {
-            cmd.add_arg(data_partition.path());
-        }
-        if let Err(error) = ParentEnv.run(cmd) {
-            println!("Mounting of the data partition failed!");
-            println!("{error:?}");
-            // We proceed anyway. This will look like a factory reset.
-            fs::create_dir_all(Path::new(MOUNT_POINT_DATA).join(".rugix")).ok();
-            fs::write(
-                Path::new(MOUNT_POINT_DATA).join(".rugix/data-mount-error.log"),
-                format!("{error:?}"),
-            )
-            .ok();
-        }
-    } else if let Some(data_partition) = data_partition {
-        // 3️⃣ Check and mount the data partition.
-        if let Err(error) = run!(["/usr/bin/env", "fsck", "-p", data_partition.path()]) {
-            println!("fsck reported: {error}")
-        }
-        if let Err(error) = run!([
-            "/usr/bin/env",
-            "mount",
-            "-o",
-            "noatime",
-            data_partition.path(),
-            MOUNT_POINT_DATA
-        ]) {
-            println!("Mounting of the data partition failed!");
-            println!("{error:?}");
-            // We proceed anyway. This will look like a factory reset.
-            fs::create_dir_all(Path::new(MOUNT_POINT_DATA).join(".rugix")).ok();
-            fs::write(
-                Path::new(MOUNT_POINT_DATA).join(".rugix/data-mount-error.log"),
-                format!("{error:?}"),
-            )
-            .ok();
-        }
-    } else {
+    let data_partition_config = system_config.data_partition.clone().unwrap_or_default();
+    let data_partition = resolve_data_partition(Some(&root), &data_partition_config);
+    let Some(data_partition) = data_partition else {
         bail!("Rugix pre-init requires a data partition");
+    };
+    let data_driver = resolve_driver(&data_partition_config);
+    let driver_ctx = DriverContext::new(
+        data_partition.path().to_path_buf(),
+        Path::new(MOUNT_POINT_DATA).to_path_buf(),
+    );
+    // Mount failures are non-fatal here: pre-init falls through with an
+    // empty data tmpfs (the system comes up looking like a factory reset).
+    // Encrypting drivers wanting a hard halt can return success only
+    // after verifying the partition is actually usable.
+    if let Err(error) = data_driver.mount(&driver_ctx) {
+        println!("Mounting of the data partition failed!");
+        println!("{error:?}");
+        fs::create_dir_all(Path::new(MOUNT_POINT_DATA).join(".rugix")).ok();
+        fs::write(
+            Path::new(MOUNT_POINT_DATA).join(".rugix/data-mount-error.log"),
+            format!("{error:?}"),
+        )
+        .ok();
     }
 
     let state_config = load_state_config()?;
@@ -300,7 +285,7 @@ fn load_bootstrap_config() -> SystemResult<BootstrappingConfig> {
     })
 }
 
-fn bootstrap(root: &SystemRoot) -> SystemResult<()> {
+fn bootstrap(root: &SystemRoot, system_config: &SystemConfig) -> SystemResult<()> {
     let bootstrap_hooks = HooksLoader::default()
         .load_hooks("bootstrap")
         .whatever("unable to load bootstrap hooks")?;
@@ -349,6 +334,11 @@ fn bootstrap(root: &SystemRoot) -> SystemResult<()> {
         SystemLayoutConfig::None => None,
     };
 
+    let data_partition_config = system_config.data_partition.clone().unwrap_or_default();
+    let default_data_idx = if ty.is_mbr() { 7u32 } else { 6u32 };
+    let data_partition_idx = data_partition_config.partition.unwrap_or(default_data_idx);
+    let data_partition_has_driver = data_partition_config.driver.is_some();
+
     if let Some(schema) = schema {
         bootstrap_hooks
             .run_hooks("pre-layout", Vars::new(), &Default::default())
@@ -359,17 +349,35 @@ fn bootstrap(root: &SystemRoot) -> SystemResult<()> {
                 SystemLayoutConfig::Mbr(partition_layout_config)
                 | SystemLayoutConfig::Gpt(partition_layout_config) => {
                     for (idx, config) in partition_layout_config.partitions.iter().enumerate() {
+                        let part_num = (idx + 1) as u32;
+                        if idx < old_table.partitions.len() {
+                            if config.filesystem.is_some() {
+                                warn!(
+                                    "refuse to create filesystems on already existing partition {}",
+                                    part_num
+                                );
+                            }
+                            continue;
+                        }
+                        let block_device = root.resolve_partition(part_num).unwrap();
+                        // When a driver is configured, it owns format
+                        // end-to-end; the layout's filesystem entry is
+                        // ignored to avoid double-formatting an
+                        // encrypted volume.
+                        if part_num == data_partition_idx && data_partition_has_driver {
+                            let driver = resolve_driver(&data_partition_config);
+                            let ctx = DriverContext::new(
+                                block_device.path().to_path_buf(),
+                                Path::new(MOUNT_POINT_DATA).to_path_buf(),
+                            );
+                            driver.format(&ctx).whatever(
+                                "unable to format data partition via configured driver",
+                            )?;
+                            continue;
+                        }
                         let Some(filesystem) = &config.filesystem else {
                             continue;
                         };
-                        if idx < old_table.partitions.len() {
-                            warn!(
-                                "refuse to create filesystems on already existing partition {}",
-                                idx + 1
-                            );
-                            continue;
-                        }
-                        let block_device = root.resolve_partition((idx + 1) as u32).unwrap();
                         match filesystem {
                             crate::config::bootstrapping::Filesystem::Ext4(ext4_filesystem) => {
                                 mkfs_ext4(
@@ -380,21 +388,22 @@ fn bootstrap(root: &SystemRoot) -> SystemResult<()> {
                                         .as_deref()
                                         .unwrap_or_default(),
                                 )
-                                .whatever("unable to create filesystem on data partition")?;
+                                .whatever("unable to create filesystem on partition")?;
                             }
                         }
                     }
                 }
                 SystemLayoutConfig::Default(_) => {
-                    let data_partition_idx = if ty.is_mbr() { 7 } else { 6 };
                     if data_partition_idx as usize >= old_table.partitions.len() {
-                        // Create Ext4 filesystem on data partition.
-                        mkfs_ext4(
-                            root.resolve_partition(data_partition_idx).unwrap(),
-                            "data",
-                            &[],
-                        )
-                        .whatever("unable to create filesystem on data partition")?;
+                        let block_device = root.resolve_partition(data_partition_idx).unwrap();
+                        let driver = resolve_driver(&data_partition_config);
+                        let ctx = DriverContext::new(
+                            block_device.path().to_path_buf(),
+                            Path::new(MOUNT_POINT_DATA).to_path_buf(),
+                        );
+                        driver
+                            .format(&ctx)
+                            .whatever("unable to format data partition")?;
                     }
                 }
                 SystemLayoutConfig::None => unreachable!(),
@@ -406,6 +415,24 @@ fn bootstrap(root: &SystemRoot) -> SystemResult<()> {
     }
 
     Ok(())
+}
+
+/// Run a deferred `rugix-ctrl data wipe`. The driver's `wipe` is
+/// responsible for leaving the partition in a fresh, mountable state.
+///
+/// Any error here propagates so the caller leaves the `wipe-data` marker
+/// in place — the next boot retries until the wipe actually succeeds.
+fn run_deferred_data_wipe(root: &SystemRoot, system_config: &SystemConfig) -> SystemResult<()> {
+    let data_partition_config = system_config.data_partition.clone().unwrap_or_default();
+    let Some(data_partition) = resolve_data_partition(Some(root), &data_partition_config) else {
+        bail!("deferred data wipe: data partition not resolvable");
+    };
+    let driver = resolve_driver(&data_partition_config);
+    let ctx = DriverContext::new(
+        data_partition.path().to_path_buf(),
+        Path::new(MOUNT_POINT_DATA).to_path_buf(),
+    );
+    driver.wipe(&ctx).whatever("data partition wipe failed")
 }
 
 /// Mounts the essential filesystems `/proc`, `/sys`, and `/run`.

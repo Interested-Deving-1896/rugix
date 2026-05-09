@@ -1900,7 +1900,7 @@ dependencies = [
 [[package]]
 name = "sidex"
 version = "0.1.0"
-source = "git+https://github.com/silitics/sidex.git#96f71479d0de02eec47204ecf64440d69e76a737"
+source = "git+https://github.com/silitics/sidex.git#85fe0966298249a07b08fee559a4623a7bd5cd54"
 dependencies = [
  "serde",
  "serde_json",
@@ -1911,10 +1911,12 @@ dependencies = [
 [[package]]
 name = "sidex-serde"
 version = "0.1.0"
-source = "git+https://github.com/silitics/sidex.git#96f71479d0de02eec47204ecf64440d69e76a737"
+source = "git+https://github.com/silitics/sidex.git#85fe0966298249a07b08fee559a4623a7bd5cd54"
 dependencies = [
  "base64 0.20.0",
+ "indexmap",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -23,11 +23,104 @@ record PartitionConfig {
     /// Partition number of the root device.
     partition?: u32,
     /// User-defined script for mounting the partition.
+    ///
+    /// Mutually exclusive with `driver`.
     mount_script?: string,
     /// Path where the partition is or should be mounted.
     path?: string,
     /// Indicates whether the partition is write-protected.
     protected?: bool,
+    /// Driver responsible for formatting, mounting, and wiping the partition.
+    ///
+    /// Only valid on the data partition. Mutually exclusive with `mount_script`.
+    /// When unset, the partition is treated as a plain Ext4 filesystem.
+    #[unstable]
+    driver?: DataPartitionDriverConfig,
+}
+
+/// Data partition driver configuration.
+///
+/// The driver owns the data partition's lifecycle: bootstrap-time format,
+/// per-boot mount, and cryptographic erasure on wipe. When unset, the
+/// partition is treated as a plain Ext4 filesystem.
+#[json(tag="type", rename_all="kebab-case")]
+variant DataPartitionDriverConfig {
+    /// Plain Ext4 filesystem on the bare partition device.
+    #[json(name="plaintext-ext4")]
+    PlaintextExt4: PlaintextExt4DriverConfig,
+    /// LUKS2 with a passphrase loaded from a file at unlock time.
+    ///
+    /// **Not** a stand-alone production encryption mode: a passphrase living
+    /// on plaintext flash defeats the encryption. Useful for testing and
+    /// for out-of-band-delivered keys never persisted locally.
+    #[json(name="luks2-passphrase")]
+    Luks2Passphrase: Luks2PassphraseDriverConfig,
+    /// LUKS2 with a key sealed by a TPM 2.0 device.
+    ///
+    /// `systemd-cryptenroll` seals a random LUKS2 passphrase to the TPM at
+    /// format time; `cryptsetup open --token-only` unseals it on every boot.
+    /// Production-grade: the unseal material never leaves the TPM.
+    #[json(name="luks2-tpm2")]
+    Luks2Tpm2: Luks2Tpm2DriverConfig,
+    /// User-defined driver implemented by external scripts.
+    Custom: CustomDataPartitionDriverConfig,
+}
+
+/// Configuration for the plain Ext4 driver.
+#[json(rename_all = "kebab-case")]
+record PlaintextExt4DriverConfig {
+    /// Filesystem label assigned at format time. Defaults to `data`.
+    label?: string,
+    /// Additional options forwarded verbatim to `mkfs.ext4`.
+    additional_options?: [string],
+}
+
+/// Configuration for the LUKS2 passphrase driver.
+#[json(rename_all = "kebab-case")]
+record Luks2PassphraseDriverConfig {
+    /// Path to the file holding the passphrase. Read raw, used as-is.
+    passphrase_file: string,
+    /// Filesystem label assigned at mkfs time. Defaults to `data`.
+    label?: string,
+    /// Name of the dm-crypt mapper device. Defaults to `rugix-data`.
+    mapper_name?: string,
+    /// Additional options forwarded verbatim to `mkfs.ext4`.
+    additional_mkfs_options?: [string],
+}
+
+/// Configuration for the LUKS2 TPM2 driver.
+#[json(rename_all = "kebab-case")]
+record Luks2Tpm2DriverConfig {
+    /// PCRs to bind the unseal policy to. Empty list means no PCR binding.
+    ///
+    /// **Update warning:** PCRs in the 0-9 range typically change with
+    /// firmware/bootloader/kernel updates and will brick the device on
+    /// every update if bound literally. PCR 7 (Secure Boot policy state)
+    /// is the most stable choice for static binding. For stronger binding,
+    /// future revisions will add `tpm2-public-key` for `TPM2_PolicyAuthorize`
+    /// so PCR predictions can be re-signed per release.
+    pcrs?: [u32],
+    /// TPM 2.0 device path. Defaults to `auto`.
+    device?: string,
+    /// Filesystem label assigned at mkfs time. Defaults to `data`.
+    label?: string,
+    /// Name of the dm-crypt mapper device. Defaults to `rugix-data`.
+    mapper_name?: string,
+    /// Additional options forwarded verbatim to `mkfs.ext4`.
+    additional_mkfs_options?: [string],
+}
+
+/// Configuration for the custom driver. Each script receives the device
+/// path as `$1`, the mount point as `$2`, and the environment variables
+/// `RUGIX_DATA_DEVICE` and `RUGIX_DATA_MOUNT_POINT`.
+#[json(rename_all = "kebab-case")]
+record CustomDataPartitionDriverConfig {
+    /// Bootstrap-time format script.
+    format_script?: string,
+    /// Per-boot mount script.
+    mount_script: string,
+    /// `rugix-ctrl data wipe` script.
+    wipe_script?: string,
 }
 
 /// System slot configuration.

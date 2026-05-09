@@ -3,33 +3,62 @@
 use std::fs;
 use std::path::Path;
 
-use reportify::ResultExt;
+use reportify::{bail, ResultExt};
 
-use crate::config::system::SystemConfig;
+use crate::config::system::{PartitionConfig, SystemConfig};
 
 use super::SystemResult;
 
 /// Path of the system configuration file.
 pub const SYSTEM_CONFIG_PATH: &str = "/etc/rugix/system.toml";
 
-/// Load the system configuration.
+/// Load and validate the system configuration.
 pub fn load_system_config() -> SystemResult<SystemConfig> {
-    Ok(if Path::new(SYSTEM_CONFIG_PATH).exists() {
-        toml::from_str(
+    let config = if Path::new(SYSTEM_CONFIG_PATH).exists() {
+        toml::from_str::<SystemConfig>(
             &fs::read_to_string(SYSTEM_CONFIG_PATH)
                 .whatever("unable to read system configuration file")?,
         )
         .whatever("unable to parse system configuration file")?
     } else {
         SystemConfig::default()
-    })
+    };
+    validate(&config)?;
+    Ok(config)
+}
+
+/// Cross-field consistency checks that JSON Schema cannot express.
+fn validate(config: &SystemConfig) -> SystemResult<()> {
+    if let Some(partition) = &config.config_partition {
+        if partition.driver.is_some() {
+            bail!(
+                "config-partition.driver is not supported: drivers are only valid \
+                 on the data partition"
+            );
+        }
+    }
+    if let Some(partition) = &config.data_partition {
+        validate_data_partition(partition)?;
+    }
+    Ok(())
+}
+
+fn validate_data_partition(partition: &PartitionConfig) -> SystemResult<()> {
+    if partition.driver.is_some() && partition.mount_script.is_some() {
+        bail!(
+            "data-partition: `driver` and `mount-script` are mutually exclusive — \
+             pick one (use `driver = {{ type = \"custom\", mount-script = \"...\" }}` \
+             when migrating an existing `mount-script`)"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
 
-    use super::SystemConfig;
+    use super::{validate, SystemConfig};
 
     #[test]
     fn test_from_toml() {
@@ -73,5 +102,54 @@ mod tests {
             slots = { boot = "boot-b", system = "system-b" }
         "#})
         .unwrap();
+    }
+
+    #[test]
+    fn test_driver_and_mount_script_are_mutually_exclusive() {
+        let config: SystemConfig = toml::from_str(indoc! {r#"
+            [data-partition]
+            mount-script = "/usr/lib/example/mount"
+
+            [data-partition.driver]
+            type = "plaintext-ext4"
+        "#})
+        .unwrap();
+        let err = validate(&config).expect_err("validation should reject the conflict");
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("mutually exclusive"),
+            "expected mutual-exclusion error, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_driver_rejected_on_config_partition() {
+        let config: SystemConfig = toml::from_str(indoc! {r#"
+            [config-partition.driver]
+            type = "plaintext-ext4"
+        "#})
+        .unwrap();
+        let err = validate(&config).expect_err("validation should reject config-partition driver");
+        let rendered = format!("{err:?}");
+        assert!(
+            rendered.contains("config-partition"),
+            "expected config-partition error, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_luks2_passphrase_round_trips() {
+        let config: SystemConfig = toml::from_str(indoc! {r#"
+            [data-partition.driver]
+            type = "luks2-passphrase"
+            passphrase-file = "/run/rugix/mounts/config/.rugix/data.key"
+            label = "data"
+        "#})
+        .unwrap();
+        validate(&config).unwrap();
+        // Round-trip through serialization to make sure `kebab-case` survives.
+        let serialised = toml::to_string(&config).unwrap();
+        assert!(serialised.contains("type = \"luks2-passphrase\""));
+        assert!(serialised.contains("passphrase-file"));
     }
 }
