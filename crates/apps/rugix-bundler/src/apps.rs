@@ -221,7 +221,9 @@ fn pin_compose_images(compose_content: &str, saved: &[SavedImage]) -> String {
     // strings, however, it trivially preserves the formatting and any comments.
     let mut content = compose_content.to_owned();
     for image in saved {
-        content = content.replace(&image.original, &image.pinned);
+        if let Some(pinned) = &image.pinned {
+            content = content.replace(&image.original, pinned);
+        }
     }
     content
 }
@@ -272,8 +274,11 @@ fn image_payload_filename(index: usize) -> String {
 struct SavedImage {
     /// The original image reference from the compose file.
     original: String,
-    /// The image reference pinned to a digest (e.g., `nginx@sha256:abc...`).
-    pinned: String,
+    /// The image reference pinned to a registry digest (e.g., `nginx@sha256:abc...`).
+    ///
+    /// `None` when the reference is left unpinned: either pinning was disabled, or
+    /// the image is a local build with no registry digest to pin to.
+    pinned: Option<String>,
     /// Path inside the generation directory (e.g., `images/image-0.tar`).
     app_path: String,
     /// Filename of the payload file inside the payloads directory.
@@ -297,20 +302,31 @@ fn image_repo(image: &str) -> &str {
     }
 }
 
-/// Resolve the digest of a pulled Docker image via `docker inspect`.
-fn resolve_digest_docker(image: &str) -> BundleResult<String> {
+/// Resolve the registry digest of a Docker image via `docker inspect`.
+///
+/// Returns `None` for locally-built images that were never pushed to or pulled
+/// from a registry: those have an empty `RepoDigests` and thus no digest to pin.
+fn resolve_digest_docker(image: &str) -> BundleResult<Option<String>> {
     let output = std::process::Command::new("docker")
-        .args(["inspect", "--format", "{{index .RepoDigests 0}}", image])
+        .args([
+            "inspect",
+            "--format",
+            "{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}",
+            image,
+        ])
         .output()
         .whatever("unable to run docker inspect")?;
     if !output.status.success() {
         bail!("docker inspect failed for {image}");
     }
-    let pinned = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    if !pinned.contains('@') {
-        bail!("docker inspect did not return a digest for {image}: {pinned}");
+    let digest = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if digest.is_empty() {
+        return Ok(None);
     }
-    Ok(pinned)
+    if !digest.contains('@') {
+        bail!("docker inspect did not return a digest for {image}: {digest}");
+    }
+    Ok(Some(digest))
 }
 
 /// Resolve the digest of a remote image via `skopeo inspect`.
@@ -366,11 +382,11 @@ fn save_images_skopeo(
         }
         let pinned = if disable_pinning {
             info!(image, "image pinning disabled, skipping digest resolution");
-            image.clone()
+            None
         } else {
-            let p = resolve_digest_skopeo(image, platform)?;
-            info!(image, pinned = %p, "resolved image digest");
-            p
+            let digest = resolve_digest_skopeo(image, platform)?;
+            info!(image, pinned = %digest, "resolved image digest");
+            Some(digest)
         };
         saved.push(SavedImage {
             original: image.clone(),
@@ -423,11 +439,21 @@ fn save_images_docker(
         }
         let pinned = if disable_pinning {
             info!(image, "image pinning disabled, skipping digest resolution");
-            image.clone()
+            None
         } else {
-            let p = resolve_digest_docker(image)?;
-            info!(image, pinned = %p, "resolved image digest");
-            p
+            match resolve_digest_docker(image)? {
+                Some(digest) => {
+                    info!(image, pinned = %digest, "resolved image digest");
+                    Some(digest)
+                }
+                None => {
+                    info!(
+                        image,
+                        "local image without registry digest, leaving unpinned"
+                    );
+                    None
+                }
+            }
         };
         saved.push(SavedImage {
             original: image.clone(),
