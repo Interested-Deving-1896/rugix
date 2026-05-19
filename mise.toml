@@ -1,6 +1,53 @@
 [tools]
+rust = { version = "nightly", profile = "default", components = "rustfmt,clippy" }
 "github:silitics/sidex" = { version = "0.2.6", exe = "sidex" }
 
 [tasks.codegen]
-description = "Regenerate Sidex-generated Rust code for rugix-ctrl and rugix-bundle."
-run = ["bash", "xtask/codegen.sh"]
+description = "Regenerate Sidex-generated Rust code and JSON schemas."
+run = """
+set -euo pipefail
+
+pushd crates/apps/rugix-ctrl
+mkdir -p generated && rm -rf generated/*
+sidex generate rust src/config/generated
+sidex generate json-schema generated/
+
+# Copy generated JSON schemas to the schemas directory (repo root)
+mkdir -p ../../../schemas
+cp generated/rugix_ctrl.bootstrapping.BootstrappingConfig.schema.json ../../../schemas/rugix-ctrl-bootstrapping.schema.json
+cp generated/rugix_ctrl.state.StateConfig.schema.json ../../../schemas/rugix-ctrl-state.schema.json
+cp generated/rugix_ctrl.system.SystemConfig.schema.json ../../../schemas/rugix-ctrl-system.schema.json
+cp generated/rugix_ctrl.config.Config.schema.json ../../../schemas/rugix-ctrl-config.schema.json
+cp generated/rugix_ctrl.output.SystemInfoOutput.schema.json ../../../schemas/rugix-ctrl-output-info.schema.json
+popd
+
+pushd crates/libs/rugix-bundle
+mkdir -p generated && rm -rf generated/*
+sidex generate rust src/manifest/generated
+sidex generate json-schema generated/
+
+cp generated/rugix_bundle.manifest.BundleManifest.schema.json ../../../schemas/rugix-bundle-manifest.schema.json
+popd
+
+cargo +nightly fmt
+"""
+
+[tasks.fmt]
+description = "Format all Rust code."
+run = "cargo +nightly fmt"
+
+[tasks.check]
+description = "Run all CI checks (formatting + clippy)."
+depends = ["check:fmt", "check:clippy"]
+
+[tasks."check:fmt"]
+description = "Verify that every Rust file is formatted by Rustfmt nightly."
+run = "cargo +nightly fmt --check"
+
+[tasks."check:clippy"]
+description = "Run Clippy across the workspace with warnings denied."
+run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks.test]
+description = "Run all tests."
+run = "cargo test"
