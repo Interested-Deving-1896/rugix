@@ -1,0 +1,6 @@
+[tools]
+"github:silitics/sidex" = { version = "0.2.6", exe = "sidex" }
+
+[tasks.codegen]
+description = "Regenerate Sidex-generated Rust code for rugix-ctrl and rugix-bundle."
+run = ["bash", "xtask/codegen.sh"]
