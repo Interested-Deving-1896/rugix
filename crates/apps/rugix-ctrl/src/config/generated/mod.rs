@@ -11521,7 +11521,7 @@ pub mod system {
         pub path: ::std::option::Option<::std::string::String>,
         #[doc = "Indicates whether the partition is write-protected.\n"]
         pub protected: ::std::option::Option<bool>,
-        #[doc = "Driver responsible for formatting, mounting, and wiping the partition.\n\nOnly valid on the data partition. Mutually exclusive with `mount_script`.\nWhen unset, the partition is treated as a plain Ext4 filesystem.\n"]
+        #[doc = "**Unstable.**\n\nDriver responsible for formatting, mounting, and wiping the partition.\n\nOnly valid on the data partition. Mutually exclusive with `mount_script`.\nWhen unset, the partition is treated as a plain Ext4 filesystem.\n"]
         pub driver: ::std::option::Option<DataPartitionDriverConfig>,
     }
     impl PartitionConfig {

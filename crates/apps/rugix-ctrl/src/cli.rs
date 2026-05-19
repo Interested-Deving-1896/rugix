@@ -140,6 +140,7 @@ pub fn main() -> SystemResult<()> {
                 UpdateCommand::Install {
                     bundle,
                     insecure_skip_bundle_verification,
+                    insecure_allow_missing_block_index,
                     root_cert,
                     bundle_hash,
                     reboot: reboot_type,
@@ -215,6 +216,7 @@ pub fn main() -> SystemResult<()> {
                         bundle_hash,
                         root_cert.as_deref(),
                         *insecure_skip_bundle_verification,
+                        *insecure_allow_missing_block_index,
                         *disable_range_queries,
                         retry_config,
                     )?;
@@ -514,6 +516,7 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::Install {
                     bundle,
                     insecure_skip_bundle_verification,
+                    insecure_allow_missing_block_index,
                     root_cert,
                     bundle_hash,
                     http_max_retries,
@@ -535,6 +538,7 @@ pub fn main() -> SystemResult<()> {
                             bundle_hash,
                             root_cert.as_deref(),
                             *insecure_skip_bundle_verification,
+                            *insecure_allow_missing_block_index,
                         )?;
                     } else if bundle == "-" {
                         let source = ReaderSource::<_, SkipRead>::from_unbuffered(std::io::stdin());
@@ -545,6 +549,7 @@ pub fn main() -> SystemResult<()> {
                             bundle_hash,
                             root_cert.as_deref(),
                             *insecure_skip_bundle_verification,
+                            *insecure_allow_missing_block_index,
                         )?;
                     } else {
                         let file = File::open(bundle).whatever("unable to open app bundle")?;
@@ -556,6 +561,7 @@ pub fn main() -> SystemResult<()> {
                             bundle_hash,
                             root_cert.as_deref(),
                             *insecure_skip_bundle_verification,
+                            *insecure_allow_missing_block_index,
                         )?;
                     }
                 }
@@ -826,6 +832,7 @@ fn install_app_bundle<S: BundleSource>(
     bundle_hash: &Option<HashDigest>,
     root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
+    insecure_allow_missing_block_index: bool,
 ) -> SystemResult<()> {
     let mut bundle_reader =
         rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
@@ -890,8 +897,13 @@ fn install_app_bundle<S: BundleSource>(
             }
 
             // Set up block provider for block-encoded payloads.
-            let mut block_provider = None;
-            if let Some(block_encoding) = &payload.header().block_encoding {
+            let block_provider = if !insecure_allow_missing_block_index {
+                let block_encoding = payload.header().block_encoding.as_ref().ok_or_else(|| {
+                    whatever!(
+                        "payload {} does not have a block index, refusing to install",
+                        payload.idx()
+                    )
+                })?;
                 let mut provider = BlockProvider::new(
                     block_encoding.chunker.clone(),
                     block_encoding.hash_algorithm,
@@ -913,8 +925,10 @@ fn install_app_bundle<S: BundleSource>(
                         }
                     }
                 }
-                block_provider = Some(provider);
-            }
+                Some(provider)
+            } else {
+                None
+            };
 
             let decoded_payload_info = if let Some(delta_encoding) = delta_encoding {
                 info!(
@@ -1067,8 +1081,29 @@ fn install_app_bundle<S: BundleSource>(
                 .as_file()
                 .try_clone()
                 .whatever("unable to clone temp file handle")?;
+            let block_provider = if !insecure_allow_missing_block_index {
+                let block_encoding = payload.header().block_encoding.as_ref().ok_or_else(|| {
+                    whatever!(
+                        "payload {} does not have a block index, refusing to install",
+                        payload.idx()
+                    )
+                })?;
+                let provider = BlockProvider::new(
+                    block_encoding.chunker.clone(),
+                    block_encoding.hash_algorithm,
+                );
+                Some(provider)
+            } else {
+                None
+            };
             payload
-                .decode_into(tmp_file, None, &mut progress)
+                .decode_into(
+                    tmp_file,
+                    block_provider
+                        .as_ref()
+                        .map(|p| p as &dyn StoredBlockProvider),
+                    &mut progress,
+                )
                 .whatever("unable to decode app archive payload")?;
             // Extract the tar archive into the generation directory.
             let tar_file = std::fs::File::open(tmp_tar.path())
@@ -1125,6 +1160,7 @@ fn install_update_stream(
     bundle_hash: &Option<HashDigest>,
     root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
+    insecure_allow_missing_block_index: bool,
     disable_range_queries: bool,
     retry_config: RetryConfig,
 ) -> SystemResult<UpdateRebootType> {
@@ -1149,6 +1185,7 @@ fn install_update_stream(
             bundle_hash,
             root_cert,
             insecure_skip_bundle_verification,
+            insecure_allow_missing_block_index,
         )?;
         let stats = bundle_source.get_download_stats();
         info!(
@@ -1169,6 +1206,7 @@ fn install_update_stream(
             bundle_hash,
             root_cert,
             insecure_skip_bundle_verification,
+            insecure_allow_missing_block_index,
         )
     } else {
         let file = File::open(bundle).whatever("error opening image")?;
@@ -1181,6 +1219,7 @@ fn install_update_stream(
             bundle_hash,
             root_cert,
             insecure_skip_bundle_verification,
+            insecure_allow_missing_block_index,
         )
     }
 }
@@ -1248,6 +1287,7 @@ fn install_update_bundle<R: BundleSource>(
     bundle_hash: &Option<HashDigest>,
     root_cert: Option<&Path>,
     insecure_skip_bundle_verification: bool,
+    insecure_allow_missing_block_index: bool,
 ) -> SystemResult<UpdateRebootType> {
     let mut bundle_reader =
         rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
@@ -1352,20 +1392,23 @@ fn install_update_bundle<R: BundleSource>(
                     slot.name()
                 );
                 payload_db::erase(slot.name())?;
-                let mut block_provider = None;
-                if let Some(block_encoding) = &payload.header().block_encoding {
+                let block_provider = if !insecure_allow_missing_block_index {
+                    let block_encoding =
+                        payload.header().block_encoding.as_ref().ok_or_else(|| {
+                            whatever!(
+                                "payload {} does not have a block index, refusing to install",
+                                payload.idx()
+                            )
+                        })?;
                     let mut provider = BlockProvider::new(
                         block_encoding.chunker.clone(),
                         block_encoding.hash_algorithm,
                     );
+                    // Since we erased all the indices of the target slot, it
+                    // is fine to also add the target slot here.
                     for (_, slot) in system.slots().iter() {
-                        // Since we erased all the indices of the target slot, it
-                        // is fine to also add the target slot here.
                         match slot.kind() {
                             SlotKind::Block(block_slot) => {
-                                // Skip absent optional slots silently — they
-                                // can't contribute as a delta-encoding source
-                                // if we don't have a device handle.
                                 let Some(device) = block_slot.device() else {
                                     continue;
                                 };
@@ -1377,8 +1420,10 @@ fn install_update_bundle<R: BundleSource>(
                             SlotKind::Custom { .. } => { /* nothing to do */ }
                         }
                     }
-                    block_provider = Some(provider);
-                }
+                    Some(provider)
+                } else {
+                    None
+                };
                 // If the target is a file on the config partition, ensure
                 // it is writable for the duration of the payload write.
                 let _write_guard = if let SlotKind::File { path } = slot.kind() {
@@ -1805,6 +1850,12 @@ pub enum UpdateCommand {
         /// bundles without either of those.
         #[clap(long)]
         insecure_skip_bundle_verification: bool,
+        /// Allow payloads without a block index (insecure, do not use in production).
+        ///
+        /// By default, payloads without a block index are rejected during installation.
+        /// This flag allows installing update payloads that lack a block index.
+        #[clap(long)]
+        insecure_allow_missing_block_index: bool,
         /// Root certificate to use for signature verification.
         ///
         /// This overrides the configured default certificate.
@@ -1921,6 +1972,12 @@ pub enum AppsCommand {
         /// bundles without either of those.
         #[clap(long)]
         insecure_skip_bundle_verification: bool,
+        /// Allow payloads without a block index (insecure, do not use in production).
+        ///
+        /// By default, payloads without a block index are rejected during installation.
+        /// This flag allows installing app payloads that lack a block index.
+        #[clap(long)]
+        insecure_allow_missing_block_index: bool,
         /// Root certificate to use for signature verification.
         ///
         /// This overrides the configured default certificate.
