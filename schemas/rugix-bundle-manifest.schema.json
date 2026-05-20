@@ -45,7 +45,10 @@
       "unevaluatedProperties": false
     },
     "rugix_bundle.manifest.ChunkerAlgorithm": {
-      "$id": "rugix_bundle.manifest.ChunkerAlgorithm"
+      "$id": "rugix_bundle.manifest.ChunkerAlgorithm",
+      "type": [
+        "string"
+      ]
     },
     "rugix_bundle.manifest.Compression": {
       "$id": "rugix_bundle.manifest.Compression",
@@ -187,10 +190,16 @@
       "unevaluatedProperties": false
     },
     "rugix_bundle.manifest.HashAlgorithm": {
-      "$id": "rugix_bundle.manifest.HashAlgorithm"
+      "$id": "rugix_bundle.manifest.HashAlgorithm",
+      "type": [
+        "string"
+      ]
     },
     "rugix_bundle.manifest.HashDigest": {
-      "$id": "rugix_bundle.manifest.HashDigest"
+      "$id": "rugix_bundle.manifest.HashDigest",
+      "type": [
+        "string"
+      ]
     },
     "rugix_bundle.manifest.Payload": {
       "$id": "rugix_bundle.manifest.Payload",
