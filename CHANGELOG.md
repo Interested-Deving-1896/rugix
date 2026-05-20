@@ -1,6 +1,6 @@
 # Changelog
 
-## UNRELEASED
+## Version 1.2.0
 
 Behavior changes:
 
