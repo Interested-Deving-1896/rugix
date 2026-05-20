@@ -2,8 +2,27 @@
 
 ## UNRELEASED
 
+Behavior changes:
+
+- Bundle installation now rejects bundles without a block index by default. Pass `--insecure-allow-missing-block-index` to install such bundles.
+
+Rugix Ctrl:
+
+- Add data partition drivers.
+- Support for optional slots.
+- Override active boot group detection via `rugix.boot_group=<name>` on the kernel cmdline.
 - Add `reboot` operation to boot flow interface.
 - Allow the bootstrap marker to be placed in `rugix` instead of `.rugix`.
+- Resolve parents of virtual block devices.
+- Acquire a write guard on the config partition for file slots that live there.
+- Gracefully handle boot flow errors during init.
+- Fix infinite loop when scanning for the parent of a block device.
+
+Rugix Bundler:
+
+- Annotate opaque types in the published bundle manifest JSON Schemas with their JSON representation.
+- Honor `--disable-pinning` when saving container images.
+- Leave locally-built container images unpinned instead of failing.
 
 ## Version 1.1.2
 
