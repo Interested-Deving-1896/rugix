@@ -9,7 +9,7 @@ use reportify::{bail, ensure, ErrorExt, ResultExt};
 use rugix_common::disk::blkdev::BlockDevice;
 
 use rugix_common::mount::is_mount_point;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::config::bootstrapping::{BootstrappingConfig, DefaultLayoutConfig, SystemLayoutConfig};
 use crate::config::state::{
@@ -40,11 +40,10 @@ pub fn main() -> SystemResult<()> {
     let result = init();
     match &result {
         Ok(_) => {
-            eprintln!("initialization procedure terminated unexpectedly");
+            error!("initialization procedure terminated unexpectedly");
         }
         Err(error) => {
-            eprintln!("error during initialization");
-            eprintln!("{error:?}");
+            error!(error = ?error, "error during initialization");
         }
     }
     // nix::unistd::execv(c"/bin/bash", &[c"/bin/bash"]).whatever("unable to run bash")?;
@@ -87,7 +86,7 @@ fn init() -> SystemResult<()> {
         .whatever("unable to load `boot` hooks")?;
 
     if let Err(error) = boot_hooks.run_hooks("pre-init", Default::default(), &Default::default()) {
-        println!("Error: {error:?}");
+        error!(error = ?error, "error running `boot/pre-init` hooks");
     }
 
     let system_config = load_system_config()?;
@@ -113,7 +112,10 @@ fn init() -> SystemResult<()> {
         bail!("bootstrapping requires a config partition");
     };
 
-    fs::create_dir_all(MOUNT_POINT_CONFIG).ok();
+    log_ignored_error(
+        fs::create_dir_all(MOUNT_POINT_CONFIG),
+        "unable to create config mount point",
+    );
     run!([
         "/usr/bin/env",
         "mount",
@@ -169,7 +171,10 @@ fn init() -> SystemResult<()> {
         .whatever("unable to mount config partition as readonly")?;
     }
 
-    fs::create_dir_all(MOUNT_POINT_DATA).ok();
+    log_ignored_error(
+        fs::create_dir_all(MOUNT_POINT_DATA),
+        "unable to create data mount point",
+    );
     let data_partition_config = system_config.data_partition.clone().unwrap_or_default();
     let data_partition = resolve_data_partition(Some(&root), &data_partition_config);
     let Some(data_partition) = data_partition else {
@@ -185,21 +190,28 @@ fn init() -> SystemResult<()> {
     // Encrypting drivers wanting a hard halt can return success only
     // after verifying the partition is actually usable.
     if let Err(error) = data_driver.mount(&driver_ctx) {
-        println!("Mounting of the data partition failed!");
-        println!("{error:?}");
-        fs::create_dir_all(Path::new(MOUNT_POINT_DATA).join(".rugix")).ok();
-        fs::write(
-            Path::new(MOUNT_POINT_DATA).join(".rugix/data-mount-error.log"),
-            format!("{error:?}"),
-        )
-        .ok();
+        warn!(error = ?error, "mounting of the data partition failed");
+        log_ignored_error(
+            fs::create_dir_all(Path::new(MOUNT_POINT_DATA).join(".rugix")),
+            "unable to create data error log directory",
+        );
+        log_ignored_error(
+            fs::write(
+                Path::new(MOUNT_POINT_DATA).join(".rugix/data-mount-error.log"),
+                format!("{error:?}"),
+            ),
+            "unable to write data mount error log",
+        );
     }
 
     let state_config = load_state_config()?;
 
     if !matches!(state_config.overlay, Some(OverlayConfig::Disabled)) {
         // 4️⃣ Setup remaining mount points in `/run/rugix/mounts`.
-        fs::create_dir_all(MOUNT_POINT_SYSTEM).ok();
+        log_ignored_error(
+            fs::create_dir_all(MOUNT_POINT_SYSTEM),
+            "unable to create system mount point",
+        );
         run!([
             "/usr/bin/env",
             "mount",
@@ -213,22 +225,26 @@ fn init() -> SystemResult<()> {
 
     let system = System::initialize()?;
 
-    let requires_commit =
-        system.boot_flow().get_default(&system).ok() != system.active_boot_entry();
+    let default_boot_entry = log_ignored_error(
+        system.boot_flow().get_default(&system),
+        "unable to determine default boot entry",
+    );
+    let requires_commit = default_boot_entry != system.active_boot_entry();
 
     if let Err(error) = check_deferred_spare_reboot(&system) {
-        println!("Warning: Error executing deferred reboot.");
-        println!("{:?}", error);
+        warn!(error = ?error, "error executing deferred reboot");
     }
 
     // 6️⃣ Setup state in `/run/rugix/state`.
     let state_profile = Path::new(DEFAULT_STATE_DIR);
     let reset_flag = state_profile.join(".rugix/reset-state");
     if reset_flag.exists() {
-        let backup_name = std::fs::read(reset_flag)
-            .ok()
-            .and_then(|d| String::from_utf8(d).ok())
-            .unwrap_or_default();
+        let backup_name = log_ignored_error(
+            std::fs::read(&reset_flag),
+            "unable to read reset-state flag",
+        )
+        .and_then(|d| log_ignored_error(String::from_utf8(d), "reset-state flag is not UTF-8"))
+        .unwrap_or_default();
         let reset_hooks = HooksLoader::default()
             .load_hooks("state-reset")
             .whatever("unable to load `state-reset` hooks")?;
@@ -238,18 +254,30 @@ fn init() -> SystemResult<()> {
             .whatever("unable to run `pre-reset` hooks")?;
         // The existence of the file indicates that the state shall be reset.
         if backup_name.trim().is_empty() {
-            fs::remove_dir_all(state_profile).ok();
+            log_ignored_error(
+                fs::remove_dir_all(state_profile),
+                "unable to remove state profile",
+            );
         } else {
             let backup_profile = Path::new(STATE_PROFILES_DIR).join(backup_name);
-            fs::rename(state_profile, &backup_profile).ok();
-            fs::remove_file(backup_profile.join(".rugix/reset-state")).ok();
+            log_ignored_error(
+                fs::rename(state_profile, &backup_profile),
+                "unable to move state profile backup",
+            );
+            log_ignored_error(
+                fs::remove_file(backup_profile.join(".rugix/reset-state")),
+                "unable to remove reset-state flag from backup profile",
+            );
         }
         reset_hooks
             .run_hooks("post-reset", Vars::new(), &Default::default())
             .whatever("unable to run `post-reset` hooks")?;
     }
-    fs::create_dir_all(state_profile).ok();
-    fs::create_dir_all(STATE_DIR).ok();
+    log_ignored_error(
+        fs::create_dir_all(state_profile),
+        "unable to create state profile",
+    );
+    log_ignored_error(fs::create_dir_all(STATE_DIR), "unable to create state dir");
     run!(["/usr/bin/env", "mount", "--bind", &state_profile, STATE_DIR])
         .whatever("unable to bind mount state profile")?;
 
@@ -439,27 +467,23 @@ fn run_deferred_data_wipe(root: &SystemRoot, system_config: &SystemConfig) -> Sy
 fn mount_essential_filesystems() -> SystemResult<()> {
     if !is_mount_point("/proc") {
         if let Err(error) = run!(["/usr/bin/env", "mount", "-t", "proc", "proc", "/proc"]) {
-            eprintln!(
-                "{:?}",
-                error.whatever::<SystemError, _>("error mounting /proc"),
-            );
+            let error = error.whatever::<SystemError, _>("error mounting /proc");
+            warn!(error = ?error, "error mounting /proc");
         }
     } else {
         debug!("skip mounting of `/proc`: already mounted")
     }
     if !is_mount_point("/sys") {
         if let Err(error) = run!(["/usr/bin/env", "mount", "-t", "sysfs", "sys", "/sys"]) {
-            eprintln!("'/sys' appears to be already mounted: {error}");
+            warn!(error = ?error, "error mounting /sys");
         }
     } else {
         debug!("skip mounting of `/sys`: already mounted")
     }
     if !is_mount_point("/run") {
         if let Err(error) = run!(["/usr/bin/env", "mount", "-t", "tmpfs", "tmp", "/run"]) {
-            eprintln!(
-                "{:?}",
-                error.whatever::<SystemError, _>("error mounting /tmp"),
-            );
+            let error = error.whatever::<SystemError, _>("error mounting /run");
+            warn!(error = ?error, "error mounting /run");
         }
     } else {
         debug!("skip mounting of `/run`: already mounted")
@@ -502,7 +526,10 @@ fn setup_root_overlay(
     let overlay_config = config.overlay.clone().unwrap_or(OverlayConfig::Discard);
 
     if !force_persist && !matches!(overlay_config, OverlayConfig::Persist) {
-        fs::remove_dir_all(&overlay_state).ok();
+        log_ignored_error(
+            fs::remove_dir_all(&overlay_state),
+            "unable to remove overlay state",
+        );
     }
 
     let (overlay_dir, overlay_root_dir, overlay_work_dir, upper) = match overlay_config {
@@ -539,10 +566,22 @@ fn setup_root_overlay(
     };
 
     // Reinitialize `work` and `root` directories.
-    fs::remove_dir_all(overlay_dir).ok();
-    fs::create_dir_all(overlay_work_dir).ok();
-    fs::create_dir_all(overlay_root_dir).ok();
-    fs::create_dir_all(&upper).ok();
+    log_ignored_error(
+        fs::remove_dir_all(overlay_dir),
+        "unable to remove overlay directory",
+    );
+    log_ignored_error(
+        fs::create_dir_all(overlay_work_dir),
+        "unable to create overlay work directory",
+    );
+    log_ignored_error(
+        fs::create_dir_all(overlay_root_dir),
+        "unable to create overlay root directory",
+    );
+    log_ignored_error(
+        fs::create_dir_all(&upper),
+        "unable to create overlay upper directory",
+    );
 
     let upper = upper.to_string_lossy();
     run!([
@@ -575,7 +614,10 @@ fn setup_persistent_state(
     state_config: &StateConfig,
 ) -> SystemResult<()> {
     let persist_dir = state_profile.join("persist");
-    fs::create_dir_all(state_profile).ok();
+    log_ignored_error(
+        fs::create_dir_all(state_profile),
+        "unable to create state profile",
+    );
 
     let Some(persist) = &state_config.persist else {
         return Ok(());
@@ -598,13 +640,22 @@ fn setup_persistent_state(
                     );
                 }
                 if !state_path.is_dir() {
-                    fs::remove_dir_all(&state_path).ok();
-                    create_parent_dir(&state_path).ok();
+                    log_ignored_error(
+                        fs::remove_dir_all(&state_path),
+                        "unable to remove persistent directory state path",
+                    );
+                    log_ignored_error(
+                        create_parent_dir(&state_path),
+                        "unable to create parent directory of persistent directory",
+                    );
                     if system_path.is_dir() {
                         run!(["/usr/bin/env", "cp", "-a", &system_path, &state_path])
                             .whatever("unable to copy system files from root partition to state")?;
                     } else {
-                        fs::create_dir_all(&state_path).ok();
+                        log_ignored_error(
+                            fs::create_dir_all(&state_path),
+                            "unable to create persistent directory state path",
+                        );
                     }
                 }
                 if !system_path.is_dir() {
@@ -626,7 +677,10 @@ fn setup_persistent_state(
                     bail!("Error persisting `{}`, not a file!", file.to_string_lossy());
                 }
                 if !state_path.is_file() {
-                    fs::remove_dir_all(&state_path).ok();
+                    log_ignored_error(
+                        fs::remove_dir_all(&state_path),
+                        "unable to remove persistent file state path",
+                    );
                     create_parent_dir(&state_path)
                         .whatever("unable to create parent directory of persistent file")?;
                     if system_path.is_file() {
@@ -717,7 +771,7 @@ fn exec_chroot_init(root_dir: &Path, requires_commit: bool) -> SystemResult<()> 
         },
         &Default::default(),
     ) {
-        println!("Error: {error:?}");
+        error!(error = ?error, "error running `boot/post-init` hooks");
     }
     println!("Starting system init process.");
     let systemd_init = &CString::new("/sbin/init").unwrap();
@@ -744,4 +798,17 @@ fn check_deferred_spare_reboot(system: &System) -> SystemResult<()> {
         }
     }
     Ok(())
+}
+
+fn log_ignored_error<T, E>(result: Result<T, E>, context: &'static str) -> Option<T>
+where
+    E: std::fmt::Debug,
+{
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            warn!(error = ?error, "{}", context);
+            None
+        }
+    }
 }
