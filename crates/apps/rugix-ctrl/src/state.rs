@@ -41,6 +41,14 @@ fn merge(target: &mut StateConfig, other: StateConfig) {
     } else if other.overlay.is_some() {
         warn!("Conflicting overlay options. Will use {:?}", target.overlay);
     }
+    if target.overlay_fallback.is_none() {
+        target.overlay_fallback = other.overlay_fallback;
+    } else if other.overlay_fallback.is_some() {
+        warn!(
+            "Conflicting overlay fallback options. Will use {:?}",
+            target.overlay_fallback
+        );
+    }
     if let Some(persist) = &mut target.persist {
         if let Some(other) = other.persist {
             persist.extend(other);

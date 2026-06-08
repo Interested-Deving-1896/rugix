@@ -1,9 +1,12 @@
 //! State management configuration.
 
 /// State management configuration.
+#[json(rename_all = "kebab-case")]
 record StateConfig {
     /// Configuration of the root overlay.
     overlay?: OverlayConfig,
+    /// Overlay storage to use when setting up the configured overlay fails.
+    overlay_fallback?: OverlayFallbackConfig,
     /// Files and directories to persist.
     persist?: [PersistConfig],
 }
@@ -19,6 +22,13 @@ variant OverlayConfig {
     InMemory,
     /// Disable the overlay.
     Disabled,
+}
+
+/// Overlay storage to use when setting up the configured overlay fails.
+#[json(tagged = externally, rename_all = "kebab-case")]
+variant OverlayFallbackConfig {
+    /// Retry overlay setup with a temporary, in-memory filesystem.
+    InMemory,
 }
 
 /// Configuration to persist a file or directory.

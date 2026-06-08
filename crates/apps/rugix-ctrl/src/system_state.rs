@@ -58,9 +58,10 @@ pub fn state_from_system(system: &System) -> SystemInfoOutput {
         .collect();
     let state = if !Path::new("/run/rugix/state").exists() {
         StateInfoOutput::Disabled
-    } else if Path::new(MOUNT_POINT_DATA)
-        .join(".rugix/data-mount-error.log")
-        .exists()
+    } else if Path::new("/run/rugix/state/.rugix/overlay-fallback-error.log").exists()
+        || Path::new(MOUNT_POINT_DATA)
+            .join(".rugix/data-mount-error.log")
+            .exists()
     {
         StateInfoOutput::Error
     } else {

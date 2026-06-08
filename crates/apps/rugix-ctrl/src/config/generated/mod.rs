@@ -9630,6 +9630,8 @@ pub mod state {
     pub struct StateConfig {
         #[doc = "Configuration of the root overlay.\n"]
         pub overlay: ::std::option::Option<OverlayConfig>,
+        #[doc = "Overlay storage to use when setting up the configured overlay fails.\n"]
+        pub overlay_fallback: ::std::option::Option<OverlayFallbackConfig>,
         #[doc = "Files and directories to persist.\n"]
         pub persist: ::std::option::Option<::std::vec::Vec<PersistConfig>>,
     }
@@ -9638,6 +9640,7 @@ pub mod state {
         pub fn new() -> Self {
             Self {
                 overlay: ::std::default::Default::default(),
+                overlay_fallback: ::std::default::Default::default(),
                 persist: ::std::default::Default::default(),
             }
         }
@@ -9649,6 +9652,22 @@ pub mod state {
         #[doc = "Sets the value of `overlay`."]
         pub fn with_overlay(mut self, overlay: ::std::option::Option<OverlayConfig>) -> Self {
             self.overlay = overlay;
+            self
+        }
+        #[doc = "Sets the value of `overlay_fallback`."]
+        pub fn set_overlay_fallback(
+            &mut self,
+            overlay_fallback: ::std::option::Option<OverlayFallbackConfig>,
+        ) -> &mut Self {
+            self.overlay_fallback = overlay_fallback;
+            self
+        }
+        #[doc = "Sets the value of `overlay_fallback`."]
+        pub fn with_overlay_fallback(
+            mut self,
+            overlay_fallback: ::std::option::Option<OverlayFallbackConfig>,
+        ) -> Self {
+            self.overlay_fallback = overlay_fallback;
             self
         }
         #[doc = "Sets the value of `persist`."]
@@ -9684,7 +9703,7 @@ pub mod state {
             __serializer: __S,
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
-                __sidex_serde::ser::RecordSerializer::new(__serializer, "StateConfig", 2usize)?;
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "StateConfig", 3usize)?;
             {
                 let __wrapped = ::core::option::Option::map(
                     ::core::option::Option::as_ref(&self.overlay),
@@ -9696,6 +9715,18 @@ pub mod state {
                 );
                 __record.serialize_optional_field(
                     "overlay",
+                    ::core::option::Option::as_ref(&__wrapped),
+                )?;
+            }
+            {
+                let __wrapped = ::core::option::Option::map(
+                    ::core::option::Option::as_ref(&self.overlay_fallback),
+                    |__v| {
+                        __sidex_serde :: SerializeAsWrap :: < OverlayFallbackConfig < > , __sidex_serde :: AsSelf > :: new (__v)
+                    },
+                );
+                __record.serialize_optional_field(
+                    "overlay-fallback",
                     ::core::option::Option::as_ref(&__wrapped),
                 )?;
             }
@@ -9752,11 +9783,25 @@ pub mod state {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 3 fields"),
                             );
                         }
                     };
                     let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::option::Option<OverlayFallbackConfig>,
+                            ::std::option::Option<__sidex_serde::AsSelf>,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(1usize, &"record with 3 fields"),
+                            );
+                        }
+                    };
+                    let __field2 = match __serde::de::SeqAccess::next_element::<
                         __sidex_serde::DeserializeAsWrap<
                             ::std::option::Option<::std::vec::Vec<PersistConfig>>,
                             ::std::option::Option<::std::vec::Vec<__sidex_serde::AsSelf>>,
@@ -9766,13 +9811,14 @@ pub mod state {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                                __serde::de::Error::invalid_length(2usize, &"record with 3 fields"),
                             );
                         }
                     };
                     ::core::result::Result::Ok(StateConfig {
                         overlay: __field0,
-                        persist: __field1,
+                        overlay_fallback: __field1,
+                        persist: __field2,
                     })
                 }
                 #[inline]
@@ -9784,15 +9830,17 @@ pub mod state {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &'static [&'static str] = &["overlay", "persist"];
+                    const __IDENTIFIERS: &'static [&'static str] =
+                        &["overlay", "overlay-fallback", "persist"];
                     #[doc(hidden)]
                     const __EXPECTING_IDENTIFIERS: &'static str =
-                        "an identifier in [\"overlay\", \"persist\"]";
+                        "an identifier in [\"overlay\", \"overlay-fallback\", \"persist\"]";
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
                         __Identifier0,
                         __Identifier1,
+                        __Identifier2,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -9815,6 +9863,7 @@ pub mod state {
                             match __value {
                                 0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                                 1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -9829,8 +9878,11 @@ pub mod state {
                                 "overlay" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier0)
                                 }
-                                "persist" => {
+                                "overlay-fallback" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                "persist" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -9846,8 +9898,11 @@ pub mod state {
                                 b"overlay" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier0)
                                 }
-                                b"persist" => {
+                                b"overlay-fallback" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                b"persist" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -9870,6 +9925,9 @@ pub mod state {
                     let mut __field0: ::core::option::Option<::std::option::Option<OverlayConfig>> =
                         ::core::option::Option::None;
                     let mut __field1: ::core::option::Option<
+                        ::std::option::Option<OverlayFallbackConfig>,
+                    > = ::core::option::Option::None;
+                    let mut __field2: ::core::option::Option<
                         ::std::option::Option<::std::vec::Vec<PersistConfig>>,
                     > = ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
@@ -9898,11 +9956,29 @@ pub mod state {
                                 if ::core::option::Option::is_some(&__field1) {
                                     return ::core::result::Result::Err(
                                         <__A::Error as __serde::de::Error>::duplicate_field(
-                                            "persist",
+                                            "overlay-fallback",
                                         ),
                                     );
                                 }
                                 __field1 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::option::Option<OverlayFallbackConfig>,
+                                            ::std::option::Option<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
+                                );
+                            }
+                            __Identifier::__Identifier2 => {
+                                if ::core::option::Option::is_some(&__field2) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "persist",
+                                        ),
+                                    );
+                                }
+                                __field2 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
                                         __sidex_serde::DeserializeAsWrap<
                                             ::std::option::Option<::std::vec::Vec<PersistConfig>>,
@@ -9929,14 +10005,19 @@ pub mod state {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => ::core::option::Option::None,
                     };
+                    let __field2 = match __field2 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => ::core::option::Option::None,
+                    };
                     ::core::result::Result::Ok(StateConfig {
                         overlay: __field0,
-                        persist: __field1,
+                        overlay_fallback: __field1,
+                        persist: __field2,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &'static [&'static str] = &["overlay", "persist"];
+            const __FIELDS: &'static [&'static str] = &["overlay", "overlay-fallback", "persist"];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "StateConfig",
@@ -10144,6 +10225,165 @@ pub mod state {
             __serde::Deserializer::deserialize_enum(
                 __deserializer,
                 "OverlayConfig",
+                __VARIANTS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Overlay storage to use when setting up the configured overlay fails.\n"]
+    #[derive(Clone, Debug)]
+    pub enum OverlayFallbackConfig {
+        #[doc = "Retry overlay setup with a temporary, in-memory filesystem.\n"]
+        InMemory,
+    }
+    #[automatically_derived]
+    impl __sidex_serde::SidexType for OverlayFallbackConfig {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for OverlayFallbackConfig {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let __serializer =
+                __sidex_serde::ser::VariantSerializer::new(__serializer, "OverlayFallbackConfig");
+            match self {
+                Self::InMemory => __serializer.serialize_tag("in-memory", 0u32),
+            }
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for OverlayFallbackConfig {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            const __IDENTIFIERS: &'static [&'static str] = &["in-memory"];
+            #[doc(hidden)]
+            const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"in-memory\"]";
+            #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+            #[doc(hidden)]
+            enum __Identifier {
+                __Identifier0,
+            }
+            #[doc(hidden)]
+            struct __IdentifierVisitor;
+            impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                type Value = __Identifier;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                }
+                fn visit_u64<__E>(self, __value: u64) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        __variant => {
+                            ::core::result::Result::Err(__serde::de::Error::invalid_value(
+                                __serde::de::Unexpected::Unsigned(__variant),
+                                &__EXPECTING_IDENTIFIERS,
+                            ))
+                        }
+                    }
+                }
+                fn visit_str<__E>(self, __value: &str) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        "in-memory" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        __variant => ::core::result::Result::Err(
+                            __serde::de::Error::unknown_variant(__variant, __IDENTIFIERS),
+                        ),
+                    }
+                }
+                fn visit_bytes<__E>(
+                    self,
+                    __value: &[u8],
+                ) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    match __value {
+                        b"in-memory" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                        __variant => {
+                            ::core::result::Result::Err(__serde::de::Error::invalid_value(
+                                __serde::de::Unexpected::Bytes(__variant),
+                                &__EXPECTING_IDENTIFIERS,
+                            ))
+                        }
+                    }
+                }
+            }
+            impl<'de> __serde::Deserialize<'de> for __Identifier {
+                #[inline]
+                fn deserialize<__D>(__deserializer: __D) -> ::core::result::Result<Self, __D::Error>
+                where
+                    __D: __serde::Deserializer<'de>,
+                {
+                    __serde::Deserializer::deserialize_identifier(
+                        __deserializer,
+                        __IdentifierVisitor,
+                    )
+                }
+            }
+            #[doc(hidden)]
+            const __VARIANTS: &'static [&'static str] = &["in-memory"];
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = OverlayFallbackConfig;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "enum OverlayFallbackConfig")
+                }
+                #[inline]
+                fn visit_str<__E>(self, __value: &str) -> ::core::result::Result<Self::Value, __E>
+                where
+                    __E: __serde::de::Error,
+                {
+                    let __identifier = __IdentifierVisitor.visit_str(__value)?;
+                    #[allow(unreachable_patterns)]
+                    match __identifier {
+                        __Identifier::__Identifier0 => {
+                            ::core::result::Result::Ok(OverlayFallbackConfig::InMemory)
+                        }
+                        _ => Err(__E::invalid_value(
+                            __serde::de::Unexpected::Str(__value),
+                            &self,
+                        )),
+                    }
+                }
+                #[inline]
+                fn visit_enum<__A>(
+                    self,
+                    __data: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::EnumAccess<'de>,
+                {
+                    match __serde::de::EnumAccess::variant::<__Identifier>(__data)? {
+                        (__Identifier::__Identifier0, __variant) => {
+                            __serde::de::VariantAccess::unit_variant(__variant)?;
+                            ::core::result::Result::Ok(OverlayFallbackConfig::InMemory)
+                        }
+                    }
+                }
+            }
+            __serde::Deserializer::deserialize_enum(
+                __deserializer,
+                "OverlayFallbackConfig",
                 __VARIANTS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,

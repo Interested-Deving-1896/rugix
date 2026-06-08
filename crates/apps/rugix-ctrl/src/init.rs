@@ -13,7 +13,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::config::bootstrapping::{BootstrappingConfig, DefaultLayoutConfig, SystemLayoutConfig};
 use crate::config::state::{
-    OverlayConfig, PersistConfig, PersistDirectoryConfig, PersistFileConfig, StateConfig,
+    OverlayConfig, OverlayFallbackConfig, PersistConfig, PersistDirectoryConfig, PersistFileConfig,
+    StateConfig,
 };
 use crate::config::system::SystemConfig;
 use crate::state::load_state_config;
@@ -297,6 +298,7 @@ fn init() -> SystemResult<()> {
 }
 
 const STATE_DIR: &str = "/run/rugix/state";
+const OVERLAY_FALLBACK_ERROR_LOG: &str = ".rugix/overlay-fallback-error.log";
 
 pub fn state_dir() -> &'static Path {
     Path::new(STATE_DIR)
@@ -524,15 +526,50 @@ fn setup_root_overlay(
     config: &StateConfig,
     state_profile: &Path,
 ) -> SystemResult<PathBuf> {
+    let overlay_config = config.overlay.clone().unwrap_or(OverlayConfig::Discard);
+    let result = setup_root_overlay_once(system, state_profile, overlay_config.clone());
+    match result {
+        Ok(root_dir) => {
+            clear_overlay_fallback_error(state_profile);
+            Ok(root_dir)
+        }
+        Err(error) => match &config.overlay_fallback {
+            Some(OverlayFallbackConfig::InMemory)
+                if !matches!(
+                    overlay_config,
+                    OverlayConfig::Disabled | OverlayConfig::InMemory
+                ) =>
+            {
+                warn!(
+                    error = ?error,
+                    "error setting up configured overlay; falling back to in-memory overlay"
+                );
+                write_overlay_fallback_error(state_profile, &error);
+                setup_root_overlay_once(system, state_profile, OverlayConfig::InMemory).map_err(
+                    |fallback_error| {
+                        reportify::whatever!(
+                            "unable to setup system overlay mounts with in-memory fallback"
+                        )
+                        .with_info(format!("configured overlay error: {error:?}"))
+                        .with_info(format!("fallback overlay error: {fallback_error:?}"))
+                    },
+                )
+            }
+            _ => Err(error),
+        },
+    }
+}
+
+fn setup_root_overlay_once(
+    system: &System,
+    state_profile: &Path,
+    overlay_config: OverlayConfig,
+) -> SystemResult<PathBuf> {
     let overlay_state = state_profile.join("overlay");
     let force_persist = state_profile.join(".rugix/force-persist-overlay").exists();
-    let overlay_config = config.overlay.clone().unwrap_or(OverlayConfig::Discard);
 
-    if !force_persist && !matches!(overlay_config, OverlayConfig::Persist) {
-        log_ignored_error(
-            fs::remove_dir_all(&overlay_state),
-            "unable to remove overlay state",
-        );
+    if matches!(overlay_config, OverlayConfig::Discard) && !force_persist {
+        remove_dir_all_if_exists(&overlay_state).whatever("unable to remove overlay state")?;
     }
 
     let (overlay_dir, overlay_root_dir, overlay_work_dir, upper) = match overlay_config {
@@ -569,22 +606,10 @@ fn setup_root_overlay(
     };
 
     // Reinitialize `work` and `root` directories.
-    log_ignored_error(
-        fs::remove_dir_all(overlay_dir),
-        "unable to remove overlay directory",
-    );
-    log_ignored_error(
-        fs::create_dir_all(overlay_work_dir),
-        "unable to create overlay work directory",
-    );
-    log_ignored_error(
-        fs::create_dir_all(overlay_root_dir),
-        "unable to create overlay root directory",
-    );
-    log_ignored_error(
-        fs::create_dir_all(&upper),
-        "unable to create overlay upper directory",
-    );
+    remove_dir_all_if_exists(overlay_dir).whatever("unable to remove overlay directory")?;
+    fs::create_dir_all(overlay_work_dir).whatever("unable to create overlay work directory")?;
+    fs::create_dir_all(overlay_root_dir).whatever("unable to create overlay root directory")?;
+    fs::create_dir_all(&upper).whatever("unable to create overlay upper directory")?;
 
     let upper = upper.to_string_lossy();
     run!([
@@ -608,6 +633,28 @@ fn setup_root_overlay(
     ])
     .whatever("unable to rbind /run")?;
     Ok(overlay_root_dir.to_path_buf())
+}
+
+fn write_overlay_fallback_error<E>(state_profile: &Path, error: &E)
+where
+    E: std::fmt::Debug,
+{
+    let path = state_profile.join(OVERLAY_FALLBACK_ERROR_LOG);
+    log_ignored_error(
+        create_parent_dir(&path),
+        "unable to create overlay fallback error log directory",
+    );
+    log_ignored_error(
+        fs::write(path, format!("{error:?}")),
+        "unable to write overlay fallback error log",
+    );
+}
+
+fn clear_overlay_fallback_error(state_profile: &Path) {
+    log_ignored_error(
+        remove_file_if_exists(state_profile.join(OVERLAY_FALLBACK_ERROR_LOG)),
+        "unable to clear overlay fallback error log",
+    );
 }
 
 /// Sets up the bind mounts required for the persistent state.
@@ -727,6 +774,22 @@ fn create_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
         }
     }
     _create_parent_dir(path.as_ref())
+}
+
+fn remove_dir_all_if_exists(path: impl AsRef<Path>) -> io::Result<()> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn remove_file_if_exists(path: impl AsRef<Path>) -> io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Makes sure `/etc/machine-id` has been restored/initialized.

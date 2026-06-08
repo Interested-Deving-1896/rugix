@@ -7,6 +7,9 @@
     "overlay": {
       "$ref": "#/$defs/rugix_ctrl.state.OverlayConfig"
     },
+    "overlay-fallback": {
+      "$ref": "#/$defs/rugix_ctrl.state.OverlayFallbackConfig"
+    },
     "persist": {
       "type": "array",
       "items": {
@@ -26,6 +29,13 @@
         "disabled"
       ],
       "description": "Configuration of the root overlay."
+    },
+    "rugix_ctrl.state.OverlayFallbackConfig": {
+      "$id": "rugix_ctrl.state.OverlayFallbackConfig",
+      "enum": [
+        "in-memory"
+      ],
+      "description": "Overlay storage to use when setting up the configured overlay fails."
     },
     "rugix_ctrl.state.PersistConfig": {
       "$id": "rugix_ctrl.state.PersistConfig",
