@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+Rugix Ctrl:
+
+- Add opt-in `rugix.init.shell_on_error[=<seconds>]` kernel cmdline option for opening a debug shell after init errors. This is intentionally disabled by default to avoid exposing a root shell to someone with console access.
+
 ## Version 1.2.0
 
 Behavior changes:

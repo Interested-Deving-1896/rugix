@@ -35,18 +35,21 @@ use xscript::{run, vars, Run, Vars};
 
 use crate::utils::{clear_flag, is_flag_set, is_init_process, DEFERRED_SPARE_REBOOT_FLAG};
 
+mod error_shell;
+
 pub fn main() -> SystemResult<()> {
     ensure!(is_init_process(), "process must be the init process");
     let result = init();
     match &result {
         Ok(_) => {
             error!("initialization procedure terminated unexpectedly");
+            error_shell::prompt_on_init_error();
         }
         Err(error) => {
             error!(error = ?error, "error during initialization");
+            error_shell::prompt_on_init_error();
         }
     }
-    // nix::unistd::execv(c"/bin/bash", &[c"/bin/bash"]).whatever("unable to run bash")?;
     eprintln!("waiting for 30 seconds...");
     thread::sleep(Duration::from_secs(30));
     Ok(())

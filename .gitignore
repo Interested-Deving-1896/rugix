@@ -11,3 +11,5 @@ devenv.local.yaml
 .pre-commit-config.yaml
 
 .claude
+
+*.cdx.json
