@@ -247,3 +247,9 @@ record CustomBootFlowConfig {
     /// Path to the script implementing the boot flow.
     controller: string,
 }
+
+/// Capabilities supported by a boot flow.
+record BootFlowCapabilities {
+    /// Whether the boot flow can recover from userspace boot failures.
+    userspace_failure_recovery?: bool,
+}

@@ -18,6 +18,7 @@ use crate::config::state::{
 };
 use crate::config::system::SystemConfig;
 use crate::state::load_state_config;
+use crate::system::boot_flows::BootFlowCapabilities;
 use crate::system::config::load_system_config;
 use crate::system::data_partition::{resolve_driver, DriverContext};
 use crate::system::partitions::resolve_data_partition;
@@ -175,12 +176,43 @@ fn init() -> SystemResult<()> {
         .whatever("unable to mount config partition as readonly")?;
     }
 
+    let system = System::initialize()?;
+
+    let default_boot_entry = log_ignored_error(
+        system.boot_flow().get_default(&system),
+        "unable to determine default boot entry",
+    );
+    let requires_commit = default_boot_entry != system.active_boot_entry();
+    let current_system_is_committed =
+        default_boot_entry.is_some() && default_boot_entry == system.active_boot_entry();
+
+    if let Err(error) = setup_state_and_exec_init(
+        &root,
+        &system_device,
+        &system_config,
+        &system,
+        requires_commit,
+    ) {
+        maybe_exec_underlying_init(&system, current_system_is_committed, &error);
+        return Err(error);
+    }
+
+    Ok(())
+}
+
+fn setup_state_and_exec_init(
+    root: &SystemRoot,
+    system_device: &BlockDevice,
+    system_config: &SystemConfig,
+    system: &System,
+    requires_commit: bool,
+) -> SystemResult<()> {
     log_ignored_error(
         fs::create_dir_all(MOUNT_POINT_DATA),
         "unable to create data mount point",
     );
     let data_partition_config = system_config.data_partition.clone().unwrap_or_default();
-    let data_partition = resolve_data_partition(Some(&root), &data_partition_config);
+    let data_partition = resolve_data_partition(Some(root), &data_partition_config);
     let Some(data_partition) = data_partition else {
         bail!("Rugix pre-init requires a data partition");
     };
@@ -227,15 +259,7 @@ fn init() -> SystemResult<()> {
         .whatever("unable to mount system partition")?;
     }
 
-    let system = System::initialize()?;
-
-    let default_boot_entry = log_ignored_error(
-        system.boot_flow().get_default(&system),
-        "unable to determine default boot entry",
-    );
-    let requires_commit = default_boot_entry != system.active_boot_entry();
-
-    if let Err(error) = check_deferred_spare_reboot(&system) {
+    if let Err(error) = check_deferred_spare_reboot(system) {
         warn!(error = ?error, "error executing deferred reboot");
     }
 
@@ -286,7 +310,7 @@ fn init() -> SystemResult<()> {
         .whatever("unable to bind mount state profile")?;
 
     // 7️⃣ Setup the root filesystem overlay.
-    let root_dir = setup_root_overlay(&system, &state_config, state_profile)?;
+    let root_dir = setup_root_overlay(system, &state_config, state_profile)?;
 
     // 8️⃣ Setup the bind mounts for the persistent state.
     setup_persistent_state(&root_dir, state_profile, &state_config)?;
@@ -295,6 +319,32 @@ fn init() -> SystemResult<()> {
     exec_chroot_init(&root_dir, requires_commit)?;
 
     Ok(())
+}
+
+fn maybe_exec_underlying_init(
+    system: &System,
+    current_system_is_committed: bool,
+    error: &impl std::fmt::Debug,
+) {
+    let capabilities = system.boot_flow().capabilities();
+    if !should_exec_underlying_init_after_error(current_system_is_committed, capabilities) {
+        return;
+    }
+    warn!(
+        error = ?error,
+        boot_flow = system.boot_flow().name(),
+        "Rugix init failed on committed system without userspace failure recovery; starting underlying init"
+    );
+    if let Err(error) = exec_system_init() {
+        error!(error = ?error, "unable to start underlying init after Rugix init failure");
+    }
+}
+
+fn should_exec_underlying_init_after_error(
+    current_system_is_committed: bool,
+    capabilities: BootFlowCapabilities,
+) -> bool {
+    current_system_is_committed && !capabilities.userspace_failure_recovery.unwrap_or(false)
 }
 
 const STATE_DIR: &str = "/run/rugix/state";
@@ -839,6 +889,11 @@ fn exec_chroot_init(root_dir: &Path, requires_commit: bool) -> SystemResult<()> 
     ) {
         error!(error = ?error, "error running `boot/post-init` hooks");
     }
+    exec_system_init()?;
+    Ok(())
+}
+
+fn exec_system_init() -> SystemResult<()> {
     println!("Starting system init process.");
     let systemd_init = &CString::new("/sbin/init").unwrap();
     nix::unistd::execv(systemd_init, &[systemd_init]).whatever("unable to run system init")?;

@@ -6,7 +6,7 @@ use xscript::{read_str, Run};
 
 use tracing::{debug, error};
 
-use super::BootFlow;
+use super::{BootFlow, BootFlowCapabilities};
 use crate::system::boot_groups::BootGroups;
 
 /// Custom boot flow implementation.
@@ -19,6 +19,21 @@ pub struct CustomBootFlow {
 impl BootFlow for CustomBootFlow {
     fn name(&self) -> &str {
         "custom"
+    }
+
+    fn capabilities(&self) -> BootFlowCapabilities {
+        let Ok(output) = read_str!([&self.controller, "capabilities"]) else {
+            debug!("custom boot flow controller failed for `capabilities`");
+            return BootFlowCapabilities::default();
+        };
+        if output.trim().is_empty() {
+            debug!("custom boot flow does not implement `capabilities`");
+            return BootFlowCapabilities::default();
+        }
+        serde_json::from_str::<BootFlowCapabilities>(&output).unwrap_or_else(|error| {
+            debug!(error = ?error, "custom boot flow returned invalid output for `capabilities`");
+            BootFlowCapabilities::default()
+        })
     }
 
     fn set_try_next(

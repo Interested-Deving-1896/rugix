@@ -15,6 +15,7 @@ use super::boot_groups::{BootGroupIdx, BootGroups};
 use super::slots::SlotIdx;
 use super::{ConfigPartition, System};
 use crate::boot::fwenv::{load_vars, set_vars};
+pub use crate::config::system::BootFlowCapabilities;
 use crate::config::system::BootFlowConfig;
 use crate::system::boot_flows::mender::{MenderGrub, MenderUboot};
 use crate::system::boot_flows::rauc::{RaucGrub, RaucUboot};
@@ -42,6 +43,11 @@ pub type BootFlowResult<T> = Result<T, Report<BootFlowError>>;
 pub trait BootFlow: Debug {
     /// Name of the boot flow.
     fn name(&self) -> &str;
+
+    /// Capabilities supported by the boot flow.
+    fn capabilities(&self) -> BootFlowCapabilities {
+        BootFlowCapabilities::default()
+    }
 
     /// Set the boot group to try on the next boot.
     ///

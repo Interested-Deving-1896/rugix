@@ -5,7 +5,7 @@ use reportify::bail;
 
 use crate::boot::fwenv::{load_vars, set_vars};
 use crate::config::system::RaucBootFlowConfig;
-use crate::system::boot_flows::{BootFlow, BootFlowResult};
+use crate::system::boot_flows::{BootFlow, BootFlowCapabilities, BootFlowResult};
 use crate::system::boot_groups::{BootGroupIdx, BootGroups};
 
 #[derive(Debug, Clone)]
@@ -62,6 +62,12 @@ impl RaucUboot {
 impl BootFlow for RaucUboot {
     fn name(&self) -> &str {
         "rauc-uboot"
+    }
+
+    fn capabilities(&self) -> BootFlowCapabilities {
+        BootFlowCapabilities {
+            userspace_failure_recovery: Some(true),
+        }
     }
 
     fn set_try_next(
@@ -173,6 +179,12 @@ impl RaucGrub {
 impl BootFlow for RaucGrub {
     fn name(&self) -> &str {
         "rauc-grub"
+    }
+
+    fn capabilities(&self) -> BootFlowCapabilities {
+        BootFlowCapabilities {
+            userspace_failure_recovery: Some(true),
+        }
     }
 
     fn set_try_next(
