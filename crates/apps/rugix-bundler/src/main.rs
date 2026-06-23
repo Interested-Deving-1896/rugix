@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 use cms::cert::x509::der::oid::db::rfc5911::ID_SIGNED_DATA;
 use cms::cert::x509::der::Decode;
@@ -87,17 +87,20 @@ pub struct PackDockerComposeCmd {
     /// If not specified, images are saved for the host platform.
     #[clap(long)]
     platform: Option<String>,
-    /// Pull images before saving (useful to ensure the latest version or
-    /// a specific `--platform` is cached locally).
+    /// Pull newer base images while building local Compose images.
     #[clap(long)]
     pull: bool,
-    /// Skip saving Docker images (by default, images referenced in the compose
-    /// file are saved via `docker save` and included in the bundle).
-    #[clap(long)]
-    disable_image_bundling: bool,
-    /// Do not pin image references in the compose file to their digests.
+    /// Container builder to use for Compose `build:` services.
+    #[clap(long, value_enum, default_value_t = ImageBuilder::Podman)]
+    builder: ImageBuilder,
+    /// Keep Compose image references as-is instead of rewriting bundled images
+    /// to Rugix-owned content tags. Images are still included in the bundle.
     #[clap(long)]
     disable_pinning: bool,
+    /// Skip saving Docker images (by default, images referenced in the compose
+    /// file are saved and included in the bundle).
+    #[clap(long)]
+    disable_image_bundling: bool,
     /// Extra files or directories to include in the archive.
     /// Each entry is added at the same relative path inside the generation directory.
     #[clap(long = "include")]
@@ -114,6 +117,14 @@ pub struct PackDockerComposeCmd {
     compose_file: PathBuf,
     /// Output bundle file.
     output: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ImageBuilder {
+    /// Build Compose images with Podman and package them from containers-storage.
+    Podman,
+    /// Build Compose images with Docker and package them from the Docker daemon.
+    Docker,
 }
 
 #[derive(Debug, Parser)]

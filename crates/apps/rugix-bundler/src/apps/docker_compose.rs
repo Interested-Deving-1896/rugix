@@ -1,0 +1,1024 @@
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use reportify::{bail, ResultExt};
+use rugix_bundle::manifest::{
+    AppArchiveDeliveryConfig, AppFileDeliveryConfig, DeliveryConfig, Payload,
+};
+use rugix_bundle::BundleResult;
+use serde::{Deserialize, Serialize};
+use tracing::info;
+
+use super::{
+    app_block_encoding, finalize_bundle, tar_append_app_toml, tar_append_bytes,
+    tar_append_includes, tar_append_metadata,
+};
+
+/// Pack a Docker Compose app into an app bundle.
+///
+/// Creates a bundle with:
+/// - An `app-archive` payload containing `app.toml`, a rewritten
+///   `docker-compose.yml`, image metadata, and any extra included files/directories.
+///   Bundled services are rewritten to Rugix-owned bundle-local image tags with
+///   `pull_policy: never`.
+/// - An `app-file` payload per Docker image, placed at `images/image-N.tar` inside the
+///   generation directory.
+pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
+    rugix_bundle::manifest::validate_app_name(&cmd.app)?;
+    let bundle_dir = tempfile::TempDir::new().whatever("unable to create temp directory")?;
+    let payloads_dir = bundle_dir.path().join("payloads");
+    fs::create_dir_all(&payloads_dir).whatever("unable to create payloads directory")?;
+
+    let block_encoding = app_block_encoding();
+
+    let (compose_content, images) = if cmd.disable_image_bundling {
+        (
+            fs::read_to_string(&cmd.compose_file).whatever("unable to read Docker Compose file")?,
+            Vec::new(),
+        )
+    } else {
+        let mut compose = load_compose(&cmd.compose_file)?;
+        let mut images = plan_compose_images(&compose, &cmd.compose_file, &cmd.app)?;
+        package_images(&mut images, cmd, &payloads_dir)?;
+        if !images.is_empty() {
+            rewrite_compose_images(&mut compose, &images, cmd.disable_pinning)?;
+        }
+        (serialize_compose(&compose)?, images)
+    };
+    let image_metadata = if !images.is_empty() {
+        Some(image_metadata(&images, cmd.platform.as_deref())?)
+    } else {
+        None
+    };
+
+    let archive_path = payloads_dir.join("base.tar");
+    {
+        let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
+        let mut archive = tar::Builder::new(archive_file);
+        let manifest = {
+            use rugix_bundle::manifest::{AppHealthCheckConfig, AppManifest};
+            let mut m = AppManifest::new("docker-compose".to_owned());
+            if let Some(timeout) = cmd.health_check_timeout {
+                m = m.with_health_check(Some(
+                    AppHealthCheckConfig::new().with_timeout(Some(timeout)),
+                ));
+            }
+            m
+        };
+        tar_append_app_toml(&mut archive, &manifest)?;
+        tar_append_bytes(
+            &mut archive,
+            "docker-compose.yml",
+            compose_content.as_bytes(),
+        )?;
+        if let Some(image_metadata) = &image_metadata {
+            let metadata = serde_json::to_vec_pretty(image_metadata)
+                .whatever("unable to serialize image metadata")?;
+            tar_append_bytes(&mut archive, "images/rugix-images.json", &metadata)?;
+        }
+        tar_append_includes(&mut archive, &cmd.includes)?;
+        tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
+        archive.finish().whatever("unable to finish archive")?;
+    }
+
+    let mut payloads = vec![Payload {
+        delivery: DeliveryConfig::AppArchive(AppArchiveDeliveryConfig::new(cmd.app.clone())),
+        filename: "base.tar".to_owned(),
+        block_encoding: block_encoding.clone(),
+        delta_encoding: None,
+    }];
+
+    for image in &images {
+        payloads.push(Payload {
+            delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
+                cmd.app.clone(),
+                image.app_path.clone(),
+            )),
+            filename: image.payload_filename.clone(),
+            block_encoding: block_encoding.clone(),
+            delta_encoding: None,
+        });
+    }
+
+    finalize_bundle(bundle_dir.path(), &cmd.output, &cmd.app, payloads)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ImageSourceKind {
+    Registry,
+    Build,
+    ContainersStorage,
+    DockerDaemon,
+}
+
+impl ImageSourceKind {
+    fn parse(value: &str) -> BundleResult<Self> {
+        match value {
+            "registry" => Ok(Self::Registry),
+            "containers-storage" | "containers_storage" => Ok(Self::ContainersStorage),
+            "docker-daemon" | "docker_daemon" => Ok(Self::DockerDaemon),
+            "build" => bail!("Compose builds are inferred from service `build:` entries"),
+            _ => bail!("unsupported Rugix image source `{value}`"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PlannedImage {
+    service: String,
+    source: ImageSourceKind,
+    source_ref: String,
+    original_image: Option<String>,
+    build: Option<BuildConfig>,
+    app_path: String,
+    payload_filename: String,
+    bundle_tag: Option<String>,
+    source_digest: Option<String>,
+    image_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct BuildConfig {
+    context: PathBuf,
+    dockerfile: Option<PathBuf>,
+    target: Option<String>,
+    args: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageMetadata {
+    schema_version: u32,
+    images: Vec<ImageMetadataEntry>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageMetadataEntry {
+    service: String,
+    source: ImageSourceKind,
+    source_ref: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    original_image: Option<String>,
+    bundle_tag: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    image_id: Option<String>,
+    payload: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<String>,
+}
+
+#[derive(Debug)]
+struct RugixImageOptions {
+    source: Option<ImageSourceKind>,
+    source_ref: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PodmanStoreInfo {
+    graph_driver_name: String,
+    graph_root: String,
+    run_root: String,
+}
+
+fn package_images(
+    images: &mut [PlannedImage],
+    cmd: &crate::PackDockerComposeCmd,
+    payloads_dir: &Path,
+) -> BundleResult<()> {
+    if images.is_empty() {
+        return Ok(());
+    }
+    if !has_skopeo() {
+        bail!("skopeo is required to bundle Docker Compose images; install skopeo or pass --disable-image-bundling");
+    }
+    for (index, image) in images.iter_mut().enumerate() {
+        let output = payloads_dir.join(&image.payload_filename);
+        match image.source {
+            ImageSourceKind::Registry => {
+                let (repository, digest) =
+                    resolve_registry_digest(&image.source_ref, cmd.platform.as_deref())?;
+                let bundle_tag =
+                    packaged_image_tag(&cmd.app, index, 'm', &digest, image, cmd.disable_pinning);
+                let source = format!("docker://{repository}@{digest}");
+                skopeo_copy_to_docker_archive(
+                    &source,
+                    &output,
+                    &bundle_tag,
+                    cmd.platform.as_deref(),
+                )?;
+                image.bundle_tag = Some(bundle_tag);
+                image.source_digest = Some(digest);
+            }
+            ImageSourceKind::Build => {
+                let Some(build) = image.build.clone() else {
+                    bail!("build image is missing its build configuration");
+                };
+                let local_source = build_compose_image(
+                    image,
+                    &build,
+                    cmd.builder,
+                    cmd.platform.as_deref(),
+                    cmd.pull,
+                )?;
+                let image_id = inspect_local_image_id(local_source, &image.source_ref)?;
+                let bundle_tag =
+                    packaged_image_tag(&cmd.app, index, 'c', &image_id, image, cmd.disable_pinning);
+                let source = local_skopeo_source_ref(local_source, &image.source_ref)?;
+                skopeo_copy_to_docker_archive(
+                    &source,
+                    &output,
+                    &bundle_tag,
+                    cmd.platform.as_deref(),
+                )?;
+                image.bundle_tag = Some(bundle_tag);
+                image.image_id = Some(image_id);
+            }
+            ImageSourceKind::ContainersStorage | ImageSourceKind::DockerDaemon => {
+                let image_id = inspect_local_image_id(image.source, &image.source_ref)?;
+                let bundle_tag =
+                    packaged_image_tag(&cmd.app, index, 'c', &image_id, image, cmd.disable_pinning);
+                let source = local_skopeo_source_ref(image.source, &image.source_ref)?;
+                skopeo_copy_to_docker_archive(
+                    &source,
+                    &output,
+                    &bundle_tag,
+                    cmd.platform.as_deref(),
+                )?;
+                image.bundle_tag = Some(bundle_tag);
+                image.image_id = Some(image_id);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn plan_compose_images(
+    compose: &serde_yaml_ng::Value,
+    compose_path: &Path,
+    app: &str,
+) -> BundleResult<Vec<PlannedImage>> {
+    let serde_yaml_ng::Value::Mapping(root) = compose else {
+        bail!("Docker Compose file must contain a YAML mapping");
+    };
+    let Some(serde_yaml_ng::Value::Mapping(services)) = mapping_get(root, "services") else {
+        bail!("Docker Compose file must contain a `services` mapping");
+    };
+    let base_dir = compose_base_dir(compose_path);
+    let mut images = Vec::new();
+    for (service_name, service) in services {
+        let service_name = yaml_string(service_name, "service name")?.to_owned();
+        let serde_yaml_ng::Value::Mapping(service) = service else {
+            bail!("service `{service_name}` must be a mapping");
+        };
+        let original_image = optional_yaml_string(mapping_get(service, "image"), "service image")?;
+        let build = mapping_get(service, "build")
+            .map(|build| parse_build_config(build, base_dir, &service_name))
+            .transpose()?;
+        let rugix_options = parse_x_rugix_options(&service_name, service)?;
+        let (source, source_ref, build) = if let Some(build) = build {
+            if let Some(options) = &rugix_options {
+                if options.source.is_some() || options.source_ref.is_some() {
+                    bail!("service `{service_name}` uses `build:`; remove x-rugix.image overrides");
+                }
+            }
+            let source_ref = original_image
+                .clone()
+                .unwrap_or_else(|| generated_build_ref(app, &service_name));
+            (ImageSourceKind::Build, source_ref, Some(build))
+        } else {
+            let source = rugix_options
+                .as_ref()
+                .and_then(|options| options.source)
+                .unwrap_or(ImageSourceKind::Registry);
+            let source_ref = rugix_options
+                .as_ref()
+                .and_then(|options| options.source_ref.clone())
+                .or_else(|| original_image.clone());
+            let Some(source_ref) = source_ref else {
+                bail!("service `{service_name}` needs an `image` or x-rugix.image.ref to bundle");
+            };
+            (source, source_ref, None)
+        };
+        let payload_filename = image_payload_filename(images.len());
+        images.push(PlannedImage {
+            service: service_name,
+            source,
+            source_ref,
+            original_image,
+            build,
+            app_path: format!("images/{payload_filename}"),
+            payload_filename,
+            bundle_tag: None,
+            source_digest: None,
+            image_id: None,
+        });
+    }
+    Ok(images)
+}
+
+fn build_compose_image(
+    image: &PlannedImage,
+    build: &BuildConfig,
+    builder: crate::ImageBuilder,
+    platform: Option<&str>,
+    pull: bool,
+) -> BundleResult<ImageSourceKind> {
+    let (builder_name, local_source) = match builder {
+        crate::ImageBuilder::Podman => ("podman", ImageSourceKind::ContainersStorage),
+        crate::ImageBuilder::Docker => ("docker", ImageSourceKind::DockerDaemon),
+    };
+    let mut cmd = Command::new(builder_name);
+    cmd.arg("build");
+    if let Some(platform) = platform {
+        cmd.arg("--platform").arg(platform);
+    }
+    if pull {
+        cmd.arg("--pull");
+    }
+    cmd.arg("-t").arg(&image.source_ref);
+    if let Some(dockerfile) = &build.dockerfile {
+        cmd.arg("-f").arg(dockerfile);
+    }
+    if let Some(target) = &build.target {
+        cmd.arg("--target").arg(target);
+    }
+    for arg in &build.args {
+        cmd.arg("--build-arg").arg(arg);
+    }
+    cmd.arg(&build.context);
+    info!(
+        service = %image.service,
+        source_ref = %image.source_ref,
+        builder = builder_name,
+        context = ?build.context,
+        ?platform,
+        "building Compose image"
+    );
+    command_status(cmd, &format!("{builder_name} build {}", image.source_ref))?;
+    Ok(local_source)
+}
+
+fn rewrite_compose_images(
+    compose: &mut serde_yaml_ng::Value,
+    images: &[PlannedImage],
+    disable_pinning: bool,
+) -> BundleResult<()> {
+    let serde_yaml_ng::Value::Mapping(root) = compose else {
+        bail!("Docker Compose file must contain a YAML mapping");
+    };
+    let Some(serde_yaml_ng::Value::Mapping(services)) = mapping_get_mut(root, "services") else {
+        bail!("Docker Compose file must contain a `services` mapping");
+    };
+    for image in images {
+        let Some(bundle_tag) = image.bundle_tag.as_ref() else {
+            bail!("image was not packaged before Compose rewrite");
+        };
+        let service_key = yaml_key(&image.service);
+        let Some(serde_yaml_ng::Value::Mapping(service)) = services.get_mut(&service_key) else {
+            bail!(
+                "service `{}` disappeared during Compose rewrite",
+                image.service
+            );
+        };
+        if disable_pinning {
+            let image_ref = image.original_image.as_ref().unwrap_or(bundle_tag);
+            mapping_insert_string(service, "image", image_ref);
+        } else {
+            mapping_insert_string(service, "image", bundle_tag);
+        }
+        mapping_insert_string(service, "pull_policy", "never");
+        mapping_remove(service, "build");
+        mapping_remove(service, "x-rugix");
+    }
+    Ok(())
+}
+
+fn image_metadata(images: &[PlannedImage], platform: Option<&str>) -> BundleResult<ImageMetadata> {
+    let mut entries = Vec::new();
+    for image in images {
+        let Some(bundle_tag) = image.bundle_tag.clone() else {
+            bail!("image was not packaged before metadata generation");
+        };
+        entries.push(ImageMetadataEntry {
+            service: image.service.clone(),
+            source: image.source,
+            source_ref: image.source_ref.clone(),
+            original_image: image.original_image.clone(),
+            bundle_tag,
+            source_digest: image.source_digest.clone(),
+            image_id: image.image_id.clone(),
+            payload: image.app_path.clone(),
+            platform: platform.map(str::to_owned),
+        });
+    }
+    Ok(ImageMetadata {
+        schema_version: 1,
+        images: entries,
+    })
+}
+
+fn resolve_registry_digest(image: &str, platform: Option<&str>) -> BundleResult<(String, String)> {
+    if let Some((repository, digest)) = image.split_once('@') {
+        if !digest.starts_with("sha256:") {
+            bail!("only sha256 registry digests are supported for {image}");
+        }
+        return Ok((image_repository(repository).to_owned(), digest.to_owned()));
+    }
+    let mut cmd = Command::new("skopeo");
+    cmd.args(["inspect", "--format", "{{.Digest}}"]);
+    add_platform_overrides(&mut cmd, platform);
+    cmd.arg(format!("docker://{image}"));
+    let digest = command_output(cmd, &format!("skopeo inspect {image}"))?;
+    if !digest.starts_with("sha256:") {
+        bail!("skopeo inspect did not return a valid digest for {image}: {digest}");
+    }
+    Ok((image_repository(image).to_owned(), digest))
+}
+
+fn skopeo_copy_to_docker_archive(
+    source: &str,
+    output: &Path,
+    bundle_tag: &str,
+    platform: Option<&str>,
+) -> BundleResult<()> {
+    let mut cmd = Command::new("skopeo");
+    cmd.arg("copy");
+    add_platform_overrides(&mut cmd, platform);
+    cmd.arg(source);
+    cmd.arg(format!("docker-archive:{}:{bundle_tag}", output.display()));
+    info!(source, output = ?output, bundle_tag, ?platform, "copying image with skopeo");
+    command_status(cmd, &format!("skopeo copy {source}"))
+}
+
+fn inspect_local_image_id(source: ImageSourceKind, image: &str) -> BundleResult<String> {
+    let mut cmd = match source {
+        ImageSourceKind::ContainersStorage => {
+            let mut cmd = Command::new("podman");
+            cmd.args(["image", "inspect", "--format", "{{.Id}}"]);
+            cmd
+        }
+        ImageSourceKind::DockerDaemon => {
+            let mut cmd = Command::new("docker");
+            cmd.args(["image", "inspect", "--format", "{{.Id}}"]);
+            cmd
+        }
+        ImageSourceKind::Registry | ImageSourceKind::Build => {
+            bail!("cannot inspect local image id for {:?}", source)
+        }
+    };
+    cmd.arg(image);
+    let image_id = command_output(cmd, &format!("inspect image {image}"))?;
+    if image_id.is_empty() {
+        bail!("image inspect returned an empty image id for {image}");
+    }
+    Ok(image_id)
+}
+
+fn local_skopeo_source_ref(source: ImageSourceKind, image: &str) -> BundleResult<String> {
+    match source {
+        ImageSourceKind::ContainersStorage => containers_storage_source_ref(image),
+        ImageSourceKind::DockerDaemon => Ok(format!("docker-daemon:{image}")),
+        ImageSourceKind::Registry | ImageSourceKind::Build => {
+            bail!("image source {:?} is not a local image transport", source)
+        }
+    }
+}
+
+fn containers_storage_source_ref(image: &str) -> BundleResult<String> {
+    let info = podman_store_info()?;
+    Ok(format!(
+        "containers-storage:[{}@{}+{}]{}",
+        info.graph_driver_name, info.graph_root, info.run_root, image
+    ))
+}
+
+fn parse_build_config(
+    value: &serde_yaml_ng::Value,
+    base_dir: &Path,
+    service: &str,
+) -> BundleResult<BuildConfig> {
+    match value {
+        serde_yaml_ng::Value::String(context) => Ok(BuildConfig {
+            context: resolve_compose_path(base_dir, context),
+            dockerfile: None,
+            target: None,
+            args: Vec::new(),
+        }),
+        serde_yaml_ng::Value::Mapping(mapping) => {
+            let context = optional_yaml_string(
+                mapping_get(mapping, "context"),
+                &format!("build context for service `{service}`"),
+            )?
+            .unwrap_or_else(|| ".".to_owned());
+            let context = resolve_compose_path(base_dir, &context);
+            let dockerfile = optional_yaml_string(
+                mapping_get(mapping, "dockerfile"),
+                &format!("build dockerfile for service `{service}`"),
+            )?
+            .map(|dockerfile| {
+                let dockerfile = PathBuf::from(dockerfile);
+                if dockerfile.is_absolute() {
+                    dockerfile
+                } else {
+                    context.join(dockerfile)
+                }
+            });
+            Ok(BuildConfig {
+                context,
+                dockerfile,
+                target: optional_yaml_string(
+                    mapping_get(mapping, "target"),
+                    &format!("build target for service `{service}`"),
+                )?,
+                args: parse_build_args(mapping_get(mapping, "args"))?,
+            })
+        }
+        _ => bail!("build config for service `{service}` must be a string or mapping"),
+    }
+}
+
+fn parse_x_rugix_options(
+    service: &str,
+    service_mapping: &serde_yaml_ng::Mapping,
+) -> BundleResult<Option<RugixImageOptions>> {
+    let Some(x_rugix) = mapping_get(service_mapping, "x-rugix") else {
+        return Ok(None);
+    };
+    let serde_yaml_ng::Value::Mapping(x_rugix) = x_rugix else {
+        bail!("x-rugix for service `{service}` must be a mapping");
+    };
+    let Some(image) = mapping_get(x_rugix, "image") else {
+        return Ok(None);
+    };
+    let serde_yaml_ng::Value::Mapping(image) = image else {
+        bail!("x-rugix.image for service `{service}` must be a mapping");
+    };
+    let source = optional_yaml_string(
+        mapping_get(image, "source"),
+        &format!("x-rugix.image.source for service `{service}`"),
+    )?
+    .map(|source| ImageSourceKind::parse(&source))
+    .transpose()?;
+    let source_ref = optional_yaml_string(
+        mapping_get(image, "ref"),
+        &format!("x-rugix.image.ref for service `{service}`"),
+    )?;
+    Ok(Some(RugixImageOptions { source, source_ref }))
+}
+
+fn parse_build_args(value: Option<&serde_yaml_ng::Value>) -> BundleResult<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    match value {
+        serde_yaml_ng::Value::Mapping(mapping) => {
+            let mut args = Vec::new();
+            for (key, value) in mapping {
+                let key = yaml_string(key, "build arg key")?;
+                if matches!(value, serde_yaml_ng::Value::Null) {
+                    args.push(key.to_owned());
+                } else {
+                    args.push(format!(
+                        "{key}={}",
+                        yaml_scalar_to_string(value, "build arg value")?
+                    ));
+                }
+            }
+            Ok(args)
+        }
+        serde_yaml_ng::Value::Sequence(sequence) => {
+            let mut args = Vec::new();
+            for value in sequence {
+                args.push(yaml_string(value, "build arg")?.to_owned());
+            }
+            Ok(args)
+        }
+        _ => bail!("build args must be a mapping or sequence"),
+    }
+}
+
+fn podman_store_info() -> BundleResult<PodmanStoreInfo> {
+    let mut cmd = Command::new("podman");
+    cmd.args(["info", "--format", "{{json .Store}}"]);
+    let output = command_output(cmd, "podman info")?;
+    let info: PodmanStoreInfo =
+        serde_json::from_str(&output).whatever("unable to parse podman storage info")?;
+    if info.graph_driver_name.is_empty() || info.graph_root.is_empty() || info.run_root.is_empty() {
+        bail!("podman storage info is incomplete");
+    }
+    Ok(info)
+}
+
+fn load_compose(compose_path: &Path) -> BundleResult<serde_yaml_ng::Value> {
+    let content =
+        fs::read_to_string(compose_path).whatever("unable to read Docker Compose file")?;
+    serde_yaml_ng::from_str(&content).whatever("unable to parse Docker Compose file")
+}
+
+fn serialize_compose(compose: &serde_yaml_ng::Value) -> BundleResult<String> {
+    serde_yaml_ng::to_string(compose).whatever("unable to serialize Docker Compose file")
+}
+
+fn has_skopeo() -> bool {
+    Command::new("skopeo")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn command_output(mut cmd: Command, action: &str) -> BundleResult<String> {
+    let output = cmd
+        .output()
+        .whatever_with(|_| format!("unable to run {action}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("{action} failed: {}", stderr.trim());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn command_status(mut cmd: Command, action: &str) -> BundleResult<()> {
+    let status = cmd
+        .status()
+        .whatever_with(|_| format!("unable to run {action}"))?;
+    if !status.success() {
+        bail!("{action} failed");
+    }
+    Ok(())
+}
+
+fn packaged_image_tag(
+    app: &str,
+    index: usize,
+    prefix: char,
+    content_id: &str,
+    image: &PlannedImage,
+    disable_pinning: bool,
+) -> String {
+    if disable_pinning {
+        unpinned_archive_tag(image)
+    } else {
+        bundle_local_tag(app, index, prefix, content_id)
+    }
+}
+
+fn bundle_local_tag(app: &str, index: usize, prefix: char, content_id: &str) -> String {
+    format!(
+        "localhost/rugix-apps/{app}/image-{index}:{prefix}-{}",
+        digest_hex(content_id)
+    )
+}
+
+fn unpinned_archive_tag(image: &PlannedImage) -> String {
+    image
+        .original_image
+        .clone()
+        .unwrap_or_else(|| image.source_ref.clone())
+}
+
+fn generated_build_ref(app: &str, service: &str) -> String {
+    format!(
+        "localhost/rugix-build/{app}/{}:latest",
+        service_slug(service)
+    )
+}
+
+fn image_payload_filename(index: usize) -> String {
+    format!("image-{index}.tar")
+}
+
+fn image_repository(image: &str) -> &str {
+    let image = image.split_once('@').map(|(repo, _)| repo).unwrap_or(image);
+    let after_slash = image.rfind('/').map(|i| i + 1).unwrap_or(0);
+    match image[after_slash..].rfind(':') {
+        Some(pos) => &image[..after_slash + pos],
+        None => image,
+    }
+}
+
+fn digest_hex(digest: &str) -> &str {
+    digest.strip_prefix("sha256:").unwrap_or(digest)
+}
+
+fn service_slug(service: &str) -> String {
+    let mut slug = String::new();
+    let mut previous_separator = false;
+    for ch in service.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            previous_separator = false;
+        } else if !previous_separator {
+            slug.push('-');
+            previous_separator = true;
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        "service".to_owned()
+    } else {
+        slug.to_owned()
+    }
+}
+
+fn compose_base_dir(compose_path: &Path) -> &Path {
+    compose_path.parent().unwrap_or_else(|| Path::new("."))
+}
+
+fn resolve_compose_path(base_dir: &Path, path: &str) -> PathBuf {
+    let path = PathBuf::from(path);
+    if path.is_absolute() {
+        path
+    } else {
+        base_dir.join(path)
+    }
+}
+
+fn add_platform_overrides(cmd: &mut Command, platform: Option<&str>) {
+    if let Some(platform) = platform {
+        let mut parts = platform.split('/');
+        if let (Some(os), Some(arch)) = (parts.next(), parts.next()) {
+            cmd.arg("--override-os").arg(os);
+            cmd.arg("--override-arch").arg(arch);
+            if let Some(variant) = parts.next() {
+                cmd.arg("--override-variant").arg(variant);
+            }
+        }
+    }
+}
+
+fn yaml_key(key: &str) -> serde_yaml_ng::Value {
+    serde_yaml_ng::Value::String(key.to_owned())
+}
+
+fn mapping_get<'a>(
+    mapping: &'a serde_yaml_ng::Mapping,
+    key: &str,
+) -> Option<&'a serde_yaml_ng::Value> {
+    mapping.get(&yaml_key(key))
+}
+
+fn mapping_get_mut<'a>(
+    mapping: &'a mut serde_yaml_ng::Mapping,
+    key: &str,
+) -> Option<&'a mut serde_yaml_ng::Value> {
+    mapping.get_mut(&yaml_key(key))
+}
+
+fn mapping_insert_string(
+    mapping: &mut serde_yaml_ng::Mapping,
+    key: &str,
+    value: impl Into<String>,
+) {
+    mapping.insert(yaml_key(key), serde_yaml_ng::Value::String(value.into()));
+}
+
+fn mapping_remove(mapping: &mut serde_yaml_ng::Mapping, key: &str) {
+    mapping.remove(&yaml_key(key));
+}
+
+fn yaml_string<'a>(value: &'a serde_yaml_ng::Value, context: &str) -> BundleResult<&'a str> {
+    match value {
+        serde_yaml_ng::Value::String(value) => Ok(value),
+        _ => bail!("{context} must be a string"),
+    }
+}
+
+fn optional_yaml_string(
+    value: Option<&serde_yaml_ng::Value>,
+    context: &str,
+) -> BundleResult<Option<String>> {
+    value
+        .map(|value| yaml_string(value, context).map(str::to_owned))
+        .transpose()
+}
+
+fn yaml_scalar_to_string(value: &serde_yaml_ng::Value, context: &str) -> BundleResult<String> {
+    match value {
+        serde_yaml_ng::Value::String(value) => Ok(value.clone()),
+        serde_yaml_ng::Value::Bool(value) => Ok(value.to_string()),
+        serde_yaml_ng::Value::Number(value) => Ok(value.to_string()),
+        _ => bail!("{context} must be a scalar"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn load_test_compose(content: &str) -> serde_yaml_ng::Value {
+        serde_yaml_ng::from_str(content).expect("test compose should parse")
+    }
+
+    #[test]
+    fn plans_registry_and_local_sources() {
+        let compose = load_test_compose(
+            r#"
+services:
+  influxdb:
+    image: docker.io/library/influxdb:2.7
+  local:
+    image: localhost/example/local:latest
+    x-rugix:
+      image:
+        source: docker-daemon
+        ref: localhost/example/local:latest
+"#,
+        );
+        let images = plan_compose_images(&compose, Path::new("/tmp/app/docker-compose.yml"), "app")
+            .expect("image plan should succeed");
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].service, "influxdb");
+        assert_eq!(images[0].source, ImageSourceKind::Registry);
+        assert_eq!(images[0].source_ref, "docker.io/library/influxdb:2.7");
+        assert_eq!(images[1].service, "local");
+        assert_eq!(images[1].source, ImageSourceKind::DockerDaemon);
+        assert_eq!(images[1].source_ref, "localhost/example/local:latest");
+    }
+
+    #[test]
+    fn plans_builds_from_compose_and_rewrites_packaged_services() {
+        let mut compose = load_test_compose(
+            r#"
+services:
+  api:
+    image: localhost/example/api:dev
+    build:
+      context: ./service
+      dockerfile: Containerfile
+      target: runtime
+      args:
+        FOO: bar
+        ENABLED: true
+        EMPTY:
+    x-rugix:
+      unrelated: value
+"#,
+        );
+        let mut images =
+            plan_compose_images(&compose, Path::new("/tmp/app/docker-compose.yml"), "app")
+                .expect("image plan should succeed");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].source, ImageSourceKind::Build);
+        assert_eq!(images[0].source_ref, "localhost/example/api:dev");
+        assert_eq!(
+            images[0].build.as_ref().unwrap().context,
+            Path::new("/tmp/app/service")
+        );
+        assert_eq!(
+            images[0].build.as_ref().unwrap().dockerfile.as_deref(),
+            Some(Path::new("/tmp/app/service/Containerfile"))
+        );
+        assert_eq!(
+            images[0].build.as_ref().unwrap().target.as_deref(),
+            Some("runtime")
+        );
+        assert_eq!(
+            images[0].build.as_ref().unwrap().args,
+            vec!["FOO=bar", "ENABLED=true", "EMPTY"]
+        );
+        images[0].bundle_tag = Some("localhost/rugix-apps/app/image-0:c-deadbeef".to_owned());
+        rewrite_compose_images(&mut compose, &images, false)
+            .expect("Compose rewrite should succeed");
+        let rendered = serialize_compose(&compose).expect("Compose should serialize");
+        assert!(rendered.contains("image: localhost/rugix-apps/app/image-0:c-deadbeef"));
+        assert!(rendered.contains("pull_policy: never"));
+        assert!(!rendered.contains("build:"));
+        assert!(!rendered.contains("x-rugix:"));
+    }
+
+    #[test]
+    fn disable_pinning_keeps_original_image_reference() {
+        let mut compose = load_test_compose(
+            r#"
+services:
+  api:
+    image: localhost/example/api:dev
+    build: ./service
+"#,
+        );
+        let mut images =
+            plan_compose_images(&compose, Path::new("/tmp/app/docker-compose.yml"), "app")
+                .expect("image plan should succeed");
+        images[0].bundle_tag = Some("localhost/example/api:dev".to_owned());
+        rewrite_compose_images(&mut compose, &images, true)
+            .expect("Compose rewrite should succeed");
+        let rendered = serialize_compose(&compose).expect("Compose should serialize");
+        assert!(rendered.contains("image: localhost/example/api:dev"));
+        assert!(rendered.contains("pull_policy: never"));
+        assert!(!rendered.contains("build:"));
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, content: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::write(path, content).expect("fake tool should be written");
+        let mut permissions = fs::metadata(path)
+            .expect("fake tool metadata should be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("fake tool should be executable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn packs_compose_with_fake_image_tools() {
+        let _lock = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let temp = tempfile::TempDir::new().expect("temp dir should be created");
+        let bin_dir = temp.path().join("bin");
+        fs::create_dir(&bin_dir).expect("bin dir should be created");
+        write_executable(
+            &bin_dir.join("skopeo"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+    echo "skopeo version 0.0-test"
+    exit 0
+fi
+if [[ "${1:-}" == "inspect" ]]; then
+    echo "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    exit 0
+fi
+if [[ "${1:-}" == "copy" ]]; then
+    dest="${@: -1}"
+    dest="${dest#docker-archive:}"
+    path="${dest%%:*}"
+    printf 'fake image\n' >"${path}"
+    exit 0
+fi
+exit 1
+"#,
+        );
+        write_executable(
+            &bin_dir.join("podman"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "build" ]]; then
+    exit 0
+fi
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+    echo "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    exit 0
+fi
+if [[ "${1:-}" == "info" ]]; then
+    echo '{"graphDriverName":"overlay","graphRoot":"/tmp/fake-storage","runRoot":"/tmp/fake-run"}'
+    exit 0
+fi
+exit 1
+"#,
+        );
+
+        let compose = temp.path().join("docker-compose.yml");
+        let service_dir = temp.path().join("service");
+        fs::create_dir(&service_dir).expect("service dir should be created");
+        fs::write(service_dir.join("Dockerfile"), "FROM scratch\n")
+            .expect("Dockerfile should be written");
+        fs::write(
+            &compose,
+            r#"
+services:
+  db:
+    image: docker.io/library/busybox:1.36
+  api:
+    image: localhost/example/api:dev
+    build: ./service
+"#,
+        )
+        .expect("compose should be written");
+
+        let original_path = std::env::var_os("PATH").expect("PATH should be set");
+        let new_path = format!("{}:{}", bin_dir.display(), original_path.to_string_lossy());
+        std::env::set_var("PATH", new_path);
+        let output = temp.path().join("app.rugixb");
+        let cmd = crate::PackDockerComposeCmd {
+            app: "test-app".to_owned(),
+            platform: Some("linux/arm64".to_owned()),
+            pull: true,
+            builder: crate::ImageBuilder::Podman,
+            disable_pinning: false,
+            disable_image_bundling: false,
+            includes: Vec::new(),
+            health_check_timeout: None,
+            metadata_file: None,
+            compose_file: compose,
+            output: output.clone(),
+        };
+        let result = pack(&cmd);
+        std::env::set_var("PATH", original_path);
+
+        result.expect("compose app should be packed with fake image tools");
+        assert!(output.is_file());
+    }
+}

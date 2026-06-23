@@ -6,6 +6,10 @@ Rugix Ctrl:
 
 - Add opt-in `rugix.init.shell_on_error[=<seconds>]` kernel cmdline option for opening a debug shell after init errors. This is intentionally disabled by default to avoid exposing a root shell to someone with console access.
 
+Rugix Bundler:
+
+- Rework Docker Compose image bundling to copy images with Skopeo, infer Compose `build:` entries, default local builds to Podman, and rewrite packaged Compose files to Rugix-owned bundle-local image tags. `--disable-pinning` now keeps the original Compose image references while still bundling the images.
+
 ## Version 1.2.0
 
 Behavior changes:
