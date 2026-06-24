@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 use reportify::ResultExt;
@@ -15,6 +16,12 @@ const ENV_FILE: &str = "rugix-app.env";
 
 /// Default timeout (in seconds) for `docker compose up --wait`.
 const DEFAULT_HEALTH_CHECK_TIMEOUT: u64 = 120;
+
+/// Number of log lines per service to include when Compose activation fails.
+const DIAGNOSTIC_LOG_TAIL: usize = 120;
+
+/// Maximum number of bytes to include in activation failure diagnostics.
+const MAX_DIAGNOSTICS_BYTES: usize = 64 * 1024;
 
 /// Docker Compose orchestrator.
 pub struct DockerCompose;
@@ -58,6 +65,84 @@ impl DockerCompose {
             .as_ref()
             .and_then(|hc| hc.timeout)
             .unwrap_or(DEFAULT_HEALTH_CHECK_TIMEOUT)
+    }
+
+    /// Collect best-effort diagnostics while failed containers still exist.
+    fn activation_diagnostics(ctx: &AppContext) -> String {
+        let mut diagnostics = String::new();
+        let _ = writeln!(
+            diagnostics,
+            "docker compose diagnostics for app {}:",
+            ctx.app_name
+        );
+        let _ = writeln!(diagnostics);
+
+        Self::append_compose_output(
+            ctx,
+            &mut diagnostics,
+            "docker compose ps --all",
+            &["ps", "--all"],
+        );
+        let _ = writeln!(diagnostics);
+        let log_tail = DIAGNOSTIC_LOG_TAIL.to_string();
+        Self::append_compose_output(
+            ctx,
+            &mut diagnostics,
+            "docker compose logs --no-color --timestamps --tail {DIAGNOSTIC_LOG_TAIL}",
+            &["logs", "--no-color", "--timestamps", "--tail", &log_tail],
+        );
+
+        truncate_diagnostics(diagnostics)
+    }
+
+    fn append_compose_output(
+        ctx: &AppContext,
+        diagnostics: &mut String,
+        label: &str,
+        args: &[&str],
+    ) {
+        let _ = writeln!(diagnostics, "### {label}");
+        match Self::compose_cmd(ctx).args(args).output() {
+            Ok(output) => {
+                if !output.status.success() {
+                    let _ = writeln!(diagnostics, "command exited with {}", output.status);
+                }
+                append_command_output(diagnostics, &output.stdout, &output.stderr);
+            }
+            Err(err) => {
+                let _ = writeln!(diagnostics, "unable to run diagnostics command: {err}");
+            }
+        }
+    }
+
+    fn write_activation_diagnostics(ctx: &AppContext, diagnostics: &str) -> Option<PathBuf> {
+        let path = ctx
+            .generation_dir
+            .join(".rugix")
+            .join("activation-diagnostics.log");
+        let parent = path.parent().expect("diagnostics path has parent");
+        if let Err(err) = fs::create_dir_all(parent) {
+            warn!(
+                app = ctx.app_name,
+                path = ?path,
+                "unable to create diagnostics directory: {err}"
+            );
+            return None;
+        }
+        if let Err(err) = fs::write(&path, diagnostics) {
+            warn!(
+                app = ctx.app_name,
+                path = ?path,
+                "unable to write activation diagnostics: {err}"
+            );
+            return None;
+        }
+        info!(
+            app = ctx.app_name,
+            path = ?path,
+            "wrote activation diagnostics"
+        );
+        Some(path)
     }
 }
 
@@ -104,7 +189,14 @@ impl Orchestrator for DockerCompose {
 
         let status = cmd.status().whatever("unable to run docker compose up")?;
         if !status.success() {
-            reportify::bail!("docker compose up failed");
+            let diagnostics = Self::activation_diagnostics(ctx);
+            if let Some(path) = Self::write_activation_diagnostics(ctx, &diagnostics) {
+                reportify::bail!(
+                    "docker compose up failed; diagnostics written to {}\n\n{diagnostics}",
+                    path.display()
+                );
+            }
+            reportify::bail!("docker compose up failed\n\n{diagnostics}");
         }
         Ok(())
     }
@@ -185,7 +277,14 @@ impl Orchestrator for DockerCompose {
 
         let status = cmd.status().whatever("unable to run docker compose up")?;
         if !status.success() {
-            reportify::bail!("docker compose up failed");
+            let diagnostics = Self::activation_diagnostics(ctx);
+            if let Some(path) = Self::write_activation_diagnostics(ctx, &diagnostics) {
+                reportify::bail!(
+                    "docker compose up failed; diagnostics written to {}\n\n{diagnostics}",
+                    path.display()
+                );
+            }
+            reportify::bail!("docker compose up failed\n\n{diagnostics}");
         }
         Ok(())
     }
@@ -210,4 +309,34 @@ struct ContainerStatus {
     name: Option<String>,
     state: String,
     health: Option<String>,
+}
+
+fn append_command_output(output: &mut String, stdout: &[u8], stderr: &[u8]) {
+    if stdout.is_empty() && stderr.is_empty() {
+        let _ = writeln!(output, "<no output>");
+        return;
+    }
+    for bytes in [stdout, stderr] {
+        if bytes.is_empty() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(bytes);
+        output.push_str(&text);
+        if !text.ends_with('\n') {
+            output.push('\n');
+        }
+    }
+}
+
+fn truncate_diagnostics(mut diagnostics: String) -> String {
+    if diagnostics.len() <= MAX_DIAGNOSTICS_BYTES {
+        return diagnostics;
+    }
+    let mut boundary = MAX_DIAGNOSTICS_BYTES;
+    while !diagnostics.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    diagnostics.truncate(boundary);
+    diagnostics.push_str("\n... diagnostics truncated ...\n");
+    diagnostics
 }

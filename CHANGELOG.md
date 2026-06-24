@@ -8,6 +8,7 @@ Rugix Ctrl:
 - Add opt-in `rugix.init.shell_on_error[=<seconds>]` kernel cmdline option for opening a debug shell after init errors. This is intentionally disabled by default to avoid exposing a root shell to someone with console access.
 - Add `overlay-fallback: in-memory` state configuration to retry root overlay setup with an in-memory overlay when the configured overlay fails.
 - Add boot flow capability reporting for userspace failure recovery and fall back to starting the underlying init on committed systems when Rugix init fails and the boot flow cannot recover userspace failures.
+- Write Docker Compose activation diagnostics, including service status and recent logs, when bringing up a Rugix App generation fails.
 
 Rugix Admin:
 
