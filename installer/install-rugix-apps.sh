@@ -22,7 +22,7 @@ if ! command -v systemctl >/dev/null 2>&1; then
 fi
 
 GITHUB_REPO="${RUGIX_GITHUB_REPO:-rugix/rugix}"
-RUGIX_VERSION="${RUGIX_VERSION:-v1}"
+REQUESTED_RUGIX_VERSION="${1:-${RUGIX_VERSION:-v1}}"
 RUGIX_DEB_VARIANT="${RUGIX_DEB_VARIANT:-musl}"
 
 case "$(uname -m)" in
@@ -80,7 +80,7 @@ release_tag_to_deb_version() {
     echo "${version}"
 }
 
-RUGIX_VERSION="$(resolve_rugix_version "${RUGIX_VERSION}")"
+RUGIX_VERSION="$(resolve_rugix_version "${REQUESTED_RUGIX_VERSION}")"
 if [[ -z "${RUGIX_VERSION}" || "${RUGIX_VERSION}" == "null" ]]; then
     echo "unable to resolve Rugix release version" >&2
     exit 1

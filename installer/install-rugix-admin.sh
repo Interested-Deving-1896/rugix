@@ -22,7 +22,7 @@ if ! command -v systemctl >/dev/null 2>&1; then
 fi
 
 GITHUB_REPO="${RUGIX_GITHUB_REPO:-rugix/rugix}"
-RUGIX_VERSION="${RUGIX_VERSION:-v1}"
+REQUESTED_RUGIX_VERSION="${1:-${RUGIX_VERSION:-v1}}"
 RUGIX_ADMIN_ADDRESS="${RUGIX_ADMIN_ADDRESS:-0.0.0.0:8088}"
 RUGIX_ADMIN_PORT="${RUGIX_ADMIN_PORT:-${RUGIX_ADMIN_ADDRESS##*:}}"
 RUGIX_ADMIN_FIREWALL_ZONE="${RUGIX_ADMIN_FIREWALL_ZONE:-}"
@@ -71,7 +71,7 @@ resolve_rugix_version() {
     fi
 }
 
-RUGIX_VERSION="$(resolve_rugix_version "${RUGIX_VERSION}")"
+RUGIX_VERSION="$(resolve_rugix_version "${REQUESTED_RUGIX_VERSION}")"
 if [[ -z "${RUGIX_VERSION}" || "${RUGIX_VERSION}" == "null" ]]; then
     echo "unable to resolve Rugix release version" >&2
     exit 1
