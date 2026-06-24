@@ -18,10 +18,9 @@ use super::{
 /// Pack a Docker Compose app into an app bundle.
 ///
 /// Creates a bundle with:
-/// - An `app-archive` payload containing `app.toml`, a rewritten
-///   `docker-compose.yml`, image metadata, and any extra included files/directories.
-///   Bundled services are rewritten to Rugix-owned bundle-local image tags with
-///   `pull_policy: never`.
+/// - An `app-archive` payload containing `app.toml`, a rewritten `docker-compose.yml`,
+///   image metadata, and any extra included files/directories. Bundled services are
+///   rewritten to Rugix-owned bundle-local image tags with `pull_policy: never`.
 /// - An `app-file` payload per Docker image, placed at `images/image-N.tar` inside the
 ///   generation directory.
 pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
