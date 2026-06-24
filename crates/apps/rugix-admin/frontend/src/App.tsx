@@ -16,6 +16,7 @@ import { SystemPage } from "./features/system/SystemPage";
 import type { api, jobs } from "./generated";
 import { ErrorBanner } from "./shared/components/ErrorBanner";
 import { errorMessage } from "./shared/lib/errors";
+import { createJobId } from "./shared/lib/ids";
 import { applyEvent, isTerminal, updateBrowserProgress } from "./shared/lib/jobEvents";
 import { initialTheme } from "./shared/lib/theme";
 import type { JobLog, Tab, Theme } from "./types";
@@ -128,7 +129,7 @@ export function App() {
   }
 
   async function upload(kind: "system" | "app", file: File, options: InstallOptions) {
-    const jobId = crypto.randomUUID();
+    const jobId = createJobId();
     setLogs((current) => ({ ...current, [jobId]: { lines: [] } }));
     watchJob(jobId);
     try {
