@@ -1,0 +1,12 @@
+import type { events, jobs } from "./generated";
+
+export type Tab = "system" | "apps" | "jobs";
+
+export type Theme = "light" | "dark";
+
+export type JobLog = {
+  job?: jobs.Job;
+  lines: string[];
+  uploadedBytes?: events.UploadProgressEvent["bytes"];
+  browserUpload?: { sent: number; total: number };
+};

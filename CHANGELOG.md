@@ -9,6 +9,10 @@ Rugix Ctrl:
 - Add `overlay-fallback: in-memory` state configuration to retry root overlay setup with an in-memory overlay when the configured overlay fails.
 - Add boot flow capability reporting for userspace failure recovery and fall back to starting the underlying init on committed systems when Rugix init fails and the boot flow cannot recover userspace failures.
 
+Rugix Admin:
+
+- Rework the admin interface as a Vite, React, and Tailwind SPA with Sidex-generated API/event types, Rugix Apps support, streamed installations, embedded frontend assets, and CI frontend artifact injection for one-binary Linux builds.
+
 Rugix Bundler:
 
 - Rework Docker Compose image bundling to copy images with Skopeo, infer Compose `build:` entries, default local builds to Podman, and rewrite packaged Compose files to Rugix-owned bundle-local image tags. `--disable-pinning` now keeps the original Compose image references while still bundling the images.

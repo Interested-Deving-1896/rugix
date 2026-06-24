@@ -1,0 +1,98 @@
+import apps::AppState
+import apps::AppStatus
+import jobs::Job
+
+#[rust(type = "::serde_json::Value")]
+opaque JsonValue
+
+/// Health response.
+record HealthResponse {
+    /// Service status.
+    status: string,
+}
+
+/// Error response body.
+record ApiErrorResponse {
+    /// Error details.
+    error: ApiError,
+}
+
+/// API error details.
+record ApiError {
+    /// Machine-readable error code.
+    code: string,
+    /// Human-readable error message.
+    message: string,
+    /// Optional structured details.
+    details?: JsonValue,
+}
+
+/// System summary shown by Rugix Admin.
+record SystemInfoResponse {
+    /// Active boot group, if known.
+    active_boot_group?: string,
+    /// Default boot group, if known.
+    default_boot_group?: string,
+    /// State-management status, if known.
+    state_status?: string,
+    /// Raw `rugix-ctrl system info --json` output.
+    raw: JsonValue,
+}
+
+/// List of installed apps.
+record AppsListResponse {
+    /// Apps sorted by name.
+    apps: [AppSummary],
+}
+
+/// App summary.
+record AppSummary {
+    /// App name.
+    name: string,
+    /// Live workload status.
+    status: AppStatus,
+    /// Current generation, if any.
+    generation?: u64,
+    /// User-supplied metadata for the current generation.
+    metadata?: JsonValue,
+}
+
+/// Detailed app information.
+record AppInfoResponse {
+    /// App name.
+    name: string,
+    /// Live workload status.
+    status: AppStatus,
+    /// Persisted app state.
+    state: AppState,
+    /// Installed generations.
+    generations: [AppGeneration],
+}
+
+/// Generation information.
+record AppGeneration {
+    /// Generation number.
+    number: u64,
+    /// Creation timestamp.
+    created_at: string,
+    /// Whether the generation is complete.
+    complete: bool,
+    /// Whether the generation is currently active.
+    active: bool,
+    /// Timestamp of the last successful activation, if any.
+    last_activated?: string,
+    /// User-supplied generation metadata.
+    metadata?: JsonValue,
+}
+
+/// Job response.
+record JobResponse {
+    /// Job snapshot.
+    job: Job,
+}
+
+/// Job list response.
+record JobsListResponse {
+    /// Jobs, newest first.
+    jobs: [Job],
+}

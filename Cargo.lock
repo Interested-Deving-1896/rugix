@@ -18,6 +18,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "ahash"
+version = "0.8.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
+dependencies = [
+ "cfg-if",
+ "once_cell",
+ "version_check",
+ "zerocopy",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -87,6 +99,15 @@ name = "anyhow"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+
+[[package]]
+name = "ariadne"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1cb2a2046bea8ce5e875551f5772024882de0b540c7f93dfc5d6cf1ca8b030c"
+dependencies = [
+ "yansi",
+]
 
 [[package]]
 name = "async-trait"
@@ -404,6 +425,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-deque"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -486,6 +532,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "either"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
+
+[[package]]
 name = "encode_unicode"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -514,6 +566,16 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "eyre"
+version = "0.6.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cd915d99f24784cdc19fd37ef22b97e3ff0ae756c7e492e9fbfe897d61e2aec"
+dependencies = [
+ "indenter",
+ "once_cell",
 ]
 
 [[package]]
@@ -729,6 +791,15 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "hashbrown"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
+dependencies = [
+ "ahash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
@@ -829,6 +900,31 @@ name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d3067d79b975e8844ca9eb072e16b31c3c1c36928edf9c6789548c524d0d954"
+
+[[package]]
+name = "include_dir"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "indenter"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "964de6e86d545b246d84badc0fef527924ace5134f30641c203ef52ba83f58d5"
 
 [[package]]
 name = "indexmap"
@@ -1012,6 +1108,16 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+dependencies = [
+ "mime",
+ "unicase",
+]
 
 [[package]]
 name = "miniz_oxide"
@@ -1300,6 +1406,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "rayon"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "rcgen"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1328,6 +1454,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f450ad9c3b1da563fb6948a8e0fb0fb9269711c9c73d9ea1de5058c79c8d643a"
 dependencies = [
  "bitflags 2.11.1",
+]
+
+[[package]]
+name = "regex"
+version = "1.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -1377,10 +1515,18 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
- "indoc",
+ "futures",
+ "include_dir",
+ "indexmap",
+ "jiff",
+ "mime_guess",
  "serde",
  "serde_json",
+ "sidex",
+ "sidex-build-rs",
+ "sidex-serde",
  "tokio",
+ "uuid",
  "xscript 0.4.0",
 ]
 
@@ -1851,7 +1997,7 @@ dependencies = [
 [[package]]
 name = "sidex"
 version = "0.1.0"
-source = "git+https://github.com/silitics/sidex.git#85fe0966298249a07b08fee559a4623a7bd5cd54"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
 dependencies = [
  "serde",
  "serde_json",
@@ -1860,14 +2006,167 @@ dependencies = [
 ]
 
 [[package]]
+name = "sidex-attrs-api"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "semver",
+ "serde",
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-ir",
+]
+
+[[package]]
+name = "sidex-attrs-json"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-gen",
+ "sidex-ir",
+ "sidex-serde",
+]
+
+[[package]]
+name = "sidex-attrs-rust"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-gen",
+ "sidex-ir",
+ "sidex-serde",
+]
+
+[[package]]
+name = "sidex-attrs-validate"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-gen",
+ "sidex-ir",
+ "sidex-serde",
+ "sidex-validate-expr",
+]
+
+[[package]]
+name = "sidex-build-rs"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "serde_json",
+ "sidex-core",
+ "sidex-gen",
+ "sidex-gen-rs",
+]
+
+[[package]]
+name = "sidex-core"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "eyre",
+ "hashbrown 0.13.2",
+ "lazy_static",
+ "once_cell",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-ir",
+ "sidex-syntax",
+ "thiserror 1.0.69",
+ "toml 0.5.11",
+]
+
+[[package]]
+name = "sidex-diagnostics"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "anyhow",
+ "ariadne",
+ "parking_lot",
+ "scoped-tls",
+ "sidex-ir",
+]
+
+[[package]]
+name = "sidex-gen"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "serde_json",
+ "sidex-diagnostics",
+ "sidex-ir",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sidex-gen-rs"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "sidex-attrs-api",
+ "sidex-attrs-json",
+ "sidex-attrs-rust",
+ "sidex-attrs-validate",
+ "sidex-gen",
+ "sidex-validate-expr",
+ "syn",
+]
+
+[[package]]
+name = "sidex-ir"
+version = "0.2.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sidex-serde",
+]
+
+[[package]]
 name = "sidex-serde"
 version = "0.1.0"
-source = "git+https://github.com/silitics/sidex.git#85fe0966298249a07b08fee559a4623a7bd5cd54"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
 dependencies = [
  "base64 0.20.0",
  "indexmap",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "sidex-syntax"
+version = "0.2.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "sidex-diagnostics",
+ "sidex-ir",
+]
+
+[[package]]
+name = "sidex-validate-expr"
+version = "0.1.0"
+source = "git+https://github.com/silitics/sidex.git#53f5e11480ebf471ba37a97fa2a683be1e2bf235"
+dependencies = [
+ "regex",
+ "sidex-diagnostics",
 ]
 
 [[package]]
@@ -2103,6 +2402,15 @@ dependencies = [
 
 [[package]]
 name = "toml"
+version = "0.5.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4f7f0dd8d50a853a531c426359045b1998f04219d88799810762cd4ad314234"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "toml"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd79e69d3b627db300ff956027cc6c3798cef26d22526befdfcd12feeb6d2257"
@@ -2278,6 +2586,12 @@ name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
+
+[[package]]
+name = "unicase"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-ident"
@@ -2783,12 +3097,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "yansi"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
+
+[[package]]
 name = "yasna"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
 dependencies = [
  "time",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.52"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
