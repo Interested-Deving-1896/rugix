@@ -234,14 +234,16 @@
         "System",
         "Local",
         "Runtime",
-        "App"
+        "App",
+        "Bundle",
+        "Synthetic"
       ],
       "description": "Kind of component source."
     },
     "rugix_ctrl.output.ComponentSourceOutput": {
       "$id": "rugix_ctrl.output.ComponentSourceOutput",
       "type": "object",
-      "description": "Source file for a component declaration.",
+      "description": "Source for a component declaration.",
       "properties": {
         "kind": {
           "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceKindOutput"
@@ -266,7 +268,7 @@
     "rugix_ctrl.output.LoadedComponentOutput": {
       "$id": "rugix_ctrl.output.LoadedComponentOutput",
       "type": "object",
-      "description": "Component loaded from a source file.",
+      "description": "Component loaded from a source.",
       "properties": {
         "source": {
           "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceOutput"

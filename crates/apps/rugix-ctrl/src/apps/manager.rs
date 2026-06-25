@@ -719,10 +719,8 @@ impl AppManager {
         Ok(best.map(|(num, _)| num))
     }
 
-    /// Rollback: deactivate the current generation and activate the most recent
-    /// previous generation that was successfully activated before.
-    /// The caller must hold the [`AppLock`] for this app.
-    pub fn rollback(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
+    /// Find the generation that [`Self::rollback`] would activate.
+    pub fn rollback_target_generation(&self, app_name: &str) -> AppsResult<u64> {
         let Some(current) = self.current_generation(app_name)? else {
             reportify::bail!("no current generation to rollback from");
         };
@@ -734,13 +732,24 @@ impl AppManager {
         else {
             reportify::bail!("no previous activated generation to rollback to");
         };
+        Ok(previous.meta.number)
+    }
+
+    /// Rollback: deactivate the current generation and activate the most recent
+    /// previous generation that was successfully activated before.
+    /// The caller must hold the [`AppLock`] for this app.
+    pub fn rollback(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
+        let Some(current) = self.current_generation(app_name)? else {
+            reportify::bail!("no current generation to rollback from");
+        };
+        let previous = self.rollback_target_generation(app_name)?;
         info!(
             app = app_name,
             from = current,
-            to = previous.meta.number,
+            to = previous,
             "rolling back"
         );
-        self.activate_generation(_lock, app_name, previous.meta.number)
+        self.activate_generation(_lock, app_name, previous)
     }
 
     /// Remove a generation directory.

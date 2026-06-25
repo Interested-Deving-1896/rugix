@@ -172,6 +172,14 @@ define_tags! {
     BLOCK_INDEX = 0x1ae50c8e,
 
     BUNDLE_HEADER_IS_INCREMENTAL = 0x20f3d16b,
+    /// Optional component metadata declared by the bundle.
+    BUNDLE_HEADER_COMPONENTS = 0x8d25bba7?,
+    /// Component metadata file declared by the bundle.
+    BUNDLE_COMPONENTS_FILE = 0x1c47f0a2,
+    /// Component metadata file path.
+    BUNDLE_COMPONENT_FILE_PATH = 0x0e6c9a41,
+    /// Component metadata file data.
+    BUNDLE_COMPONENT_FILE_DATA = 0x35b2f928,
 
     BLOCK_INDEX_CHUNKER = 0x5cdf21b0,
     BLOCK_INDEX_HASH_ALGORITHM = 0x1d92a080,

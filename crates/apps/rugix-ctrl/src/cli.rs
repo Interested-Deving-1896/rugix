@@ -1,5 +1,6 @@
 //! Definition of the command line interface (CLI).
 
+use std::collections::BTreeSet;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -35,7 +36,7 @@ use reportify::{bail, whatever, ErrorExt, ResultExt};
 use rugix_common::stream_hasher::StreamHasher;
 use xscript::{vars, Vars};
 
-use crate::config::output::BlockDeviceInfo;
+use crate::config::output::{BlockDeviceInfo, ComponentsCheckOutput};
 use crate::http_source::{HttpSource, RetryConfig};
 use crate::overlay::overlay_dir;
 use crate::payload_db::{self, BlockProvider};
@@ -141,6 +142,7 @@ pub fn main() -> SystemResult<()> {
                     bundle,
                     insecure_skip_bundle_verification,
                     insecure_allow_missing_block_index,
+                    skip_compatibility_check,
                     root_cert,
                     bundle_hash,
                     reboot: reboot_type,
@@ -184,46 +186,28 @@ pub fn main() -> SystemResult<()> {
                         }
                     }
 
-                    let hooks = HooksLoader::default()
-                        .load_hooks("update-install")
-                        .whatever("unable to load `update-install` hooks")?;
-
-                    let hook_vars = vars! {
-                        RUGIX_BOOT_GROUP = boot_group.map(|g| g.1.name()).unwrap_or(""),
-                    };
-
-                    hooks
-                        .run_hooks("pre-update", hook_vars.clone(), &Default::default())
-                        .whatever("error running `pre-update` hooks")?;
-
-                    if !keep_overlay {
-                        if let Some(boot_group) = &boot_group {
-                            let spare_overlay_dir = overlay_dir(boot_group.1);
-                            fs::remove_dir_all(spare_overlay_dir).ok();
-                        }
-                    }
-
                     let retry_config = RetryConfig {
                         max_retries: *http_max_retries,
                         initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
                         max_backoff: Duration::from_secs(*http_retry_max_backoff),
+                    };
+                    let bundle_options = BundleInstallOptions {
+                        bundle_hash,
+                        root_cert: root_cert.as_deref(),
+                        insecure_skip_bundle_verification: *insecure_skip_bundle_verification,
+                        insecure_allow_missing_block_index: *insecure_allow_missing_block_index,
+                        skip_compatibility_check: *skip_compatibility_check,
                     };
                     let should_reboot = install_update_stream(
                         &system,
                         &config,
                         bundle,
                         boot_group.as_ref(),
-                        bundle_hash,
-                        root_cert.as_deref(),
-                        *insecure_skip_bundle_verification,
-                        *insecure_allow_missing_block_index,
+                        bundle_options,
+                        *keep_overlay,
                         *disable_range_queries,
                         retry_config,
                     )?;
-
-                    hooks
-                        .run_hooks("post-update", hook_vars.clone(), &Default::default())
-                        .whatever("error running `post-update` hooks")?;
 
                     let reboot_type = reboot_type.clone().unwrap_or(should_reboot);
 
@@ -539,12 +523,20 @@ pub fn main() -> SystemResult<()> {
                     bundle,
                     insecure_skip_bundle_verification,
                     insecure_allow_missing_block_index,
+                    skip_compatibility_check,
                     root_cert,
                     bundle_hash,
                     http_max_retries,
                     http_retry_initial_backoff,
                     http_retry_max_backoff,
                 } => {
+                    let bundle_options = BundleInstallOptions {
+                        bundle_hash,
+                        root_cert: root_cert.as_deref(),
+                        insecure_skip_bundle_verification: *insecure_skip_bundle_verification,
+                        insecure_allow_missing_block_index: *insecure_allow_missing_block_index,
+                        skip_compatibility_check: *skip_compatibility_check,
+                    };
                     if bundle.starts_with("http") {
                         let retry_config = RetryConfig {
                             max_retries: *http_max_retries,
@@ -553,38 +545,14 @@ pub fn main() -> SystemResult<()> {
                         };
                         let source = HttpSource::new(bundle, false, retry_config)
                             .whatever("unable to create HTTP source")?;
-                        install_app_bundle(
-                            &config,
-                            &manager,
-                            source,
-                            bundle_hash,
-                            root_cert.as_deref(),
-                            *insecure_skip_bundle_verification,
-                            *insecure_allow_missing_block_index,
-                        )?;
+                        install_app_bundle(&config, &manager, source, bundle_options)?;
                     } else if bundle == "-" {
                         let source = ReaderSource::<_, SkipRead>::from_unbuffered(std::io::stdin());
-                        install_app_bundle(
-                            &config,
-                            &manager,
-                            source,
-                            bundle_hash,
-                            root_cert.as_deref(),
-                            *insecure_skip_bundle_verification,
-                            *insecure_allow_missing_block_index,
-                        )?;
+                        install_app_bundle(&config, &manager, source, bundle_options)?;
                     } else {
                         let file = File::open(bundle).whatever("unable to open app bundle")?;
                         let source = ReaderSource::<_, SkipSeek>::from_unbuffered(file);
-                        install_app_bundle(
-                            &config,
-                            &manager,
-                            source,
-                            bundle_hash,
-                            root_cert.as_deref(),
-                            *insecure_skip_bundle_verification,
-                            *insecure_allow_missing_block_index,
-                        )?;
+                        install_app_bundle(&config, &manager, source, bundle_options)?;
                     }
                 }
                 AppsCommand::List => {
@@ -648,7 +616,11 @@ pub fn main() -> SystemResult<()> {
                     rugix_cli::json::print_json(&output, false)
                         .whatever("unable to write app info to stdout")?;
                 }
-                AppsCommand::Activate { app, generation } => {
+                AppsCommand::Activate {
+                    app,
+                    generation,
+                    skip_compatibility_check,
+                } => {
                     let lock = manager.lock_app(app).whatever("unable to lock app")?;
                     let gen = match generation {
                         Some(n) => *n,
@@ -662,12 +634,25 @@ pub fn main() -> SystemResult<()> {
                             n
                         }
                     };
+                    if !*skip_compatibility_check {
+                        check_app_generation_compatibility(&manager, app, gen)?;
+                    } else {
+                        warn!("skipping app compatibility check");
+                    }
                     manager
                         .activate_generation(&lock, app, gen)
                         .whatever("unable to activate generation")?;
                 }
-                AppsCommand::Deactivate { app } => {
+                AppsCommand::Deactivate {
+                    app,
+                    skip_compatibility_check,
+                } => {
                     let lock = manager.lock_app(app).whatever("unable to lock app")?;
+                    if !*skip_compatibility_check {
+                        check_app_removal_compatibility(&manager, app)?;
+                    } else {
+                        warn!("skipping app compatibility check");
+                    }
                     manager
                         .deactivate(&lock, app)
                         .whatever("unable to deactivate app")?;
@@ -684,14 +669,33 @@ pub fn main() -> SystemResult<()> {
                         .stop_app(&lock, app)
                         .whatever("unable to stop app workload")?;
                 }
-                AppsCommand::Rollback { app } => {
+                AppsCommand::Rollback {
+                    app,
+                    skip_compatibility_check,
+                } => {
                     let lock = manager.lock_app(app).whatever("unable to lock app")?;
+                    if !*skip_compatibility_check {
+                        let generation = manager
+                            .rollback_target_generation(app)
+                            .whatever("unable to determine rollback target generation")?;
+                        check_app_generation_compatibility(&manager, app, generation)?;
+                    } else {
+                        warn!("skipping app compatibility check");
+                    }
                     manager
                         .rollback(&lock, app)
                         .whatever("unable to rollback app")?;
                 }
-                AppsCommand::Remove { app } => {
+                AppsCommand::Remove {
+                    app,
+                    skip_compatibility_check,
+                } => {
                     let lock = manager.lock_app(app).whatever("unable to lock app")?;
+                    if !*skip_compatibility_check {
+                        check_app_removal_compatibility(&manager, app)?;
+                    } else {
+                        warn!("skipping app compatibility check");
+                    }
                     manager
                         .remove_app(&lock, app)
                         .whatever("unable to remove app")?;
@@ -856,20 +860,26 @@ impl<R: Read> Read for MaybeStreamHasher<R> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct BundleInstallOptions<'a> {
+    bundle_hash: &'a Option<HashDigest>,
+    root_cert: Option<&'a Path>,
+    insecure_skip_bundle_verification: bool,
+    insecure_allow_missing_block_index: bool,
+    skip_compatibility_check: bool,
+}
+
 fn install_app_bundle<S: BundleSource>(
     config: &Config,
     app_manager: &crate::apps::manager::AppManager,
     bundle_source: S,
-    bundle_hash: &Option<HashDigest>,
-    root_cert: Option<&Path>,
-    insecure_skip_bundle_verification: bool,
-    insecure_allow_missing_block_index: bool,
+    options: BundleInstallOptions<'_>,
 ) -> SystemResult<()> {
     let mut bundle_reader =
-        rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
+        rugix_bundle::reader::BundleReader::start(bundle_source, options.bundle_hash.clone())
             .whatever("unable to read app bundle")?;
 
-    let root_cert = root_cert.or_else(|| {
+    let root_cert = options.root_cert.or_else(|| {
         config.signatures.as_ref().and_then(|c| {
             if c.roots.len() > 1 {
                 warn!("multiple root certificates in config, using only the first")
@@ -881,15 +891,37 @@ fn install_app_bundle<S: BundleSource>(
     // If a bundle hash has been specified, then the bundle will be verified against that hash
     // by the reader. Otherwise, try signature verification.
     let bundle_verified =
-        bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
-    if !bundle_verified && !insecure_skip_bundle_verification {
+        options.bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
+    if !bundle_verified && !options.insecure_skip_bundle_verification {
         bail!("bundle verification failed, refusing to install app bundle");
     }
 
-    let mut app_generations: std::collections::HashMap<String, (u64, PathBuf)> =
-        std::collections::HashMap::new();
+    let bundle_components = bundle_reader.header().components.clone();
+    if let Some(components) = &bundle_components {
+        crate::components::validate_bundle_components(components)?;
+    }
+    let touched_apps = touched_apps(bundle_reader.header());
+    let bundle_components_app = if bundle_components.is_some() {
+        Some(app_bundle_components_owner(bundle_reader.header())?)
+    } else {
+        None
+    };
+
     // Advisory locks held for the duration of the install, one per app.
     let mut app_locks: std::collections::HashMap<String, crate::apps::manager::AppLock> =
+        std::collections::HashMap::new();
+    for app in &touched_apps {
+        let lock = app_manager.lock_app(app).whatever("unable to lock app")?;
+        app_locks.insert(app.clone(), lock);
+    }
+
+    if !options.skip_compatibility_check {
+        check_app_bundle_compatibility(&bundle_reader, &touched_apps)?;
+    } else {
+        warn!("skipping app bundle compatibility check");
+    }
+
+    let mut app_generations: std::collections::HashMap<String, (u64, PathBuf)> =
         std::collections::HashMap::new();
     // Accumulated payload hashes per app, keyed by (app_name, path).
     let mut payload_states: std::collections::HashMap<
@@ -911,13 +943,12 @@ fn install_app_bundle<S: BundleSource>(
             let file_mode = type_app_file.mode;
             let delta_encoding = payload_entry.delta_encoding.clone();
             if !app_generations.contains_key(&app_name) {
-                let lock = app_manager
-                    .lock_app(&app_name)
-                    .whatever("unable to lock app")?;
+                let lock = app_locks
+                    .get(&app_name)
+                    .expect("app payload must be listed in bundle header");
                 let gen = app_manager
-                    .create_generation(&lock, &app_name)
+                    .create_generation(lock, &app_name)
                     .whatever("unable to create app generation")?;
-                app_locks.insert(app_name.clone(), lock);
                 app_generations.insert(app_name.clone(), gen);
             }
             let (_, gen_dir) = &app_generations[&app_name];
@@ -928,7 +959,7 @@ fn install_app_bundle<S: BundleSource>(
             }
 
             // Set up block provider for block-encoded payloads.
-            let block_provider = if !insecure_allow_missing_block_index {
+            let block_provider = if !options.insecure_allow_missing_block_index {
                 let block_encoding = payload.header().block_encoding.as_ref().ok_or_else(|| {
                     whatever!(
                         "payload {} does not have a block index, refusing to install",
@@ -1091,13 +1122,12 @@ fn install_app_bundle<S: BundleSource>(
         }
         if let Some(type_app_archive) = &payload_entry.type_app_archive {
             if !app_generations.contains_key(&type_app_archive.app) {
-                let lock = app_manager
-                    .lock_app(&type_app_archive.app)
-                    .whatever("unable to lock app")?;
+                let lock = app_locks
+                    .get(&type_app_archive.app)
+                    .expect("app payload must be listed in bundle header");
                 let gen = app_manager
-                    .create_generation(&lock, &type_app_archive.app)
+                    .create_generation(lock, &type_app_archive.app)
                     .whatever("unable to create app generation")?;
-                app_locks.insert(type_app_archive.app.clone(), lock);
                 app_generations.insert(type_app_archive.app.clone(), gen);
             }
             let (_, gen_dir) = &app_generations[&type_app_archive.app];
@@ -1112,7 +1142,7 @@ fn install_app_bundle<S: BundleSource>(
                 .as_file()
                 .try_clone()
                 .whatever("unable to clone temp file handle")?;
-            let block_provider = if !insecure_allow_missing_block_index {
+            let block_provider = if !options.insecure_allow_missing_block_index {
                 let block_encoding = payload.header().block_encoding.as_ref().ok_or_else(|| {
                     whatever!(
                         "payload {} does not have a block index, refusing to install",
@@ -1162,6 +1192,16 @@ fn install_app_bundle<S: BundleSource>(
             }
         }
         info!(app = %app_name, generation = gen_number, "finalizing app generation");
+        if bundle_components_app.as_ref() == Some(app_name) {
+            let bundle_components = bundle_components
+                .as_ref()
+                .expect("bundle components owner requires bundle components");
+            crate::components::write_bundle_components(
+                bundle_components,
+                &gen_dir.join(".rugix/components"),
+            )
+            .whatever("unable to install app component metadata")?;
+        }
         app_manager
             .write_generation_metadata(
                 gen_dir,
@@ -1188,10 +1228,8 @@ fn install_update_stream(
     config: &Config,
     bundle: &String,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
-    bundle_hash: &Option<HashDigest>,
-    root_cert: Option<&Path>,
-    insecure_skip_bundle_verification: bool,
-    insecure_allow_missing_block_index: bool,
+    options: BundleInstallOptions<'_>,
+    keep_overlay: bool,
     disable_range_queries: bool,
     retry_config: RetryConfig,
 ) -> SystemResult<UpdateRebootType> {
@@ -1213,10 +1251,8 @@ fn install_update_stream(
             config,
             &mut bundle_source,
             boot_group,
-            bundle_hash,
-            root_cert,
-            insecure_skip_bundle_verification,
-            insecure_allow_missing_block_index,
+            options,
+            keep_overlay,
         )?;
         let stats = bundle_source.get_download_stats();
         info!(
@@ -1234,10 +1270,8 @@ fn install_update_stream(
             config,
             bundle_source,
             boot_group,
-            bundle_hash,
-            root_cert,
-            insecure_skip_bundle_verification,
-            insecure_allow_missing_block_index,
+            options,
+            keep_overlay,
         )
     } else {
         let file = File::open(bundle).whatever("error opening image")?;
@@ -1247,10 +1281,8 @@ fn install_update_stream(
             config,
             bundle_source,
             boot_group,
-            bundle_hash,
-            root_cert,
-            insecure_skip_bundle_verification,
-            insecure_allow_missing_block_index,
+            options,
+            keep_overlay,
         )
     }
 }
@@ -1310,22 +1342,136 @@ fn verify_bundle_signature<S: BundleSource>(
     Ok(false)
 }
 
-#[expect(clippy::too_many_arguments)]
+fn check_system_update_compatibility<S: BundleSource>(
+    bundle_reader: &BundleReader<S>,
+) -> SystemResult<()> {
+    let Some(bundle_components) = bundle_reader.header().components.as_ref() else {
+        warn!("update bundle does not declare components, skipping compatibility check");
+        return Ok(());
+    };
+    let installed = crate::components::InstalledComponents::load()
+        .whatever("unable to load installed components")?;
+    let output = if bundle_reader.header().is_incremental {
+        installed
+            .check_incremental_update(bundle_components)
+            .whatever("unable to check incremental update compatibility")?
+    } else {
+        installed
+            .check_system_update(bundle_components)
+            .whatever("unable to check system update compatibility")?
+    };
+    require_compatible_components(output)
+}
+
+fn check_app_bundle_compatibility<S: BundleSource>(
+    bundle_reader: &BundleReader<S>,
+    touched_apps: &[String],
+) -> SystemResult<()> {
+    let bundle_components = bundle_reader.header().components.as_ref();
+    if touched_apps.is_empty() {
+        warn!("app bundle does not contain app payloads, skipping compatibility check");
+        return Ok(());
+    }
+    if bundle_components.is_none() {
+        warn!("app bundle does not declare components, checking removal of touched app components");
+    }
+    let installed = crate::components::InstalledComponents::load()
+        .whatever("unable to load installed components")?;
+    let output = installed
+        .check_app_update(touched_apps, bundle_components)
+        .whatever("unable to check app bundle compatibility")?;
+    require_compatible_components(output)
+}
+
+fn check_app_generation_compatibility(
+    app_manager: &crate::apps::manager::AppManager,
+    app: &str,
+    generation: u64,
+) -> SystemResult<()> {
+    let installed = crate::components::InstalledComponents::load()
+        .whatever("unable to load installed components")?;
+    let component_root = app_manager
+        .generation_dir(app, generation)
+        .join(".rugix/components");
+    let output = installed
+        .check_app_generation(app, generation, component_root)
+        .whatever("unable to check app generation compatibility")?;
+    require_compatible_components(output)
+}
+
+fn check_app_removal_compatibility(
+    app_manager: &crate::apps::manager::AppManager,
+    app: &str,
+) -> SystemResult<()> {
+    if app_manager
+        .current_generation(app)
+        .whatever("unable to read app state")?
+        .is_none()
+    {
+        return Ok(());
+    }
+    let installed = crate::components::InstalledComponents::load()
+        .whatever("unable to load installed components")?;
+    let output = installed.check_app_removal(app);
+    require_compatible_components(output)
+}
+
+fn require_compatible_components(output: ComponentsCheckOutput) -> SystemResult<()> {
+    if output.consistent {
+        return Ok(());
+    }
+    rugix_cli::json::print_json(&output, false)
+        .whatever("unable to write component compatibility report to stdout")?;
+    bail!("component compatibility check failed");
+}
+
+fn touched_apps(header: &format::BundleHeader) -> Vec<String> {
+    header
+        .payload_index
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .type_app_file
+                .as_ref()
+                .map(|app_file| app_file.app.as_str())
+                .or_else(|| {
+                    entry
+                        .type_app_archive
+                        .as_ref()
+                        .map(|app_archive| app_archive.app.as_str())
+                })
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+fn app_bundle_components_owner(header: &format::BundleHeader) -> SystemResult<String> {
+    let touched_apps = touched_apps(header);
+    match touched_apps.as_slice() {
+        [] => bail!("app bundle declares components but does not contain app payloads"),
+        [app] => Ok(app.clone()),
+        _ => bail!(
+            "app bundle declares components for multiple apps, which is not supported yet: {:?}",
+            touched_apps
+        ),
+    }
+}
+
 fn install_update_bundle<R: BundleSource>(
     system: &System,
     config: &Config,
     bundle_source: R,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
-    bundle_hash: &Option<HashDigest>,
-    root_cert: Option<&Path>,
-    insecure_skip_bundle_verification: bool,
-    insecure_allow_missing_block_index: bool,
+    options: BundleInstallOptions<'_>,
+    keep_overlay: bool,
 ) -> SystemResult<UpdateRebootType> {
     let mut bundle_reader =
-        rugix_bundle::reader::BundleReader::start(bundle_source, bundle_hash.clone())
+        rugix_bundle::reader::BundleReader::start(bundle_source, options.bundle_hash.clone())
             .whatever("unable to read bundle")?;
 
-    let root_cert = root_cert.or_else(|| {
+    let root_cert = options.root_cert.or_else(|| {
         config.signatures.as_ref().and_then(|c| {
             if c.roots.len() > 1 {
                 warn!("multiple root certificates in config, using only the first")
@@ -1337,10 +1483,33 @@ fn install_update_bundle<R: BundleSource>(
     // If a bundle hash has been specified, then the bundle will be verified against that hash
     // by the reader.
     let bundle_verified =
-        bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
+        options.bundle_hash.is_some() || verify_bundle_signature(root_cert, &bundle_reader)?;
 
-    if !bundle_verified && !insecure_skip_bundle_verification {
+    if !bundle_verified && !options.insecure_skip_bundle_verification {
         bail!("bundle verification failed, refusing to install update");
+    }
+
+    if !options.skip_compatibility_check {
+        check_system_update_compatibility(&bundle_reader)?;
+    } else {
+        warn!("skipping system update compatibility check");
+    }
+
+    let update_hooks = HooksLoader::default()
+        .load_hooks("update-install")
+        .whatever("unable to load `update-install` hooks")?;
+    let hook_vars = vars! {
+        RUGIX_BOOT_GROUP = boot_group.map(|g| g.1.name()).unwrap_or(""),
+    };
+    update_hooks
+        .run_hooks("pre-update", hook_vars.clone(), &Default::default())
+        .whatever("error running `pre-update` hooks")?;
+
+    if !keep_overlay {
+        if let Some(boot_group) = &boot_group {
+            let spare_overlay_dir = overlay_dir(boot_group.1);
+            fs::remove_dir_all(spare_overlay_dir).ok();
+        }
     }
 
     if !bundle_reader.header().is_incremental {
@@ -1424,7 +1593,7 @@ fn install_update_bundle<R: BundleSource>(
                     slot.name()
                 );
                 payload_db::erase(slot.name())?;
-                let block_provider = if !insecure_allow_missing_block_index {
+                let block_provider = if !options.insecure_allow_missing_block_index {
                     let block_encoding =
                         payload.header().block_encoding.as_ref().ok_or_else(|| {
                             whatever!(
@@ -1664,15 +1833,19 @@ fn install_update_bundle<R: BundleSource>(
         payload.skip().whatever("unable to skip payload")?;
     }
 
-    if !bundle_reader.header().is_incremental {
+    let reboot_type = if !bundle_reader.header().is_incremental {
         system
             .boot_flow()
             .post_install(system, boot_group.unwrap().0)
             .whatever("error executing post-install step")?;
-        Ok(UpdateRebootType::Yes)
+        UpdateRebootType::Yes
     } else {
-        Ok(UpdateRebootType::No)
-    }
+        UpdateRebootType::No
+    };
+    update_hooks
+        .run_hooks("post-update", hook_vars, &Default::default())
+        .whatever("error running `post-update` hooks")?;
+    Ok(reboot_type)
 }
 
 #[derive(Debug)]
@@ -1891,6 +2064,9 @@ pub enum UpdateCommand {
         /// This flag allows installing update payloads that lack a block index.
         #[clap(long)]
         insecure_allow_missing_block_index: bool,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
         /// Root certificate to use for signature verification.
         ///
         /// This overrides the configured default certificate.
@@ -2026,6 +2202,9 @@ pub enum AppsCommand {
         /// This flag allows installing app payloads that lack a block index.
         #[clap(long)]
         insecure_allow_missing_block_index: bool,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
         /// Root certificate to use for signature verification.
         ///
         /// This overrides the configured default certificate.
@@ -2058,11 +2237,17 @@ pub enum AppsCommand {
         app: String,
         /// Generation number (defaults to the most recently activated generation).
         generation: Option<u64>,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
     },
     /// Deactivate the current generation of an app.
     Deactivate {
         /// App name.
         app: String,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
     },
     /// Start the workload of an active app.
     Start {
@@ -2078,11 +2263,17 @@ pub enum AppsCommand {
     Rollback {
         /// App name.
         app: String,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
     },
     /// Remove an app entirely.
     Remove {
         /// App name.
         app: String,
+        /// Skip component compatibility checks.
+        #[clap(long)]
+        skip_compatibility_check: bool,
     },
     /// List generations for an app.
     Generations {

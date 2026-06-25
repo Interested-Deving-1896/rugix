@@ -146,19 +146,19 @@ record ComponentRootOutput {
     generation?: u64,
 }
 
-/// Component loaded from a source file.
+/// Component loaded from a source.
 record LoadedComponentOutput {
-    /// Source file from which the component was loaded.
+    /// Source from which the component was loaded.
     source: ComponentSourceOutput,
     /// Loaded component declaration.
     component: ComponentOutput,
 }
 
-/// Source file for a component declaration.
+/// Source for a component declaration.
 record ComponentSourceOutput {
     /// Kind of component source.
     kind: ComponentSourceKindOutput,
-    /// Source file path.
+    /// Source path or identifier.
     path: string,
     /// App name for app-owned sources.
     app?: string,
@@ -177,6 +177,10 @@ variant ComponentSourceKindOutput {
     Runtime,
     /// Component metadata owned by an active app generation.
     App,
+    /// Component metadata declared by a bundle.
+    Bundle,
+    /// Component metadata synthesized by Rugix Ctrl.
+    Synthetic,
 }
 
 /// Component declaration.

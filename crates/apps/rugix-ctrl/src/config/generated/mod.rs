@@ -10792,10 +10792,10 @@ pub mod output {
             )
         }
     }
-    #[doc = "Component loaded from a source file.\n"]
+    #[doc = "Component loaded from a source.\n"]
     #[derive(Clone, Debug)]
     pub struct LoadedComponentOutput {
-        #[doc = "Source file from which the component was loaded.\n"]
+        #[doc = "Source from which the component was loaded.\n"]
         pub source: ComponentSourceOutput,
         #[doc = "Loaded component declaration.\n"]
         pub component: ComponentOutput,
@@ -11081,12 +11081,12 @@ pub mod output {
             )
         }
     }
-    #[doc = "Source file for a component declaration.\n"]
+    #[doc = "Source for a component declaration.\n"]
     #[derive(Clone, Debug)]
     pub struct ComponentSourceOutput {
         #[doc = "Kind of component source.\n"]
         pub kind: ComponentSourceKindOutput,
-        #[doc = "Source file path.\n"]
+        #[doc = "Source path or identifier.\n"]
         pub path: ::std::string::String,
         #[doc = "App name for app-owned sources.\n"]
         pub app: ::std::option::Option<::std::string::String>,
@@ -11510,6 +11510,10 @@ pub mod output {
         Runtime,
         #[doc = "Component metadata owned by an active app generation.\n"]
         App,
+        #[doc = "Component metadata declared by a bundle.\n"]
+        Bundle,
+        #[doc = "Component metadata synthesized by Rugix Ctrl.\n"]
+        Synthetic,
     }
     #[automatically_derived]
     impl __sidex_serde::SidexType for ComponentSourceKindOutput {
@@ -11530,6 +11534,8 @@ pub mod output {
                 Self::Local => __serializer.serialize_tag("Local", 1u32),
                 Self::Runtime => __serializer.serialize_tag("Runtime", 2u32),
                 Self::App => __serializer.serialize_tag("App", 3u32),
+                Self::Bundle => __serializer.serialize_tag("Bundle", 4u32),
+                Self::Synthetic => __serializer.serialize_tag("Synthetic", 5u32),
             }
         }
     }
@@ -11539,10 +11545,10 @@ pub mod output {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &'static [&'static str] = &["System", "Local", "Runtime", "App"];
+            const __IDENTIFIERS: &'static [&'static str] =
+                &["System", "Local", "Runtime", "App", "Bundle", "Synthetic"];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS: &'static str =
-                "an identifier in [\"System\", \"Local\", \"Runtime\", \"App\"]";
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"System\", \"Local\", \"Runtime\", \"App\", \"Bundle\", \"Synthetic\"]" ;
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
@@ -11550,6 +11556,8 @@ pub mod output {
                 __Identifier1,
                 __Identifier2,
                 __Identifier3,
+                __Identifier4,
+                __Identifier5,
             }
             #[doc(hidden)]
             struct __IdentifierVisitor;
@@ -11570,6 +11578,8 @@ pub mod output {
                         1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
                         2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                         3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        4u64 => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        5u64 => ::core::result::Result::Ok(__Identifier::__Identifier5),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Unsigned(__variant),
@@ -11587,6 +11597,8 @@ pub mod output {
                         "Local" => ::core::result::Result::Ok(__Identifier::__Identifier1),
                         "Runtime" => ::core::result::Result::Ok(__Identifier::__Identifier2),
                         "App" => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        "Bundle" => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        "Synthetic" => ::core::result::Result::Ok(__Identifier::__Identifier5),
                         __variant => ::core::result::Result::Err(
                             __serde::de::Error::unknown_variant(__variant, __IDENTIFIERS),
                         ),
@@ -11604,6 +11616,8 @@ pub mod output {
                         b"Local" => ::core::result::Result::Ok(__Identifier::__Identifier1),
                         b"Runtime" => ::core::result::Result::Ok(__Identifier::__Identifier2),
                         b"App" => ::core::result::Result::Ok(__Identifier::__Identifier3),
+                        b"Bundle" => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                        b"Synthetic" => ::core::result::Result::Ok(__Identifier::__Identifier5),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Bytes(__variant),
@@ -11626,7 +11640,8 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &'static [&'static str] = &["System", "Local", "Runtime", "App"];
+            const __VARIANTS: &'static [&'static str] =
+                &["System", "Local", "Runtime", "App", "Bundle", "Synthetic"];
             #[doc(hidden)]
             struct __Visitor {
                 __phantom_vars: ::core::marker::PhantomData<fn(&())>,
@@ -11659,6 +11674,12 @@ pub mod output {
                         __Identifier::__Identifier3 => {
                             ::core::result::Result::Ok(ComponentSourceKindOutput::App)
                         }
+                        __Identifier::__Identifier4 => {
+                            ::core::result::Result::Ok(ComponentSourceKindOutput::Bundle)
+                        }
+                        __Identifier::__Identifier5 => {
+                            ::core::result::Result::Ok(ComponentSourceKindOutput::Synthetic)
+                        }
                         _ => Err(__E::invalid_value(
                             __serde::de::Unexpected::Str(__value),
                             &self,
@@ -11689,6 +11710,14 @@ pub mod output {
                         (__Identifier::__Identifier3, __variant) => {
                             __serde::de::VariantAccess::unit_variant(__variant)?;
                             ::core::result::Result::Ok(ComponentSourceKindOutput::App)
+                        }
+                        (__Identifier::__Identifier4, __variant) => {
+                            __serde::de::VariantAccess::unit_variant(__variant)?;
+                            ::core::result::Result::Ok(ComponentSourceKindOutput::Bundle)
+                        }
+                        (__Identifier::__Identifier5, __variant) => {
+                            __serde::de::VariantAccess::unit_variant(__variant)?;
+                            ::core::result::Result::Ok(ComponentSourceKindOutput::Synthetic)
                         }
                     }
                 }

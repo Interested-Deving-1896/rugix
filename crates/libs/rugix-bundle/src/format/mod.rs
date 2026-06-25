@@ -36,8 +36,45 @@ define_struct! {
         pub is_incremental[BUNDLE_HEADER_IS_INCREMENTAL]: bool,
         /// Hash algorithm to secure the bundle.
         pub hash_algorithm[BUNDLE_HEADER_HASH_ALGORITHM]: HashAlgorithm,
+        /// Optional component metadata declared by the bundle.
+        pub components[BUNDLE_HEADER_COMPONENTS]: Option<BundleComponents>,
         /// Payload index.
         pub payload_index[BUNDLE_HEADER_PAYLOAD_INDEX]: Vec<PayloadEntry>,
+    }
+}
+
+define_struct! {
+    /// Component metadata declared by a bundle.
+    pub struct BundleComponents {
+        /// Component metadata files.
+        pub files[BUNDLE_COMPONENTS_FILE]: Vec<BundleComponentFile>,
+    }
+}
+
+impl BundleComponents {
+    /// Create bundle-declared component metadata.
+    pub fn new(files: Vec<BundleComponentFile>) -> Self {
+        Self { files }
+    }
+}
+
+define_struct! {
+    /// Component metadata file declared by a bundle.
+    pub struct BundleComponentFile {
+        /// Path relative to the bundle's `components` directory.
+        pub path[BUNDLE_COMPONENT_FILE_PATH]: String,
+        /// Raw file data.
+        pub data[BUNDLE_COMPONENT_FILE_DATA]: Bytes,
+    }
+}
+
+impl BundleComponentFile {
+    /// Create a bundle-declared component metadata file.
+    pub fn new(path: impl Into<String>, data: impl Into<Vec<u8>>) -> Self {
+        Self {
+            path: path.into(),
+            data: Bytes { raw: data.into() },
+        }
     }
 }
 

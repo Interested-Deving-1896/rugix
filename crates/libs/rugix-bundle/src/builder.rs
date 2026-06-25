@@ -1,15 +1,18 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component as PathComponent, Path, PathBuf};
 
 use byte_calc::NumBytes;
-use reportify::ResultExt;
+use reportify::{ErrorExt, ResultExt, bail, whatever};
 use si_crypto_hashes::HashDigest;
 
-use crate::BundleResult;
 use crate::block_encoding::encode_payload_file;
 use crate::format::stlv::{write_atom_head, write_segment_end, write_segment_start};
-use crate::format::{self, Bytes, PayloadEntry, PayloadHeader};
+use crate::format::{self, BundleComponentFile, Bytes, PayloadEntry, PayloadHeader};
 use crate::manifest::{self, BundleManifest, HashAlgorithm, UpdateType};
+use crate::{BUNDLE_HEADER_SIZE_LIMIT, BundleResult};
+
+const COMPONENTS_DIR: &str = "components";
+const COMPONENTS_SIZE_LIMIT: u64 = 64 * 1024;
 
 pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
     let manifest = toml::from_str::<BundleManifest>(
@@ -24,6 +27,7 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
         manifest: Some(serde_json::to_string(&manifest).unwrap()),
         is_incremental: matches!(manifest.update_type, UpdateType::Incremental),
         hash_algorithm,
+        components: load_bundle_components(path)?,
         payload_index: Vec::new(),
     };
     let mut prepared_payloads = Vec::new();
@@ -112,6 +116,13 @@ pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
         BufWriter::new(std::fs::File::create(dst).whatever("unable to create bundle file")?);
     write_segment_start(&mut bundle_file, format::tags::BUNDLE).unwrap();
     let bundle_header = format::encode::to_vec(&bundle_header, format::tags::BUNDLE_HEADER);
+    if bundle_header.len() as u64 > BUNDLE_HEADER_SIZE_LIMIT.raw {
+        bail!(
+            "bundle header exceeds size limit: {} > {} bytes",
+            bundle_header.len(),
+            BUNDLE_HEADER_SIZE_LIMIT.raw
+        );
+    }
     let header_hash = hash_algorithm.hash(&bundle_header);
     bundle_file.write_all(&bundle_header).unwrap();
     write_segment_start(&mut bundle_file, format::tags::PAYLOADS).unwrap();
@@ -141,6 +152,80 @@ struct PreparedPayload {
     payload_data: PathBuf,
 }
 
+fn load_bundle_components(path: &Path) -> BundleResult<Option<format::BundleComponents>> {
+    let root = path.join(COMPONENTS_DIR);
+    let metadata = match std::fs::symlink_metadata(&root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error
+                .whatever("unable to inspect bundle components directory")
+                .with_info(format!("path: {root:?}")));
+        }
+    };
+    if metadata.file_type().is_symlink() {
+        bail!("bundle components directory must not be a symlink");
+    }
+    if !metadata.is_dir() {
+        bail!("bundle components path is not a directory");
+    }
+
+    let mut total_size = 0;
+    let mut files = Vec::new();
+    collect_bundle_component_files(&root, &root, &mut total_size, &mut files)?;
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(Some(format::BundleComponents::new(files)))
+}
+
+fn collect_bundle_component_files(
+    root: &Path,
+    path: &Path,
+    total_size: &mut u64,
+    files: &mut Vec<BundleComponentFile>,
+) -> BundleResult<()> {
+    let entries = std::fs::read_dir(path)
+        .whatever("unable to read bundle components directory")
+        .with_info(|_| format!("path: {path:?}"))?;
+    for entry in entries {
+        let entry = entry
+            .whatever("unable to read bundle components directory entry")
+            .with_info(|_| format!("path: {path:?}"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .whatever("unable to inspect bundle component path")
+            .with_info(|_| format!("path: {path:?}"))?;
+        if file_type.is_symlink() {
+            bail!("bundle component path must not be a symlink: {path:?}");
+        }
+        if file_type.is_dir() {
+            collect_bundle_component_files(root, &path, total_size, files)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            bail!("bundle component path is not a regular file: {path:?}");
+        }
+        if !is_component_file(&path) {
+            bail!("unsupported bundle component file extension: {path:?}");
+        }
+
+        let relative_path = normalize_bundle_component_path(root, &path)?;
+        let data = std::fs::read(&path)
+            .whatever("unable to read bundle component file")
+            .with_info(|_| format!("path: {path:?}"))?;
+        *total_size += data.len() as u64 + relative_path.len() as u64;
+        if *total_size > COMPONENTS_SIZE_LIMIT {
+            bail!(
+                "bundle component metadata exceeds size limit: {} > {} bytes",
+                *total_size,
+                COMPONENTS_SIZE_LIMIT
+            );
+        }
+        files.push(BundleComponentFile::new(relative_path, data));
+    }
+    Ok(())
+}
+
 fn hash_file(algorithm: HashAlgorithm, path: &Path) -> std::io::Result<HashDigest> {
     let mut hasher = algorithm.hasher();
     let mut reader = BufReader::new(std::fs::File::open(path)?);
@@ -152,5 +237,78 @@ fn hash_file(algorithm: HashAlgorithm, path: &Path) -> std::io::Result<HashDiges
         hasher.update(buffer);
         let consumed = buffer.len();
         reader.consume(consumed);
+    }
+}
+
+fn normalize_bundle_component_path(root: &Path, path: &Path) -> BundleResult<String> {
+    let relative = path
+        .strip_prefix(root)
+        .whatever("unable to resolve bundle component path")?;
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        let PathComponent::Normal(part) = component else {
+            bail!("invalid bundle component path: {path:?}");
+        };
+        let part = part
+            .to_str()
+            .ok_or_else(|| whatever!("bundle component path is not UTF-8: {path:?}"))?;
+        if part.is_empty() {
+            bail!("invalid bundle component path: {path:?}");
+        }
+        parts.push(part);
+    }
+    if parts.is_empty() {
+        bail!("invalid bundle component path: {path:?}");
+    }
+    Ok(parts.join("/"))
+}
+
+fn is_component_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("toml") || extension.eq_ignore_ascii_case("json")
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reader::BundleReader;
+    use crate::source::{ReaderSource, SkipSeek};
+
+    #[test]
+    fn pack_embeds_bundle_components_in_header() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let bundle_dir = tempdir.path().join("bundle");
+        let components_dir = bundle_dir.join("components");
+        std::fs::create_dir_all(components_dir.join("nested")).unwrap();
+        std::fs::write(
+            bundle_dir.join("rugix-bundle.toml"),
+            r#"
+update-type = "full"
+payloads = []
+"#,
+        )
+        .unwrap();
+        std::fs::write(components_dir.join("z.toml"), b"id = \"component.z\"\n").unwrap();
+        std::fs::write(
+            components_dir.join("nested/a.json"),
+            br#"{"id": "component.a"}"#,
+        )
+        .unwrap();
+
+        let bundle_path = tempdir.path().join("bundle.rugixb");
+        let hash = pack(&bundle_dir, &bundle_path).unwrap();
+        let bundle_file = std::fs::File::open(&bundle_path).unwrap();
+        let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(bundle_file);
+        let bundle_reader = BundleReader::start(bundle_source, Some(hash)).unwrap();
+        let components = bundle_reader.header().components.as_ref().unwrap();
+
+        assert_eq!(components.files.len(), 2);
+        assert_eq!(components.files[0].path, "nested/a.json");
+        assert_eq!(components.files[0].data.raw, br#"{"id": "component.a"}"#);
+        assert_eq!(components.files[1].path, "z.toml");
+        assert_eq!(components.files[1].data.raw, b"id = \"component.z\"\n");
     }
 }
