@@ -105,6 +105,9 @@ pub struct PackDockerComposeCmd {
     /// Each entry is added at the same relative path inside the generation directory.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Component TOML/JSON files or directories to include in the bundle metadata.
+    #[clap(long = "components")]
+    components: Vec<PathBuf>,
     /// Health check timeout in seconds.  During activation, `docker compose up`
     /// waits up to this many seconds for containers with health checks to become
     /// healthy.  Set to 0 to disable.  Default: 120.
@@ -140,6 +143,9 @@ pub struct PackBinaryCmd {
     /// Extra files or directories to include in the archive.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Component TOML/JSON files or directories to include in the bundle metadata.
+    #[clap(long = "components")]
+    components: Vec<PathBuf>,
     /// Path to a JSON file with arbitrary metadata to include in the bundle.
     #[clap(long)]
     metadata_file: Option<PathBuf>,
@@ -157,6 +163,9 @@ pub struct PackGenericCmd {
     /// Extra files or directories to include in the archive.
     #[clap(long = "include")]
     includes: Vec<PathBuf>,
+    /// Component TOML/JSON files or directories to include in the bundle metadata.
+    #[clap(long = "components")]
+    components: Vec<PathBuf>,
     /// Path to a JSON file with arbitrary metadata to include in the bundle.
     #[clap(long)]
     metadata_file: Option<PathBuf>,

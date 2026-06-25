@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use super::{
-    app_block_encoding, finalize_bundle, tar_append_app_toml, tar_append_bytes,
-    tar_append_includes, tar_append_metadata,
+    app_block_encoding, finalize_bundle, stage_component_files, tar_append_app_toml,
+    tar_append_bytes, tar_append_includes, tar_append_metadata,
 };
 
 /// Pack a Docker Compose app into an app bundle.
@@ -80,6 +80,7 @@ pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
         tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
+    stage_component_files(bundle_dir.path(), &cmd.components)?;
 
     let mut payloads = vec![Payload {
         delivery: DeliveryConfig::AppArchive(AppArchiveDeliveryConfig::new(cmd.app.clone())),
@@ -1009,6 +1010,7 @@ services:
             disable_pinning: false,
             disable_image_bundling: false,
             includes: Vec::new(),
+            components: Vec::new(),
             health_check_timeout: None,
             metadata_file: None,
             compose_file: compose,

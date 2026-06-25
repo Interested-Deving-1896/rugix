@@ -1,9 +1,10 @@
 //! App bundle packing logic for Docker Compose, binary, and generic orchestrators.
 
+use std::collections::HashSet;
 use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::path::{Component as PathComponent, Path, PathBuf};
 
-use reportify::{bail, ResultExt};
+use reportify::{bail, whatever, ResultExt};
 use rugix_bundle::manifest::{
     AppArchiveDeliveryConfig, AppFileDeliveryConfig, BlockEncoding, BundleManifest, Compression,
     DeliveryConfig, Payload, UpdateType, XzCompression,
@@ -157,6 +158,141 @@ fn tar_append_metadata(
     Ok(())
 }
 
+/// Stage app component metadata so the low-level bundle builder embeds it in
+/// the bundle header.
+fn stage_component_files(bundle_dir: &Path, components: &[PathBuf]) -> BundleResult<()> {
+    if components.is_empty() {
+        return Ok(());
+    }
+
+    let component_root = bundle_dir.join("components");
+    fs::create_dir_all(&component_root).whatever("unable to create components directory")?;
+    let mut staged = HashSet::new();
+    for component in components {
+        stage_component_path(component, &component_root, &mut staged)?;
+    }
+    if staged.is_empty() {
+        bail!("no component files found");
+    }
+    Ok(())
+}
+
+fn stage_component_path(
+    path: &Path,
+    dst_root: &Path,
+    staged: &mut HashSet<String>,
+) -> BundleResult<()> {
+    let metadata = fs::symlink_metadata(path)
+        .whatever("unable to inspect component path")
+        .with_info(|_| format!("path: {}", path.display()))?;
+    if metadata.file_type().is_symlink() {
+        bail!("component path must not be a symlink: {}", path.display());
+    }
+    if metadata.is_dir() {
+        stage_component_dir(path, path, dst_root, staged)?;
+    } else if metadata.is_file() {
+        let Some(file_name) = path.file_name() else {
+            bail!("unable to determine component filename: {}", path.display());
+        };
+        let relative_path = component_path_string(Path::new(file_name))?;
+        stage_component_file(path, dst_root, relative_path, staged)?;
+    } else {
+        bail!(
+            "component path is not a regular file or directory: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn stage_component_dir(
+    root: &Path,
+    dir: &Path,
+    dst_root: &Path,
+    staged: &mut HashSet<String>,
+) -> BundleResult<()> {
+    let mut entries = fs::read_dir(dir)
+        .whatever("unable to read component directory")
+        .with_info(|_| format!("path: {}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .whatever("unable to read component directory entry")?;
+    entries.sort_by_key(|entry| entry.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .whatever("unable to inspect component directory entry")
+            .with_info(|_| format!("path: {}", path.display()))?;
+        if file_type.is_symlink() {
+            bail!("component path must not be a symlink: {}", path.display());
+        }
+        if file_type.is_dir() {
+            stage_component_dir(root, &path, dst_root, staged)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            bail!("component path is not a regular file: {}", path.display());
+        }
+        let relative_path = component_path_string(
+            path.strip_prefix(root)
+                .whatever("unable to resolve component path")?,
+        )?;
+        stage_component_file(&path, dst_root, relative_path, staged)?;
+    }
+    Ok(())
+}
+
+fn stage_component_file(
+    src: &Path,
+    dst_root: &Path,
+    relative_path: String,
+    staged: &mut HashSet<String>,
+) -> BundleResult<()> {
+    if !is_component_file(Path::new(&relative_path)) {
+        bail!("unsupported component file extension: {}", src.display());
+    }
+    if !staged.insert(relative_path.clone()) {
+        bail!("duplicate component path: {relative_path}");
+    }
+    let dst = dst_root.join(relative_path);
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).whatever("unable to create component parent directory")?;
+    }
+    fs::copy(src, &dst)
+        .whatever("unable to copy component file")
+        .with_info(|_| format!("source: {}, destination: {}", src.display(), dst.display()))?;
+    Ok(())
+}
+
+fn component_path_string(path: &Path) -> BundleResult<String> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let PathComponent::Normal(part) = component else {
+            bail!("invalid component path: {}", path.display());
+        };
+        let part = part
+            .to_str()
+            .ok_or_else(|| whatever!("component path is not UTF-8: {}", path.display()))?;
+        if part.is_empty() {
+            bail!("invalid component path: {}", path.display());
+        }
+        parts.push(part);
+    }
+    if parts.is_empty() {
+        bail!("invalid component path: {}", path.display());
+    }
+    Ok(parts.join("/"))
+}
+
+fn is_component_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("toml") || extension.eq_ignore_ascii_case("json")
+        })
+}
+
 /// Common block encoding configuration for app bundles.
 fn app_block_encoding() -> Option<BlockEncoding> {
     Some(
@@ -223,6 +359,7 @@ pub fn pack_binary(cmd: &super::PackBinaryCmd) -> BundleResult<()> {
         tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
+    stage_component_files(bundle_dir.path(), &cmd.components)?;
 
     // The binary goes as a separate app-file payload for optimal delta updates.
     let Some(binary_name) = cmd.binary.file_name().and_then(|n| n.to_str()) else {
@@ -279,6 +416,7 @@ pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
         tar_append_metadata(&mut archive, cmd.metadata_file.as_deref())?;
         archive.finish().whatever("unable to finish archive")?;
     }
+    stage_component_files(bundle_dir.path(), &cmd.components)?;
 
     let payloads = vec![Payload {
         delivery: DeliveryConfig::AppArchive(AppArchiveDeliveryConfig::new(cmd.app.clone())),
@@ -288,4 +426,51 @@ pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
     }];
 
     finalize_bundle(bundle_dir.path(), &cmd.output, &cmd.app, payloads)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rugix_bundle::reader::BundleReader;
+    use rugix_bundle::source::{ReaderSource, SkipSeek};
+
+    #[test]
+    fn app_bundle_includes_component_files() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let app_dir = tempdir.path().join("app");
+        fs::create_dir_all(app_dir.join("components/nested")).unwrap();
+        fs::write(app_dir.join("orchestrator"), b"#!/bin/sh\n").unwrap();
+        fs::write(app_dir.join("components/app.toml"), b"id = \"app.test\"\n").unwrap();
+        fs::write(
+            app_dir.join("components/nested/runtime.json"),
+            br#"{"id":"app.test.runtime"}"#,
+        )
+        .unwrap();
+
+        let output = tempdir.path().join("app.rugixb");
+        let cmd = crate::PackGenericCmd {
+            app: "test_app".to_owned(),
+            orchestrator: app_dir.join("orchestrator"),
+            includes: Vec::new(),
+            components: vec![app_dir.join("components")],
+            metadata_file: None,
+            output: output.clone(),
+        };
+
+        pack_generic(&cmd).unwrap();
+
+        let bundle_file = File::open(output).unwrap();
+        let source = ReaderSource::<_, SkipSeek>::from_unbuffered(bundle_file);
+        let reader = BundleReader::start(source, None).unwrap();
+        let components = reader.header().components.as_ref().unwrap();
+
+        assert_eq!(components.files.len(), 2);
+        assert_eq!(components.files[0].path, "app.toml");
+        assert_eq!(components.files[0].data.raw, b"id = \"app.test\"\n");
+        assert_eq!(components.files[1].path, "nested/runtime.json");
+        assert_eq!(
+            components.files[1].data.raw,
+            br#"{"id":"app.test.runtime"}"#
+        );
+    }
 }
