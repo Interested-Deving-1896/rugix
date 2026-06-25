@@ -1636,6 +1636,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rugix-component-set"
+version = "0.1.0"
+dependencies = [
+ "rugix-versioning",
+ "serde",
+]
+
+[[package]]
 name = "rugix-compression"
 version = "0.1.0"
 dependencies = [
@@ -1751,6 +1759,13 @@ dependencies = [
 [[package]]
 name = "rugix-version"
 version = "0.1.0"
+
+[[package]]
+name = "rugix-versioning"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "rustc-demangle"
