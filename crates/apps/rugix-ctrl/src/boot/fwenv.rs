@@ -1,7 +1,9 @@
 use hashbrown::HashMap;
 
 use reportify::ResultExt;
-use xscript::{read_str, run, Run};
+use xscript::read_str;
+use xscript::run;
+use xscript::Run;
 
 use crate::system::boot_flows::BootFlowResult;
 

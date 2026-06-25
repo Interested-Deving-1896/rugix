@@ -1,25 +1,39 @@
 use std::fs::File;
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::Parser;
+use clap::Subcommand;
+use clap::ValueEnum;
 
 use cms::cert::x509::der::oid::db::rfc5911::ID_SIGNED_DATA;
 use cms::cert::x509::der::Decode;
-use reportify::{bail, ResultExt};
+use reportify::bail;
+use reportify::ResultExt;
+use rugix_bundle::add_bundle_signature;
+use rugix_bundle::bundle_hash;
+use rugix_bundle::format;
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::format::tags::TagNameResolver;
-use rugix_bundle::manifest::{
-    BlockEncoding, BundleManifest, Compression, DeliveryConfig, DeltaEncoding, DeltaEncodingFormat,
-    DeltaEncodingInput, HashAlgorithm, XzCompression,
-};
+use rugix_bundle::manifest::BlockEncoding;
+use rugix_bundle::manifest::BundleManifest;
+use rugix_bundle::manifest::Compression;
+use rugix_bundle::manifest::DeliveryConfig;
+use rugix_bundle::manifest::DeltaEncoding;
+use rugix_bundle::manifest::DeltaEncodingFormat;
+use rugix_bundle::manifest::DeltaEncodingInput;
+use rugix_bundle::manifest::HashAlgorithm;
+use rugix_bundle::manifest::XzCompression;
 use rugix_bundle::reader::BundleReader;
+use rugix_bundle::signed_metadata;
 use rugix_bundle::source::FileSource;
 use rugix_bundle::xdelta::xdelta_compress;
-use rugix_bundle::{add_bundle_signature, bundle_hash, format, signed_metadata, BundleResult};
+use rugix_bundle::BundleResult;
 use rugix_chunker::ChunkerAlgorithm;
 use si_crypto_hashes::HashDigest;
-use tracing::{info, Level};
+use tracing::info;
+use tracing::Level;
 
 mod apps;
 mod simulation;

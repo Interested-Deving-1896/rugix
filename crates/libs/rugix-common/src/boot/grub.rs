@@ -1,15 +1,19 @@
 //! Utilities for the Grub boot flow.
 
 use std::collections::HashMap;
-use std::fs::{self, File};
+use std::fs::File;
+use std::fs::{self};
 use std::io::Write;
 use std::path::Path;
 
-use reportify::{Report, ResultExt};
-use sha1::{Digest, Sha1};
+use reportify::Report;
+use reportify::ResultExt;
+use sha1::Digest;
+use sha1::Sha1;
 use thiserror::Error;
 
-use crate::utils::ascii_numbers::{self, bytes_to_ascii_hex};
+use crate::utils::ascii_numbers::bytes_to_ascii_hex;
+use crate::utils::ascii_numbers::{self};
 
 /// Signature of Grub environment blocks.
 const ENVBLK_SIGNATURE: &str = "# GRUB Environment Block\n";
@@ -190,7 +194,8 @@ pub fn save_grub_env<P: AsRef<Path>>(path: P, env: &GrubEnv) -> Result<(), Repor
 mod tests {
     use std::collections::HashMap;
 
-    use crate::boot::grub::{grub_envblk_decode, grub_envblk_encode};
+    use crate::boot::grub::grub_envblk_decode;
+    use crate::boot::grub::grub_envblk_encode;
 
     #[test]
     pub fn test_empty() {

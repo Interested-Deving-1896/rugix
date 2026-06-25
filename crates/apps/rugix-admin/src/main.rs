@@ -1,10 +1,13 @@
 use std::net::SocketAddr;
 
 use axum::extract::DefaultBodyLimit;
-use axum::routing::{get, post};
-use axum::{Router, Server};
+use axum::routing::get;
+use axum::routing::post;
+use axum::Router;
+use axum::Server;
 use clap::Parser;
-use include_dir::{include_dir, Dir};
+use include_dir::include_dir;
+use include_dir::Dir;
 
 mod assets;
 mod ctrl;

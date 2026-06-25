@@ -1,12 +1,14 @@
 use std::ops::Index;
-use std::sync::atomic::{self, AtomicBool};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{self};
 
 use indexmap::IndexMap;
 use reportify::bail;
 
 use crate::config::system::BootGroupConfig;
 
-use super::slots::{SlotIdx, SystemSlots};
+use super::slots::SlotIdx;
+use super::slots::SystemSlots;
 use super::SystemResult;
 
 /// Unique index of a boot group of a system.

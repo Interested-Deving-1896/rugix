@@ -1,41 +1,67 @@
 use std::ffi::CString;
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::path::PathBuf;
+use std::thread;
 use std::time::Duration;
-use std::{fs, io, thread};
 
 use byte_calc::NumBytes;
 use nix::mount::MntFlags;
-use reportify::{bail, ensure, ErrorExt, ResultExt};
+use reportify::bail;
+use reportify::ensure;
+use reportify::ErrorExt;
+use reportify::ResultExt;
 use rugix_common::disk::blkdev::BlockDevice;
 
 use rugix_common::mount::is_mount_point;
-use tracing::{debug, error, info, warn};
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
-use crate::config::bootstrapping::{BootstrappingConfig, DefaultLayoutConfig, SystemLayoutConfig};
-use crate::config::state::{
-    OverlayConfig, OverlayFallbackConfig, PersistConfig, PersistDirectoryConfig, PersistFileConfig,
-    StateConfig,
-};
+use crate::config::bootstrapping::BootstrappingConfig;
+use crate::config::bootstrapping::DefaultLayoutConfig;
+use crate::config::bootstrapping::SystemLayoutConfig;
+use crate::config::state::OverlayConfig;
+use crate::config::state::OverlayFallbackConfig;
+use crate::config::state::PersistConfig;
+use crate::config::state::PersistDirectoryConfig;
+use crate::config::state::PersistFileConfig;
+use crate::config::state::StateConfig;
 use crate::config::system::SystemConfig;
 use crate::state::load_state_config;
 use crate::system::boot_flows::BootFlowCapabilities;
 use crate::system::config::load_system_config;
-use crate::system::data_partition::{resolve_driver, DriverContext};
+use crate::system::data_partition::resolve_driver;
+use crate::system::data_partition::DriverContext;
 use crate::system::partitions::resolve_data_partition;
-use crate::system::paths::{MOUNT_POINT_CONFIG, MOUNT_POINT_DATA, MOUNT_POINT_SYSTEM};
-use crate::system::root::{find_system_device, SystemRoot};
-use crate::system::{System, SystemError, SystemResult};
+use crate::system::paths::MOUNT_POINT_CONFIG;
+use crate::system::paths::MOUNT_POINT_DATA;
+use crate::system::paths::MOUNT_POINT_SYSTEM;
+use crate::system::root::find_system_device;
+use crate::system::root::SystemRoot;
+use crate::system::System;
+use crate::system::SystemError;
+use crate::system::SystemResult;
 use rugix_common::disk::blkpg::update_kernel_partitions;
-use rugix_common::disk::repart::{
-    generic_efi_partition_schema, generic_mbr_partition_schema, repart, PartitionSchema,
-    SchemaPartition,
-};
+use rugix_common::disk::repart::generic_efi_partition_schema;
+use rugix_common::disk::repart::generic_mbr_partition_schema;
+use rugix_common::disk::repart::repart;
+use rugix_common::disk::repart::PartitionSchema;
+use rugix_common::disk::repart::SchemaPartition;
 use rugix_common::disk::PartitionTable;
 use rugix_common::partitions::mkfs_ext4;
 use rugix_hooks::HooksLoader;
-use xscript::{run, vars, Run, Vars};
+use xscript::run;
+use xscript::vars;
+use xscript::Run;
+use xscript::Vars;
 
-use crate::utils::{clear_flag, is_flag_set, is_init_process, DEFERRED_SPARE_REBOOT_FLAG};
+use crate::utils::clear_flag;
+use crate::utils::is_flag_set;
+use crate::utils::is_init_process;
+use crate::utils::DEFERRED_SPARE_REBOOT_FLAG;
 
 mod error_shell;
 

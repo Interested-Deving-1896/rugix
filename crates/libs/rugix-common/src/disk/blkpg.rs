@@ -6,11 +6,15 @@
 
 use std::ffi::c_void;
 use std::fs::File;
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::AsRawFd;
+use std::os::fd::RawFd;
 use std::path::Path;
 
-use nix::libc::{c_char, c_int, c_longlong};
-use reportify::{Report, ResultExt};
+use nix::libc::c_char;
+use nix::libc::c_int;
+use nix::libc::c_longlong;
+use reportify::Report;
+use reportify::ResultExt;
 
 use super::PartitionTable;
 use crate::disk::NumBlocks;

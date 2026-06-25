@@ -5,9 +5,16 @@ use std::time::Duration;
 
 use tracing::info;
 
-use rugix_cli::style::{Styled, Stylize};
-use rugix_cli::widgets::{Heading, ProgressBar, ProgressSpinner, Rule, Text, Widget};
-use rugix_cli::{DrawCtx, StatusSegment};
+use rugix_cli::style::Styled;
+use rugix_cli::style::Stylize;
+use rugix_cli::widgets::Heading;
+use rugix_cli::widgets::ProgressBar;
+use rugix_cli::widgets::ProgressSpinner;
+use rugix_cli::widgets::Rule;
+use rugix_cli::widgets::Text;
+use rugix_cli::widgets::Widget;
+use rugix_cli::DrawCtx;
+use rugix_cli::StatusSegment;
 
 pub fn cli() {
     let _hello_world = rugix_cli::add_status(Styled::new("Hello World!").blue());

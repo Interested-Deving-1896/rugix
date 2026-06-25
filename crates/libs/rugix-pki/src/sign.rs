@@ -1,22 +1,40 @@
 //! CMS signature creation.
 
-use aws_lc_rs::signature::{
-    ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair, Ed25519KeyPair,
-    KeyPair, RsaKeyPair,
-};
+use aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
+use aws_lc_rs::signature::ECDSA_P384_SHA384_ASN1_SIGNING;
+use aws_lc_rs::signature::EcdsaKeyPair;
+use aws_lc_rs::signature::Ed25519KeyPair;
+use aws_lc_rs::signature::KeyPair;
+use aws_lc_rs::signature::RsaKeyPair;
 use cms::cert::CertificateChoices;
-use cms::content_info::{CmsVersion, ContentInfo};
-use cms::signed_data::{
-    CertificateSet, EncapsulatedContentInfo, SignedData, SignerIdentifier, SignerInfo, SignerInfos,
-};
+use cms::content_info::CmsVersion;
+use cms::content_info::ContentInfo;
+use cms::signed_data::CertificateSet;
+use cms::signed_data::EncapsulatedContentInfo;
+use cms::signed_data::SignedData;
+use cms::signed_data::SignerIdentifier;
+use cms::signed_data::SignerInfo;
+use cms::signed_data::SignerInfos;
 use const_oid::ObjectIdentifier;
-use const_oid::db::rfc5911::{ID_CONTENT_TYPE, ID_DATA, ID_MESSAGE_DIGEST, ID_SIGNED_DATA};
-use const_oid::db::rfc5912::{
-    ECDSA_WITH_SHA_256, ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, ID_SHA_256, ID_SHA_384, ID_SHA_512,
-    RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION,
-};
-use der::asn1::{OctetString, SetOfVec, UtcTime};
-use der::{Any, Decode, Encode, Tag};
+use const_oid::db::rfc5911::ID_CONTENT_TYPE;
+use const_oid::db::rfc5911::ID_DATA;
+use const_oid::db::rfc5911::ID_MESSAGE_DIGEST;
+use const_oid::db::rfc5911::ID_SIGNED_DATA;
+use const_oid::db::rfc5912::ECDSA_WITH_SHA_256;
+use const_oid::db::rfc5912::ECDSA_WITH_SHA_384;
+use const_oid::db::rfc5912::ID_EC_PUBLIC_KEY;
+use const_oid::db::rfc5912::ID_SHA_256;
+use const_oid::db::rfc5912::ID_SHA_384;
+use const_oid::db::rfc5912::ID_SHA_512;
+use const_oid::db::rfc5912::RSA_ENCRYPTION;
+use const_oid::db::rfc5912::SHA_256_WITH_RSA_ENCRYPTION;
+use der::Any;
+use der::Decode;
+use der::Encode;
+use der::Tag;
+use der::asn1::OctetString;
+use der::asn1::SetOfVec;
+use der::asn1::UtcTime;
 use spki::AlgorithmIdentifierOwned;
 use x509_cert::Certificate;
 use x509_cert::attr::Attribute;
@@ -24,7 +42,12 @@ use x509_cert::attr::Attribute;
 use std::time::SystemTime;
 use zeroize::Zeroizing;
 
-use crate::{PkiError, PkiResult, RsaPssParams, SignatureAlgorithm, compute_digest, pem};
+use crate::PkiError;
+use crate::PkiResult;
+use crate::RsaPssParams;
+use crate::SignatureAlgorithm;
+use crate::compute_digest;
+use crate::pem;
 
 /// A CMS signer that can create CMS `SignedData`` structures.
 pub struct CmsSigner {

@@ -1,15 +1,25 @@
 use std::fmt::Write;
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
+use std::os::unix::fs::FileTypeExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::str::FromStr;
 
-use reportify::{whatever, Report, ResultExt};
+use reportify::whatever;
+use reportify::Report;
+use reportify::ResultExt;
 use serde::Deserialize;
-use xscript::{read_str, run, Run};
+use xscript::read_str;
+use xscript::run;
+use xscript::Run;
 
 use super::blkdev::BlockDevice;
 use super::gpt::Guid;
-use super::{mbr, DiskId, NumBlocks, Partition, PartitionTable, PartitionType};
+use super::mbr;
+use super::DiskId;
+use super::NumBlocks;
+use super::Partition;
+use super::PartitionTable;
+use super::PartitionType;
 use crate::partitions::DiskError;
 use crate::utils::units::NumBytes;
 

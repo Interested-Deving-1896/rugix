@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use xscript::{read_str, run, LocalEnv, Out, Run};
+use xscript::read_str;
+use xscript::run;
+use xscript::LocalEnv;
+use xscript::Out;
+use xscript::Run;
 
 #[derive(Debug, Parser)]
 pub struct Args {

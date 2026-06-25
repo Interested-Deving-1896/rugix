@@ -139,11 +139,13 @@
 //! - STLV streams allow for the detection of truncated and invalid inputs.
 
 use std::fmt;
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 
 use console::style;
 
-use byte_calc::{ByteLen, NumBytes};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
 use reportify::bail;
 
 use crate::BundleResult;

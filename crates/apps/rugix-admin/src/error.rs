@@ -1,7 +1,9 @@
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
+use axum::response::Response;
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::json;
+use serde_json::Value;
 
 use crate::generated::api;
 

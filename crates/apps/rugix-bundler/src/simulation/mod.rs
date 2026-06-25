@@ -7,9 +7,11 @@ use std::sync::Arc;
 
 use clap::Subcommand;
 use rugix_bundle::xdelta::xdelta_compress;
-use rugix_chunker::{Chunker, ChunkerAlgorithm};
+use rugix_chunker::Chunker;
+use rugix_chunker::ChunkerAlgorithm;
 use serde::Serialize;
-use si_crypto_hashes::{HashAlgorithm, HashDigest};
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
 use tracing::info;
 
 use crate::simulation::deltar::Instruction;

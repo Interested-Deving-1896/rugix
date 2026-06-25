@@ -5,7 +5,10 @@ use std::ops::Deref;
 use thiserror::Error;
 
 use super::NumBlocks;
-use crate::utils::ascii_numbers::{self, byte_to_ascii_hex, parse_ascii_hex_byte, Case};
+use crate::utils::ascii_numbers::byte_to_ascii_hex;
+use crate::utils::ascii_numbers::parse_ascii_hex_byte;
+use crate::utils::ascii_numbers::Case;
+use crate::utils::ascii_numbers::{self};
 use crate::utils::const_helpers::const_for;
 
 /// Number of blocks used by a GPT partition table.

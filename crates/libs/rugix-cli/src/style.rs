@@ -367,7 +367,8 @@ impl IntoIterator for ModifierSet {
 mod modifier_set_iter {
     use std::iter::FusedIterator;
 
-    use super::{Modifier, ModifierSet};
+    use super::Modifier;
+    use super::ModifierSet;
 
     /// Iterator over the modifiers contained in a [`ModifierSet`]
     pub struct ModifierSetIter {

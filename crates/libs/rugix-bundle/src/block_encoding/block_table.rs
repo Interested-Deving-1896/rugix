@@ -2,9 +2,13 @@
 
 use std::hash::BuildHasher;
 
-use hashbrown::{DefaultHashBuilder, HashTable, hash_table};
+use hashbrown::DefaultHashBuilder;
+use hashbrown::HashTable;
+use hashbrown::hash_table;
 
-use super::block_index::{BlockId, BlockIndex, RawBlockIndex};
+use super::block_index::BlockId;
+use super::block_index::BlockIndex;
+use super::block_index::RawBlockIndex;
 
 /// Block table.
 #[derive(Debug)]

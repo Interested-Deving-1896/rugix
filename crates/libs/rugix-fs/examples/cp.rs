@@ -1,4 +1,5 @@
-use rugix_fs::{Copier, FsResult};
+use rugix_fs::Copier;
+use rugix_fs::FsResult;
 use rugix_tasks::spawn_blocking;
 
 fn main() -> FsResult<()> {

@@ -6,12 +6,16 @@
 
 use std::path::Path;
 
-use reportify::{bail, ResultExt};
+use reportify::bail;
+use reportify::ResultExt;
 use tracing::warn;
-use xscript::{read_str, Run};
+use xscript::read_str;
+use xscript::Run;
 
-use super::{BootFlow, BootFlowResult};
-use crate::system::boot_groups::{BootGroupIdx, BootGroups};
+use super::BootFlow;
+use super::BootFlowResult;
+use crate::system::boot_groups::BootGroupIdx;
+use crate::system::boot_groups::BootGroups;
 use crate::system::System;
 
 /// The GUID for systemd's loader EFI variables.

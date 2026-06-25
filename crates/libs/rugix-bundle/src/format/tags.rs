@@ -33,7 +33,8 @@
 //! f"0x{random.randint(2**31, 2**32 - 1):08x}"
 //! ```
 
-use super::stlv::{self, Tag};
+use super::stlv::Tag;
+use super::stlv::{self};
 
 /// Bit mask to determine whether the handling of a tag is optional or required.
 const IS_OPTIONAL_MASK: u8 = 0b1000_0000;

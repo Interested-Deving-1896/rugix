@@ -3,14 +3,21 @@
 use std::path::Path;
 
 use rand::RngExt;
-use reportify::{bail, Report};
-use serde::{Deserialize, Serialize};
+use reportify::bail;
+use reportify::Report;
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
-use self::gpt::{Guid, GPT_TABLE_BLOCKS, GUID_STRING_LENGTH};
+use self::gpt::Guid;
+use self::gpt::GPT_TABLE_BLOCKS;
+use self::gpt::GUID_STRING_LENGTH;
 use crate::partitions::DiskError;
-use crate::utils::ascii_numbers::{parse_ascii_decimal_digit, Case};
-use crate::utils::units::{NumBytes, Quantity, Unit};
+use crate::utils::ascii_numbers::parse_ascii_decimal_digit;
+use crate::utils::ascii_numbers::Case;
+use crate::utils::units::NumBytes;
+use crate::utils::units::Quantity;
+use crate::utils::units::Unit;
 
 pub mod blkdev;
 pub mod blkpg;

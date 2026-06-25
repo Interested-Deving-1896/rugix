@@ -1,14 +1,21 @@
 //! Common functionality for Rugix's various CLIs.
 
+use std::fmt;
+use std::io;
 use std::ops::Deref;
 use std::panic::AssertUnwindSafe;
-use std::sync::{Arc, LazyLock, Mutex, Weak};
-use std::time::{Duration, Instant};
-use std::{fmt, io};
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
+use std::sync::Weak;
+use std::time::Duration;
+use std::time::Instant;
 
 use console::Term;
-use rugix_tasks::{is_canceled_payload, spawn_blocking};
-use style::{Style, Styled};
+use rugix_tasks::is_canceled_payload;
+use rugix_tasks::spawn_blocking;
+use style::Style;
+use style::Styled;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::MakeWriter;
@@ -952,7 +959,8 @@ impl fmt::Write for DrawCtx<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{VisualHeight, VisualWidth};
+    use crate::VisualHeight;
+    use crate::VisualWidth;
 
     #[test]
     fn test_measure_visual_height() {

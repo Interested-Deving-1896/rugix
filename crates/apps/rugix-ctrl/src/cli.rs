@@ -1,9 +1,13 @@
 //! Definition of the command line interface (CLI).
 
 use std::collections::BTreeSet;
-use std::fs::{self, File};
-use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::fs::{self};
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Child;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -12,36 +16,66 @@ use rugix_bundle::format;
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::manifest::ChunkerAlgorithm;
 use rugix_bundle::reader::block_provider::StoredBlockProvider;
-use rugix_bundle::reader::{BundleReader, DecodedPayloadInfo, PayloadTarget};
-use rugix_bundle::source::{BundleSource, ReaderSource, SkipRead, SkipSeek};
+use rugix_bundle::reader::BundleReader;
+use rugix_bundle::reader::DecodedPayloadInfo;
+use rugix_bundle::reader::PayloadTarget;
+use rugix_bundle::source::BundleSource;
+use rugix_bundle::source::ReaderSource;
+use rugix_bundle::source::SkipRead;
+use rugix_bundle::source::SkipSeek;
 use rugix_bundle::xdelta::xdelta_decompress;
-use rugix_cli::widgets::{ProgressBar, ProgressSpinner, Widget};
+use rugix_cli::widgets::ProgressBar;
+use rugix_cli::widgets::ProgressSpinner;
+use rugix_cli::widgets::Widget;
 use rugix_cli::StatusSegment;
-use rugix_common::disk::blkdev::{find_block_device, BlockDevice};
+use rugix_common::disk::blkdev::find_block_device;
+use rugix_common::disk::blkdev::BlockDevice;
 use rugix_common::mount::is_mount_point;
-use rugix_common::pipe::{buffered_pipe, PipeWriter};
+use rugix_common::pipe::buffered_pipe;
+use rugix_common::pipe::PipeWriter;
 use rugix_common::slots::SlotState;
-use rugix_hooks::{HooksLoader, RunOptions};
-use si_crypto_hashes::{HashAlgorithm, HashDigest, Hasher};
-use tracing::{debug, error, info, trace, warn};
+use rugix_hooks::HooksLoader;
+use rugix_hooks::RunOptions;
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
+use si_crypto_hashes::Hasher;
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::trace;
+use tracing::warn;
 
 use crate::config::config::Config;
-use crate::config::events::{Event, UpdateProgressEvent};
+use crate::config::events::Event;
+use crate::config::events::UpdateProgressEvent;
 use crate::config::load_ctrl_config;
-use crate::system::boot_groups::{BootGroup, BootGroupIdx};
+use crate::system::boot_groups::BootGroup;
+use crate::system::boot_groups::BootGroupIdx;
 use crate::system::slots::SlotKind;
-use crate::system::{System, SystemResult};
-use clap::{Parser, ValueEnum};
-use reportify::{bail, whatever, ErrorExt, ResultExt};
+use crate::system::System;
+use crate::system::SystemResult;
+use clap::Parser;
+use clap::ValueEnum;
+use reportify::bail;
+use reportify::whatever;
+use reportify::ErrorExt;
+use reportify::ResultExt;
 use rugix_common::stream_hasher::StreamHasher;
-use xscript::{vars, Vars};
+use xscript::vars;
+use xscript::Vars;
 
-use crate::config::output::{BlockDeviceInfo, ComponentsCheckOutput};
-use crate::http_source::{HttpSource, RetryConfig};
+use crate::config::output::BlockDeviceInfo;
+use crate::config::output::ComponentsCheckOutput;
+use crate::http_source::HttpSource;
+use crate::http_source::RetryConfig;
 use crate::overlay::overlay_dir;
-use crate::payload_db::{self, BlockProvider};
+use crate::payload_db::BlockProvider;
+use crate::payload_db::{self};
 use crate::system_state;
-use crate::utils::{clear_flag, reboot, set_flag, DEFERRED_SPARE_REBOOT_FLAG};
+use crate::utils::clear_flag;
+use crate::utils::reboot;
+use crate::utils::set_flag;
+use crate::utils::DEFERRED_SPARE_REBOOT_FLAG;
 
 fn create_rugix_state_directory() -> SystemResult<()> {
     fs::create_dir_all("/run/rugix/state/.rugix")
@@ -585,7 +619,8 @@ pub fn main() -> SystemResult<()> {
                         .whatever("unable to write apps list to stdout")?;
                 }
                 AppsCommand::Info { app } => {
-                    use crate::config::output::{AppInfoOutput, GenerationInfoOutput};
+                    use crate::config::output::AppInfoOutput;
+                    use crate::config::output::GenerationInfoOutput;
                     let status = resolve_app_status(manager.app_status(app).ok());
                     let generations = manager
                         .list_generations(app)

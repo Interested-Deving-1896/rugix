@@ -23,11 +23,15 @@
 //! empty selector lists are omitted when serializing component metadata.
 
 use std::borrow::Borrow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::fmt;
 
-pub use rugix_versioning::{ParseError as VersionParseError, Version, VersionReq};
-use serde::{Deserialize, Serialize};
+pub use rugix_versioning::ParseError as VersionParseError;
+pub use rugix_versioning::Version;
+pub use rugix_versioning::VersionReq;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// A component participating in a compatibility check.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -6,15 +6,26 @@
 //! notice explaining how to enable it on a future boot.
 
 use std::ffi::CString;
-use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind, Read, Write};
+use std::fs::OpenOptions;
+use std::fs::{self};
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Write;
+use std::io::{self};
 use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
 use std::time::Duration;
 
 use nix::mount::MsFlags;
-use nix::poll::{poll, PollFd, PollFlags, PollTimeout};
-use nix::sys::termios::{cfmakeraw, tcgetattr, tcsetattr, SetArg, Termios};
+use nix::poll::poll;
+use nix::poll::PollFd;
+use nix::poll::PollFlags;
+use nix::poll::PollTimeout;
+use nix::sys::termios::cfmakeraw;
+use nix::sys::termios::tcgetattr;
+use nix::sys::termios::tcsetattr;
+use nix::sys::termios::SetArg;
+use nix::sys::termios::Termios;
 use reportify::ResultExt;
 use rugix_common::mount::is_mount_point;
 use tracing::warn;

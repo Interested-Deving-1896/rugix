@@ -2,7 +2,8 @@
 
 use zeroize::Zeroizing;
 
-use crate::{PkiError, PkiResult};
+use crate::PkiError;
+use crate::PkiResult;
 
 /// Parse PEM-encoded data, returning the DER bytes.
 pub fn parse(pem_data: &[u8], expected_label: &str) -> PkiResult<Vec<u8>> {

@@ -134,7 +134,8 @@
 
 pub mod errors;
 
-use crate::errors::{ByteUnitParseError, NumBytesParseError};
+use crate::errors::ByteUnitParseError;
+use crate::errors::NumBytesParseError;
 
 /// Auxiliary macro as a replacement for `?` in `const` contexts.
 macro_rules! const_try {

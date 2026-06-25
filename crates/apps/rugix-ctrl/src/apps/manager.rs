@@ -1,18 +1,28 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use reportify::ResultExt;
-use tracing::{error, info, warn};
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
-use crate::config::apps::{
-    AppGeneration, AppState, AppStateActive, AppStateError, AppStateStarting, AppStateStopping,
-    AppStateSwitching, AppsConfig,
-};
+use crate::config::apps::AppGeneration;
+use crate::config::apps::AppState;
+use crate::config::apps::AppStateActive;
+use crate::config::apps::AppStateError;
+use crate::config::apps::AppStateStarting;
+use crate::config::apps::AppStateStopping;
+use crate::config::apps::AppStateSwitching;
+use crate::config::apps::AppsConfig;
 use crate::payload_db::PayloadState;
 
-use super::orchestrators::{AppContext, AppStatus};
-use super::{config, orchestrators, AppsResult};
+use super::config;
+use super::orchestrators;
+use super::orchestrators::AppContext;
+use super::orchestrators::AppStatus;
+use super::AppsResult;
 use rugix_bundle::manifest::AppManifest;
 
 /// An advisory file lock held for the duration of a mutating operation.

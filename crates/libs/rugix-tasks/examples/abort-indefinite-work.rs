@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use rugix_tasks::{check_canceled, shutdown_blocking, spawn, spawn_blocking};
+use rugix_tasks::check_canceled;
+use rugix_tasks::shutdown_blocking;
+use rugix_tasks::spawn;
+use rugix_tasks::spawn_blocking;
 
 /// Does some work indefinitely until the task is aborted.
 pub fn work_indefinitely() {

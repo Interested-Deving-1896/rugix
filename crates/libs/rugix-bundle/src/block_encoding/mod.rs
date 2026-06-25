@@ -1,19 +1,27 @@
 //! Implementation of the block encoding for Rugix's update bundles.
 
 use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader, Read, Seek, Write};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::Write;
 use std::path::Path;
 
 use block_index::index_for_block_encoding;
 use block_table::BlockTable;
-use byte_calc::{ByteLen, NumBytes};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
 use reportify::ResultExt;
 use rugix_compression::ByteProcessor;
-use tracing::{debug, trace};
+use tracing::debug;
+use tracing::trace;
 
+use crate::BundleResult;
+use crate::format;
 use crate::format::Bytes;
-use crate::manifest::{self, BlockEncoding};
-use crate::{BundleResult, format};
+use crate::manifest::BlockEncoding;
+use crate::manifest::{self};
 
 pub mod block_index;
 pub mod block_table;

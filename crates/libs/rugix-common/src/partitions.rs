@@ -1,7 +1,12 @@
 use std::path::Path;
 
-use reportify::{Report, ResultExt};
-use xscript::{cmd_os, read_str, run, ParentEnv, Run};
+use reportify::Report;
+use reportify::ResultExt;
+use xscript::cmd_os;
+use xscript::read_str;
+use xscript::run;
+use xscript::ParentEnv;
+use xscript::Run;
 
 pub fn is_dir(path: impl AsRef<Path>) -> bool {
     path.as_ref().is_dir()

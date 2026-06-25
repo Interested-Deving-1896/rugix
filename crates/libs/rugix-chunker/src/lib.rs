@@ -3,8 +3,10 @@
 use std::error::Error;
 use std::str::FromStr;
 
-use byte_calc::{ByteLen, NumBytes};
-use casync::{CasyncChunker, CasyncChunkerOptions};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
+use casync::CasyncChunker;
+use casync::CasyncChunkerOptions;
 use serde::de::Unexpected;
 use serde::Deserialize;
 

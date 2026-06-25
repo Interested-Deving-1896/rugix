@@ -4,7 +4,10 @@ use std::fs;
 use std::path::Path;
 
 use reportify::ResultExt;
-use tracing::{debug, error, info, warn};
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
 use crate::apps::manager::AppManager;
 use crate::apps::AppsResult;

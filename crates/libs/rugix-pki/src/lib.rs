@@ -44,8 +44,12 @@ mod pem;
 mod sign;
 mod verify;
 
-pub use sign::{CmsSigner, CmsSignerBuilder, RsaHashAlgorithm, RsaSignatureMode};
-pub use verify::{CmsVerifier, VerificationResult};
+pub use sign::CmsSigner;
+pub use sign::CmsSignerBuilder;
+pub use sign::RsaHashAlgorithm;
+pub use sign::RsaSignatureMode;
+pub use verify::CmsVerifier;
+pub use verify::VerificationResult;
 
 use thiserror::Error;
 
@@ -159,8 +163,13 @@ pub(crate) fn compute_digest(
     content: &[u8],
     digest_oid: &const_oid::ObjectIdentifier,
 ) -> Option<Vec<u8>> {
-    use aws_lc_rs::digest::{SHA256, SHA384, SHA512, digest};
-    use const_oid::db::rfc5912::{ID_SHA_256, ID_SHA_384, ID_SHA_512};
+    use aws_lc_rs::digest::SHA256;
+    use aws_lc_rs::digest::SHA384;
+    use aws_lc_rs::digest::SHA512;
+    use aws_lc_rs::digest::digest;
+    use const_oid::db::rfc5912::ID_SHA_256;
+    use const_oid::db::rfc5912::ID_SHA_384;
+    use const_oid::db::rfc5912::ID_SHA_512;
 
     if *digest_oid == ID_SHA_256 {
         Some(digest(&SHA256, content).as_ref().to_vec())

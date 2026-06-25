@@ -1,18 +1,23 @@
 //! Functionality for running cancelable blocking and asynchronous tasks.
 
 use std::any::Any;
-use std::fmt::{self, Debug};
+use std::fmt::Debug;
+use std::fmt::{self};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use flume::Receiver;
 use futures::FutureExt;
 use pin_project::pin_project;
 use scoped_tls::scoped_thread_local;
-use tokio::runtime::{Handle, Runtime};
+use tokio::runtime::Handle;
+use tokio::runtime::Runtime;
 use tokio::sync::Notify;
 
 scoped_thread_local! {

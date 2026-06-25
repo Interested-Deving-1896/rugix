@@ -3,10 +3,14 @@
 use hashbrown::HashMap;
 use reportify::bail;
 
-use crate::boot::fwenv::{load_vars, set_vars};
+use crate::boot::fwenv::load_vars;
+use crate::boot::fwenv::set_vars;
 use crate::config::system::RaucBootFlowConfig;
-use crate::system::boot_flows::{BootFlow, BootFlowCapabilities, BootFlowResult};
-use crate::system::boot_groups::{BootGroupIdx, BootGroups};
+use crate::system::boot_flows::BootFlow;
+use crate::system::boot_flows::BootFlowCapabilities;
+use crate::system::boot_flows::BootFlowResult;
+use crate::system::boot_groups::BootGroupIdx;
+use crate::system::boot_groups::BootGroups;
 
 #[derive(Debug, Clone)]
 struct RaucBootGroup {

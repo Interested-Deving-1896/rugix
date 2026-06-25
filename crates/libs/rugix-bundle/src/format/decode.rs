@@ -1,13 +1,18 @@
 //! High-level data structure decoding API.
 
-use reportify::{ErrorExt, bail};
+use reportify::ErrorExt;
+use reportify::bail;
 
 use byte_calc::NumBytes;
 
 use crate::BundleResult;
-use crate::source::{BundleSource, ReaderSource, SkipRead};
+use crate::source::BundleSource;
+use crate::source::ReaderSource;
+use crate::source::SkipRead;
 
-use super::stlv::{AtomHead, Tag, read_atom_head};
+use super::stlv::AtomHead;
+use super::stlv::Tag;
+use super::stlv::read_atom_head;
 
 /// Decoder for data structures from STLV streams.
 ///

@@ -1,6 +1,9 @@
 use byte_calc::NumBytes;
 
-use rugix_fs::{Copier, File, FsResult, TempDir};
+use rugix_fs::Copier;
+use rugix_fs::File;
+use rugix_fs::FsResult;
+use rugix_fs::TempDir;
 use rugix_tasks::spawn_blocking;
 
 #[test]

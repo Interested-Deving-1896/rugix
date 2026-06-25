@@ -3,9 +3,11 @@
 use std::fs;
 use std::path::Path;
 
-use reportify::{bail, ResultExt};
+use reportify::bail;
+use reportify::ResultExt;
 
-use crate::config::system::{PartitionConfig, SystemConfig};
+use crate::config::system::PartitionConfig;
+use crate::config::system::SystemConfig;
 
 use super::SystemResult;
 
@@ -58,7 +60,8 @@ fn validate_data_partition(partition: &PartitionConfig) -> SystemResult<()> {
 mod tests {
     use indoc::indoc;
 
-    use super::{validate, SystemConfig};
+    use super::validate;
+    use super::SystemConfig;
 
     #[test]
     fn test_from_toml() {

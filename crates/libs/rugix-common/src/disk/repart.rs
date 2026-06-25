@@ -1,12 +1,17 @@
 //! Utilities for repartitioning disks.
 
-use reportify::{bail, Report};
+use reportify::bail;
+use reportify::Report;
 use serde::Deserialize;
 
-use super::{parse_size, PartitionTable, PartitionTableType};
+use super::parse_size;
+use super::PartitionTable;
+use super::PartitionTableType;
 use crate::disk::gpt::gpt_types;
 use crate::disk::mbr::mbr_types;
-use crate::disk::{NumBlocks, Partition, PartitionType};
+use crate::disk::NumBlocks;
+use crate::disk::Partition;
+use crate::disk::PartitionType;
 use crate::partitions::DiskError;
 use crate::utils::units::NumBytes;
 
@@ -274,10 +279,18 @@ pub fn generic_efi_partition_schema(system_size: NumBytes) -> PartitionSchema {
 
 #[cfg(test)]
 mod tests {
-    use super::{generic_efi_partition_schema, generic_mbr_partition_schema, repart};
-    use crate::disk::gpt::{gpt_types, Guid};
-    use crate::disk::mbr::{mbr_types, MbrId};
-    use crate::disk::{parse_size, DiskId, NumBlocks, Partition, PartitionTable};
+    use super::generic_efi_partition_schema;
+    use super::generic_mbr_partition_schema;
+    use super::repart;
+    use crate::disk::gpt::gpt_types;
+    use crate::disk::gpt::Guid;
+    use crate::disk::mbr::mbr_types;
+    use crate::disk::mbr::MbrId;
+    use crate::disk::parse_size;
+    use crate::disk::DiskId;
+    use crate::disk::NumBlocks;
+    use crate::disk::Partition;
+    use crate::disk::PartitionTable;
 
     #[test]
     fn test_repart_mbr() {

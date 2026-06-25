@@ -1,4 +1,5 @@
-use reportify::{Report, ResultExt};
+use reportify::Report;
+use reportify::ResultExt;
 use rugix_common::boot::uboot::UBootEnv;
 
 use crate::system::boot_flows::BootFlowError;

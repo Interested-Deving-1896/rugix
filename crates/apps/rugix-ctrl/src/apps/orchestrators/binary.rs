@@ -1,13 +1,18 @@
 //! Orchestrator for managing a single executable via a service manager.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use reportify::ResultExt;
 use tracing::info;
 
-use super::{AppContext, AppStatus, AppStatusMessage, Orchestrator};
-use crate::apps::{systemd, AppsResult};
+use super::AppContext;
+use super::AppStatus;
+use super::AppStatusMessage;
+use super::Orchestrator;
+use crate::apps::systemd;
+use crate::apps::AppsResult;
 
 /// Manages a single executable via a service manager.
 pub struct Binary;

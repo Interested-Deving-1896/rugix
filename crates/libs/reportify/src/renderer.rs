@@ -6,7 +6,8 @@ use std::panic::Location;
 use console::style;
 
 use crate::backtrace::BacktraceImpl;
-use crate::{AnyReport, Printable};
+use crate::AnyReport;
+use crate::Printable;
 
 trait TreeNode {
     fn render(&self, renderer: &mut Renderer) -> fmt::Result;

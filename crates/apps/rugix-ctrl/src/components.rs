@@ -1,21 +1,40 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::{fs, io, str};
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str;
 
-use reportify::{bail, whatever, ErrorExt, ResultExt};
+use reportify::bail;
+use reportify::whatever;
+use reportify::ErrorExt;
+use reportify::ResultExt;
 use rugix_bundle::format::BundleComponents;
-use rugix_component_set::{
-    Capability, CapabilitySelector, Claim, Component, ComponentId, ComponentSet, Problem,
-};
+use rugix_component_set::Capability;
+use rugix_component_set::CapabilitySelector;
+use rugix_component_set::Claim;
+use rugix_component_set::Component;
+use rugix_component_set::ComponentId;
+use rugix_component_set::ComponentSet;
+use rugix_component_set::Problem;
 
 use crate::apps::manager::AppManager;
-use crate::config::output::{
-    CapabilityOutput, CapabilitySelectorOutput, ClaimOutput, ComponentConflictProblemOutput,
-    ComponentOutput, ComponentProblemOutput, ComponentRefOutput, ComponentRootOutput,
-    ComponentSourceKindOutput, ComponentSourceOutput, ComponentsCheckOutput, ComponentsOutput,
-    DuplicateClaimProblemOutput, DuplicateComponentProblemOutput, LoadedComponentOutput,
-    UnsatisfiedRequirementProblemOutput,
-};
+use crate::config::output::CapabilityOutput;
+use crate::config::output::CapabilitySelectorOutput;
+use crate::config::output::ClaimOutput;
+use crate::config::output::ComponentConflictProblemOutput;
+use crate::config::output::ComponentOutput;
+use crate::config::output::ComponentProblemOutput;
+use crate::config::output::ComponentRefOutput;
+use crate::config::output::ComponentRootOutput;
+use crate::config::output::ComponentSourceKindOutput;
+use crate::config::output::ComponentSourceOutput;
+use crate::config::output::ComponentsCheckOutput;
+use crate::config::output::ComponentsOutput;
+use crate::config::output::DuplicateClaimProblemOutput;
+use crate::config::output::DuplicateComponentProblemOutput;
+use crate::config::output::LoadedComponentOutput;
+use crate::config::output::UnsatisfiedRequirementProblemOutput;
 use crate::system::SystemResult;
 
 const SYSTEM_COMPONENTS_DIR: &str = "/usr/lib/rugix/components";

@@ -6,7 +6,8 @@ use std::fs;
 use std::path::Path;
 
 use boot::grub::grub_envblk_encode;
-use reportify::{Report, ResultExt};
+use reportify::Report;
+use reportify::ResultExt;
 
 use crate::boot::uboot::UBootEnv;
 

@@ -12,8 +12,10 @@
 use std::cmp::Ordering;
 use std::fmt::Display;
 
-use crate::style::{Style, Styled};
-use crate::{DrawCtx, VisualWidth};
+use crate::style::Style;
+use crate::style::Styled;
+use crate::DrawCtx;
+use crate::VisualWidth;
 
 /// Widget that can be drawn into [`DrawCtx`].
 pub trait Widget {

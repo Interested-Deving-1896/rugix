@@ -1,7 +1,12 @@
 use std::convert::Infallible;
 
-use axum::extract::{Multipart, Path, Query, State};
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::extract::Multipart;
+use axum::extract::Path;
+use axum::extract::Query;
+use axum::extract::State;
+use axum::response::sse::Event;
+use axum::response::sse::KeepAlive;
+use axum::response::sse::Sse;
 use axum::Json;
 use futures::Stream;
 use indexmap::IndexMap;
@@ -9,13 +14,17 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
-use crate::ctrl::{
-    run_components_check_command, run_json_command, spawn_command_job, stream_upload_job,
-    CommandSpec,
-};
+use crate::ctrl::run_components_check_command;
+use crate::ctrl::run_json_command;
+use crate::ctrl::spawn_command_job;
+use crate::ctrl::stream_upload_job;
+use crate::ctrl::CommandSpec;
 use crate::error::ApiError;
-use crate::generated::{api, apps, events};
-use crate::{ApiResult, ServerState};
+use crate::generated::api;
+use crate::generated::apps;
+use crate::generated::events;
+use crate::ApiResult;
+use crate::ServerState;
 
 pub(crate) async fn health() -> Json<api::HealthResponse> {
     Json(api::HealthResponse::new("ok".to_owned()))

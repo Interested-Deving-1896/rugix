@@ -274,7 +274,8 @@
 
 use std::any::Any;
 use std::error::Error as StdError;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
+use std::fmt::Display;
 
 use backtrace::BacktraceImpl;
 

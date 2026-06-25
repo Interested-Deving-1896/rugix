@@ -1,11 +1,14 @@
 //! Raspberry Pi-specific functionality.
 
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::AsRawFd;
+use std::os::fd::FromRawFd;
+use std::os::fd::OwnedFd;
 use std::path::Path;
 
 use nix::fcntl;
-use nix::libc::{c_char, c_int};
+use nix::libc::c_char;
+use nix::libc::c_int;
 use nix::sys::stat;
 
 /// Check whether the device is a Raspberry Pi.

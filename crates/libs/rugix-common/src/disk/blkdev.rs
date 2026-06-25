@@ -3,11 +3,14 @@
 // cspell:ignore IFMT, IFBLK, rdev
 
 use std::ffi::OsStr;
+use std::fmt;
+use std::fs;
 use std::hash::Hash;
+use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::FileTypeExt;
-use std::path::{Path, PathBuf};
-use std::{fmt, fs, io};
+use std::path::Path;
+use std::path::PathBuf;
 
 use nix::libc::dev_t;
 
@@ -103,8 +106,9 @@ impl BlockDevice {
 
     /// Query the size of the block device in bytes.
     pub fn size(&self) -> io::Result<u64> {
+        use nix::ioctl_read_bad;
         use nix::libc::c_int;
-        use nix::{ioctl_read_bad, request_code_read};
+        use nix::request_code_read;
 
         /// The `ioctl` request code for `BLKGETSIZE64`.
         const IOCTL_REQUEST_CODE: c_int =

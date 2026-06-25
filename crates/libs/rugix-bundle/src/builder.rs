@@ -1,15 +1,33 @@
-use std::io::{BufRead, BufReader, BufWriter, Write};
-use std::path::{Component as PathComponent, Path, PathBuf};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::Write;
+use std::path::Component as PathComponent;
+use std::path::Path;
+use std::path::PathBuf;
 
 use byte_calc::NumBytes;
-use reportify::{ErrorExt, ResultExt, bail, whatever};
+use reportify::ErrorExt;
+use reportify::ResultExt;
+use reportify::bail;
+use reportify::whatever;
 use si_crypto_hashes::HashDigest;
 
+use crate::BUNDLE_HEADER_SIZE_LIMIT;
+use crate::BundleResult;
 use crate::block_encoding::encode_payload_file;
-use crate::format::stlv::{write_atom_head, write_segment_end, write_segment_start};
-use crate::format::{self, BundleComponentFile, Bytes, PayloadEntry, PayloadHeader};
-use crate::manifest::{self, BundleManifest, HashAlgorithm, UpdateType};
-use crate::{BUNDLE_HEADER_SIZE_LIMIT, BundleResult};
+use crate::format::BundleComponentFile;
+use crate::format::Bytes;
+use crate::format::PayloadEntry;
+use crate::format::PayloadHeader;
+use crate::format::stlv::write_atom_head;
+use crate::format::stlv::write_segment_end;
+use crate::format::stlv::write_segment_start;
+use crate::format::{self};
+use crate::manifest::BundleManifest;
+use crate::manifest::HashAlgorithm;
+use crate::manifest::UpdateType;
+use crate::manifest::{self};
 
 const COMPONENTS_DIR: &str = "components";
 const COMPONENTS_SIZE_LIMIT: u64 = 64 * 1024;
@@ -275,7 +293,8 @@ fn is_component_file(path: &Path) -> bool {
 mod tests {
     use super::*;
     use crate::reader::BundleReader;
-    use crate::source::{ReaderSource, SkipSeek};
+    use crate::source::ReaderSource;
+    use crate::source::SkipSeek;
 
     #[test]
     fn pack_embeds_bundle_components_in_header() {

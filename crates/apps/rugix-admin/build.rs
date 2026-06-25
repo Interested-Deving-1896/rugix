@@ -1,5 +1,6 @@
+use std::fs;
+use std::io;
 use std::path::Path;
-use std::{fs, io};
 
 fn main() {
     sidex_build_rs::configure()

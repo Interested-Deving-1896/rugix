@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use byte_calc::NumBytes;
-use si_crypto_hashes::{HashAlgorithm, HashDigest};
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
 
 /// Slot state.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

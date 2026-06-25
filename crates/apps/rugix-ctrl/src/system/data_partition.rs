@@ -6,17 +6,24 @@
 //! in-tree implementations live alongside each other and the active one is
 //! resolved from [`SystemConfig`](crate::config::system::SystemConfig).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use reportify::ResultExt;
 use rugix_common::partitions::mkfs_ext4;
-use tracing::{info, warn};
-use xscript::{cmd_os, run, ParentEnv, Run};
+use tracing::info;
+use tracing::warn;
+use xscript::cmd_os;
+use xscript::run;
+use xscript::ParentEnv;
+use xscript::Run;
 
-use crate::config::system::{
-    CustomDataPartitionDriverConfig, DataPartitionDriverConfig, Luks2PassphraseDriverConfig,
-    Luks2Tpm2DriverConfig, PartitionConfig, PlaintextExt4DriverConfig,
-};
+use crate::config::system::CustomDataPartitionDriverConfig;
+use crate::config::system::DataPartitionDriverConfig;
+use crate::config::system::Luks2PassphraseDriverConfig;
+use crate::config::system::Luks2Tpm2DriverConfig;
+use crate::config::system::PartitionConfig;
+use crate::config::system::PlaintextExt4DriverConfig;
 
 use super::SystemResult;
 

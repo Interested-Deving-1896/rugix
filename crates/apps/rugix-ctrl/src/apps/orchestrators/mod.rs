@@ -5,7 +5,8 @@ use std::path::Path;
 use rugix_bundle::manifest::AppManifest;
 
 use super::AppsResult;
-pub use crate::config::apps::{AppStatus, AppStatusMessage};
+pub use crate::config::apps::AppStatus;
+pub use crate::config::apps::AppStatusMessage;
 
 mod binary;
 mod docker_compose;

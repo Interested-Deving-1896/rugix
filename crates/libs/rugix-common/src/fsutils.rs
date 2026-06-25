@@ -1,16 +1,22 @@
 //! Utilities for working with the filesystem.
 
-use std::fs::{self, File};
-use std::io::{Read, Write};
-use std::os::fd::{AsRawFd, RawFd};
+use std::fs::File;
+use std::fs::{self};
+use std::io::Read;
+use std::io::Write;
+use std::os::fd::AsRawFd;
+use std::os::fd::RawFd;
 use std::path::Path;
 
 use nix::errno::Errno;
 use nix::fcntl::FallocateFlags;
 use nix::libc::off64_t;
-use nix::unistd::{lseek64, Whence};
-use reportify::{Report, ResultExt};
-use xscript::{run, Run};
+use nix::unistd::lseek64;
+use nix::unistd::Whence;
+use reportify::Report;
+use reportify::ResultExt;
+use xscript::run;
+use xscript::Run;
 
 reportify::new_whatever_type! {
     FsError

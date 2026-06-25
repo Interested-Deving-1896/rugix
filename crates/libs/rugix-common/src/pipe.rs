@@ -1,8 +1,11 @@
 //! In memory pipe.
 
 use std::collections::VecDeque;
-use std::io::{Read, Write};
-use std::sync::{Arc, Condvar, Mutex};
+use std::io::Read;
+use std::io::Write;
+use std::sync::Arc;
+use std::sync::Condvar;
+use std::sync::Mutex;
 
 use tracing::trace;
 

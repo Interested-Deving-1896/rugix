@@ -1,15 +1,26 @@
 //! App bundle packing logic for Docker Compose, binary, and generic orchestrators.
 
 use std::collections::HashSet;
-use std::fs::{self, File};
-use std::path::{Component as PathComponent, Path, PathBuf};
+use std::fs::File;
+use std::fs::{self};
+use std::path::Component as PathComponent;
+use std::path::Path;
+use std::path::PathBuf;
 
-use reportify::{bail, whatever, ResultExt};
-use rugix_bundle::manifest::{
-    AppArchiveDeliveryConfig, AppFileDeliveryConfig, BlockEncoding, BundleManifest, Compression,
-    DeliveryConfig, Payload, UpdateType, XzCompression,
-};
-use rugix_bundle::{bundle_hash, BundleResult};
+use reportify::bail;
+use reportify::whatever;
+use reportify::ResultExt;
+use rugix_bundle::bundle_hash;
+use rugix_bundle::manifest::AppArchiveDeliveryConfig;
+use rugix_bundle::manifest::AppFileDeliveryConfig;
+use rugix_bundle::manifest::BlockEncoding;
+use rugix_bundle::manifest::BundleManifest;
+use rugix_bundle::manifest::Compression;
+use rugix_bundle::manifest::DeliveryConfig;
+use rugix_bundle::manifest::Payload;
+use rugix_bundle::manifest::UpdateType;
+use rugix_bundle::manifest::XzCompression;
+use rugix_bundle::BundleResult;
 use rugix_chunker::ChunkerAlgorithm;
 use tracing::info;
 
@@ -432,7 +443,8 @@ pub fn pack_generic(cmd: &super::PackGenericCmd) -> BundleResult<()> {
 mod tests {
     use super::*;
     use rugix_bundle::reader::BundleReader;
-    use rugix_bundle::source::{ReaderSource, SkipSeek};
+    use rugix_bundle::source::ReaderSource;
+    use rugix_bundle::source::SkipSeek;
 
     #[test]
     fn app_bundle_includes_component_files() {

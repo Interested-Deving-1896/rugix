@@ -2,8 +2,10 @@
 
 use std::error::Error;
 use std::fmt;
-use std::sync::{Mutex, TryLockError};
-use std::time::{Duration, Instant};
+use std::sync::Mutex;
+use std::sync::TryLockError;
+use std::time::Duration;
+use std::time::Instant;
 
 /// Rate limiter.
 #[derive(Debug)]

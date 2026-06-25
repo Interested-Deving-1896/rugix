@@ -5,12 +5,16 @@ use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::BufMut;
+use bytes::Bytes;
+use bytes::BytesMut;
 use tar::EntryType;
 
-use si_crypto_hashes::{HashAlgorithm, HashDigest};
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
 
-use rugix_chunker::{Chunker, ChunkerAlgorithm};
+use rugix_chunker::Chunker;
+use rugix_chunker::ChunkerAlgorithm;
 
 use super::utils::compress_bytes;
 

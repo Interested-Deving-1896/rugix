@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use indexmap::IndexMap;
-use reportify::{bail, whatever};
+use reportify::bail;
+use reportify::whatever;
 use tracing::warn;
 
-use crate::config::system::{BlockSlotConfig, SlotConfig};
+use crate::config::system::BlockSlotConfig;
+use crate::config::system::SlotConfig;
 
 use super::root::SystemRoot;
 use super::SystemResult;

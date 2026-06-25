@@ -1,19 +1,28 @@
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::fs::File;
+use std::fs::{self};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 
-use reportify::{bail, ResultExt};
-use rugix_bundle::manifest::{
-    AppArchiveDeliveryConfig, AppFileDeliveryConfig, DeliveryConfig, Payload,
-};
+use reportify::bail;
+use reportify::ResultExt;
+use rugix_bundle::manifest::AppArchiveDeliveryConfig;
+use rugix_bundle::manifest::AppFileDeliveryConfig;
+use rugix_bundle::manifest::DeliveryConfig;
+use rugix_bundle::manifest::Payload;
 use rugix_bundle::BundleResult;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::info;
 
-use super::{
-    app_block_encoding, finalize_bundle, stage_component_files, tar_append_app_toml,
-    tar_append_bytes, tar_append_includes, tar_append_metadata,
-};
+use super::app_block_encoding;
+use super::finalize_bundle;
+use super::stage_component_files;
+use super::tar_append_app_toml;
+use super::tar_append_bytes;
+use super::tar_append_includes;
+use super::tar_append_metadata;
 
 /// Pack a Docker Compose app into an app bundle.
 ///
@@ -56,7 +65,8 @@ pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
         let archive_file = File::create(&archive_path).whatever("unable to create base.tar")?;
         let mut archive = tar::Builder::new(archive_file);
         let manifest = {
-            use rugix_bundle::manifest::{AppHealthCheckConfig, AppManifest};
+            use rugix_bundle::manifest::AppHealthCheckConfig;
+            use rugix_bundle::manifest::AppManifest;
             let mut m = AppManifest::new("docker-compose".to_owned());
             if let Some(timeout) = cmd.health_check_timeout {
                 m = m.with_health_check(Some(

@@ -1,10 +1,12 @@
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
 
-use byte_calc::{ByteLen, NumBytes};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
 
 use rugix_chunker::casync::CasyncChunker;
 use rugix_chunker::Chunker;

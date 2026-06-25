@@ -22,10 +22,14 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::str::FromStr;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::Serialize;
+use serde::Serializer;
 
 /// A normalized Rugix component version.
 #[derive(Debug, Clone)]
@@ -692,7 +696,8 @@ mod tests {
     #[test]
     fn build_metadata_is_ignored_consistently_by_identity_and_ordering() {
         use std::cmp::Ordering;
-        use std::collections::{BTreeSet, HashSet};
+        use std::collections::BTreeSet;
+        use std::collections::HashSet;
 
         assert_eq!(
             version("1.0+build.7").cmp(&version("1.0+build.8")),

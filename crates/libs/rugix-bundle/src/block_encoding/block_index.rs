@@ -1,18 +1,24 @@
 //! Provides the [`BlockIndex`] data structure.
 
 use std::borrow::Cow;
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
+use std::io::BufReader;
 use std::path::Path;
 
-use byte_calc::{ByteLen, NumBytes};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
 
 use reportify::ResultExt;
-use rugix_chunker::{AnyChunker, Chunker, ChunkerAlgorithm};
-use si_crypto_hashes::{HashAlgorithm, Hasher};
+use rugix_chunker::AnyChunker;
+use rugix_chunker::Chunker;
+use rugix_chunker::ChunkerAlgorithm;
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::Hasher;
 
+use crate::BundleResult;
+use crate::format;
 use crate::format::encode::Encode;
 use crate::manifest::BlockEncoding;
-use crate::{BundleResult, format};
 
 pub struct RawBlockIndex<'hashes> {
     hashes: Cow<'hashes, [u8]>,

@@ -1,15 +1,23 @@
 use boot_flows::BootFlow;
-use boot_groups::{BootGroup, BootGroupIdx, BootGroups};
+use boot_groups::BootGroup;
+use boot_groups::BootGroupIdx;
+use boot_groups::BootGroups;
 use config::load_system_config;
 use partitions::ConfigPartition;
-use reportify::{whatever, Report, ResultExt};
-use root::{find_system_device, SystemRoot};
-use slots::{SlotKind, SystemSlots};
-use tracing::{error, warn};
+use reportify::whatever;
+use reportify::Report;
+use reportify::ResultExt;
+use root::find_system_device;
+use root::SystemRoot;
+use slots::SlotKind;
+use slots::SystemSlots;
+use tracing::error;
+use tracing::warn;
 
 use rugix_common::disk::blkdev::BlockDevice;
 
-use crate::config::system::{PartitionConfig, SystemConfig};
+use crate::config::system::PartitionConfig;
+use crate::config::system::SystemConfig;
 
 pub mod boot_flows;
 pub mod boot_groups;

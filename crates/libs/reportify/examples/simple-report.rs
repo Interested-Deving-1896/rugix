@@ -1,7 +1,9 @@
 use std::io;
 use std::path::Path;
 
-use reportify::{new_whatever_type, Report, ResultExt};
+use reportify::new_whatever_type;
+use reportify::Report;
+use reportify::ResultExt;
 
 new_whatever_type! {
     AppError

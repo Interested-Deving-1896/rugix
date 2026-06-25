@@ -4,11 +4,14 @@
 //!
 //! When stdout is piped, compact JSON is emitted.
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 
 use serde::Serialize;
 
-use crate::style::{Color, Modifier, RESET_ALL};
+use crate::style::Color;
+use crate::style::Modifier;
+use crate::style::RESET_ALL;
 
 /// Write a serializable value as JSON to stdout.
 ///

@@ -5,7 +5,9 @@ use std::process::Command;
 use reportify::ResultExt;
 use tracing::info;
 
-use super::{AppContext, AppStatus, Orchestrator};
+use super::AppContext;
+use super::AppStatus;
+use super::Orchestrator;
 use crate::apps::AppsResult;
 
 /// Generic orchestrator delegating lifecycle operations to an `orchestrator` script.

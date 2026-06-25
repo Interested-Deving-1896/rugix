@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use thiserror::Error;
 
 /// A U-Boot environment.

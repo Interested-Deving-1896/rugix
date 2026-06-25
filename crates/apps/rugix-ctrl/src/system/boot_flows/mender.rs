@@ -29,14 +29,20 @@ use std::path::Path;
 use std::str::FromStr;
 
 use hashbrown::HashMap;
-use reportify::{bail, ResultExt};
-use rugix_common::boot::grub::{load_grub_env, save_grub_env, GrubEnv};
+use reportify::bail;
+use reportify::ResultExt;
+use rugix_common::boot::grub::load_grub_env;
+use rugix_common::boot::grub::save_grub_env;
+use rugix_common::boot::grub::GrubEnv;
 use tracing::error;
 
-use crate::boot::fwenv::{load_vars, set_vars};
+use crate::boot::fwenv::load_vars;
+use crate::boot::fwenv::set_vars;
 use crate::config::system::MenderBootFlowConfig;
-use crate::system::boot_flows::{BootFlow, BootFlowResult};
-use crate::system::boot_groups::{BootGroupIdx, BootGroups};
+use crate::system::boot_flows::BootFlow;
+use crate::system::boot_flows::BootFlowResult;
+use crate::system::boot_groups::BootGroupIdx;
+use crate::system::boot_groups::BootGroups;
 use crate::system::System;
 
 #[derive(Debug)]

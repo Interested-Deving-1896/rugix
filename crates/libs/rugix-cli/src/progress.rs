@@ -2,8 +2,11 @@
 
 use std::sync::Mutex;
 
-use crate::widgets::{ProgressBar, Widget};
-use crate::{DrawCtx, StatusSegment, StatusSegmentRef};
+use crate::widgets::ProgressBar;
+use crate::widgets::Widget;
+use crate::DrawCtx;
+use crate::StatusSegment;
+use crate::StatusSegmentRef;
 
 /// Progress bar status segment.
 #[derive(Debug)]

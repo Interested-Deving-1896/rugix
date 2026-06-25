@@ -1,22 +1,39 @@
 use std::fs::File;
-use std::io::{Read, Seek, Write};
+use std::io::Read;
+use std::io::Seek;
+use std::io::Write;
 
 use block_provider::StoredBlockProvider;
-use byte_calc::{ByteLen, NumBytes};
-use reportify::{ResultExt, bail, whatever};
-use rugix_compression::{ByteProcessor, CompressionFormat};
-use si_crypto_hashes::{HashAlgorithm, HashDigest};
-use tracing::{error, trace, warn};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
+use reportify::ResultExt;
+use reportify::bail;
+use reportify::whatever;
+use rugix_compression::ByteProcessor;
+use rugix_compression::CompressionFormat;
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
+use tracing::error;
+use tracing::trace;
+use tracing::warn;
 
-use crate::block_encoding::block_index::{BlockId, RawBlockIndex};
+use crate::BUNDLE_HEADER_SIZE_LIMIT;
+use crate::BundleResult;
+use crate::PAYLOAD_HEADER_SIZE_LIMIT;
+use crate::SIGNATURES_SIZE_LIMIT;
+use crate::block_encoding::block_index::BlockId;
+use crate::block_encoding::block_index::RawBlockIndex;
 use crate::block_encoding::block_table::BlockTable;
+use crate::format::Signatures;
 use crate::format::decode::decode_slice;
-use crate::format::stlv::{AtomHead, Tag, read_atom_head, skip, write_atom_head};
-use crate::format::{self, Signatures, tags};
+use crate::format::stlv::AtomHead;
+use crate::format::stlv::Tag;
+use crate::format::stlv::read_atom_head;
+use crate::format::stlv::skip;
+use crate::format::stlv::write_atom_head;
+use crate::format::tags;
+use crate::format::{self};
 use crate::source::BundleSource;
-use crate::{
-    BUNDLE_HEADER_SIZE_LIMIT, BundleResult, PAYLOAD_HEADER_SIZE_LIMIT, SIGNATURES_SIZE_LIMIT,
-};
 
 pub mod block_provider;
 

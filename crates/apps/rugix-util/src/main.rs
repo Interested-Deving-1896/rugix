@@ -1,17 +1,24 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::io::{self};
+use std::path::Path;
+use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
-use reportify::{Report, ResultExt};
-use rugix_common::boot::grub::{grub_envblk_decode, grub_envblk_encode};
+use clap::Parser;
+use clap::Subcommand;
+use reportify::Report;
+use reportify::ResultExt;
+use rugix_common::boot::grub::grub_envblk_decode;
+use rugix_common::boot::grub::grub_envblk_encode;
 use rugix_common::disk::blkdev::is_block_device;
 use rugix_common::disk::blkpg::update_kernel_partitions;
+use rugix_common::disk::repart;
 use rugix_common::disk::stream::ImgStream;
-use rugix_common::disk::{repart, PartitionTable};
+use rugix_common::disk::PartitionTable;
 use rugix_common::maybe_compressed::MaybeCompressed;
-use xscript::{run, Run};
+use xscript::run;
+use xscript::Run;
 
 reportify::new_whatever_type! {
     RugixUtilError

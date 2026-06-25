@@ -1,6 +1,7 @@
 //! A stream which may be compressed.
 
-use std::io::{self, Read};
+use std::io::Read;
+use std::io::{self};
 
 use xz2::read::XzDecoder;
 

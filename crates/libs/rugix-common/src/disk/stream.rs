@@ -2,7 +2,8 @@
 
 use std::collections::VecDeque;
 use std::fmt::Display;
-use std::io::{self, Read};
+use std::io::Read;
+use std::io::{self};
 
 use thiserror::Error;
 

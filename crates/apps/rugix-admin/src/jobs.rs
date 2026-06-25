@@ -2,10 +2,12 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
+use tokio::sync::RwLock;
 
 use crate::error::ApiError;
-use crate::generated::{events, jobs};
+use crate::generated::events;
+use crate::generated::jobs;
 use crate::ApiResult;
 
 #[derive(Debug, Clone, Default)]

@@ -1,14 +1,22 @@
 //! Utilities for extracting partitions and filesystems from disk images.
 
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
 use std::path::Path;
 
-use reportify::{bail, Report, ResultExt};
+use reportify::bail;
+use reportify::Report;
+use reportify::ResultExt;
 use tracing::info;
-use xscript::{read_str, run, Run};
+use xscript::read_str;
+use xscript::run;
+use xscript::Run;
 
-use crate::disk::{Partition, PartitionTable};
+use crate::disk::Partition;
+use crate::disk::PartitionTable;
 use crate::partitions::DiskError;
 use crate::utils::units::NumBytes;
 

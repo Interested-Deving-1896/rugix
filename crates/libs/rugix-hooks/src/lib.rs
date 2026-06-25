@@ -1,16 +1,23 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::{self};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
 use xscript::Vars;
 
-use reportify::{bail, ErrorExt, Report, ResultExt};
+use reportify::bail;
+use reportify::ErrorExt;
+use reportify::Report;
+use reportify::ResultExt;
 
-use crate::error::{HooksLoadError, HooksRunError};
+use crate::error::HooksLoadError;
+use crate::error::HooksRunError;
 
 pub mod error;
 

@@ -3,9 +3,11 @@ use std::time::Duration;
 
 use crate::system::SystemResult;
 use byte_calc::NumBytes;
-use reportify::{bail, ResultExt};
+use reportify::bail;
+use reportify::ResultExt;
 use rugix_bundle::source::BundleSource;
-use tracing::{error, warn};
+use tracing::error;
+use tracing::warn;
 use ureq::http::Response;
 use ureq::Body;
 

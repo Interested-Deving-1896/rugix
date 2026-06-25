@@ -3,22 +3,29 @@
 //! The bundle format is based on the *STLV encoding* specified and implemented in
 //! [`stlv`].
 
-use std::io::{self, Write};
+use std::io::Write;
+use std::io::{self};
 
-use reportify::{ResultExt, bail};
+use reportify::ResultExt;
+use reportify::bail;
 
 use rugix_chunker::ChunkerAlgorithm;
 use rugix_compression::CompressionFormat;
-use si_crypto_hashes::{HashAlgorithm, HashDigest};
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
 
 use crate::BundleResult;
 use crate::manifest::DeltaEncodingFormat;
 use crate::source::BundleSource;
 
-use self::decode::{Decode, Decoder};
+use self::decode::Decode;
+use self::decode::Decoder;
 use self::encode::Encode;
 use self::macros::define_struct;
-use self::stlv::{AtomHead, Tag, write_atom_head, write_value};
+use self::stlv::AtomHead;
+use self::stlv::Tag;
+use self::stlv::write_atom_head;
+use self::stlv::write_value;
 
 mod macros;
 

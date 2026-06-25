@@ -5,7 +5,8 @@ use std::path::Path;
 use tracing::error;
 
 use super::paths;
-use rugix_common::disk::blkdev::{find_block_device, BlockDevice};
+use rugix_common::disk::blkdev::find_block_device;
+use rugix_common::disk::blkdev::BlockDevice;
 use rugix_common::disk::PartitionTable;
 
 /// Find the system block device.

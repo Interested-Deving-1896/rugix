@@ -1,16 +1,21 @@
 //! Functionality for working with the data and config partition of a system.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
-use reportify::{bail, ResultExt};
-use tracing::{error, warn};
-use xscript::{run, Run};
+use reportify::bail;
+use reportify::ResultExt;
+use tracing::error;
+use tracing::warn;
+use xscript::run;
+use xscript::Run;
 
 use crate::config::system::PartitionConfig;
 
+use super::paths;
 use super::root::SystemRoot;
-use super::{paths, SystemResult};
+use super::SystemResult;
 use rugix_common::disk::blkdev::BlockDevice;
 
 /// Resolve the data partition block device.

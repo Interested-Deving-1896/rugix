@@ -1,18 +1,29 @@
 //! Abortable, blocking filesystem APIs with good error reporting.
 
 use std::fs::Metadata;
-use std::io::{self, Seek, Write};
+use std::io::Seek;
+use std::io::Write;
+use std::io::{self};
 use std::os::fd::AsRawFd;
 use std::os::raw::c_void;
-use std::os::unix::fs::{FileExt, FileTypeExt, MetadataExt};
+use std::os::unix::fs::FileExt;
+use std::os::unix::fs::FileTypeExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
-use tracing::{error, trace};
+use tracing::error;
+use tracing::trace;
 
-use byte_calc::{ByteLen, NumBytes};
-use reportify::{new_whatever_type, whatever, ErrorExt, Report, ResultExt};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
+use reportify::new_whatever_type;
+use reportify::whatever;
+use reportify::ErrorExt;
+use reportify::Report;
+use reportify::ResultExt;
 
-use rugix_tasks::{check_canceled, spawn_blocking};
+use rugix_tasks::check_canceled;
+use rugix_tasks::spawn_blocking;
 
 #[cfg(not(target_family = "unix"))]
 compile_error!("only Unix-like systems are supported");
@@ -427,7 +438,8 @@ impl Copier {
         );
         #[cfg(target_os = "linux")]
         {
-            use nix::unistd::{lseek64, Whence};
+            use nix::unistd::lseek64;
+            use nix::unistd::Whence;
             let mut src_offset = i64::try_from(src_position.raw).expect("offset must not overflow");
             let mut dst_offset = i64::try_from(dst_position.raw).expect("offset must not overflow");
             let src_raw_fd = src.file.as_raw_fd();

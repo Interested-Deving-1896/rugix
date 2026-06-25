@@ -1,30 +1,56 @@
 //! CMS signature verification with certificate chain validation.
 
-use aws_lc_rs::signature::{
-    ECDSA_P256_SHA256_ASN1, ECDSA_P384_SHA384_ASN1, ED25519, RSA_PKCS1_2048_8192_SHA256,
-    RSA_PKCS1_2048_8192_SHA384, RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256,
-    RSA_PSS_2048_8192_SHA384, RSA_PSS_2048_8192_SHA512, UnparsedPublicKey,
-};
+use aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1;
+use aws_lc_rs::signature::ECDSA_P384_SHA384_ASN1;
+use aws_lc_rs::signature::ED25519;
+use aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA256;
+use aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA384;
+use aws_lc_rs::signature::RSA_PKCS1_2048_8192_SHA512;
+use aws_lc_rs::signature::RSA_PSS_2048_8192_SHA256;
+use aws_lc_rs::signature::RSA_PSS_2048_8192_SHA384;
+use aws_lc_rs::signature::RSA_PSS_2048_8192_SHA512;
+use aws_lc_rs::signature::UnparsedPublicKey;
 use cms::cert::CertificateChoices;
 use cms::content_info::ContentInfo;
-use cms::signed_data::{SignedData, SignerIdentifier};
+use cms::signed_data::SignedData;
+use cms::signed_data::SignerIdentifier;
 use const_oid::ObjectIdentifier;
-use const_oid::db::rfc5911::{ID_CONTENT_TYPE, ID_DATA, ID_MESSAGE_DIGEST, ID_SIGNED_DATA};
-use const_oid::db::rfc5912::{
-    ECDSA_WITH_SHA_256, ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, ID_SHA_256, ID_SHA_384, ID_SHA_512,
-    RSA_ENCRYPTION, SHA_256_WITH_RSA_ENCRYPTION, SHA_384_WITH_RSA_ENCRYPTION,
-    SHA_512_WITH_RSA_ENCRYPTION,
-};
-use der::asn1::{GeneralizedTime, OctetString, UtcTime};
-use der::{Decode, Encode, Tag, Tagged};
-use rustls_pki_types::{CertificateDer, UnixTime};
-use webpki::{EndEntityCert, anchor_from_trusted_cert};
+use const_oid::db::rfc5911::ID_CONTENT_TYPE;
+use const_oid::db::rfc5911::ID_DATA;
+use const_oid::db::rfc5911::ID_MESSAGE_DIGEST;
+use const_oid::db::rfc5911::ID_SIGNED_DATA;
+use const_oid::db::rfc5912::ECDSA_WITH_SHA_256;
+use const_oid::db::rfc5912::ECDSA_WITH_SHA_384;
+use const_oid::db::rfc5912::ID_EC_PUBLIC_KEY;
+use const_oid::db::rfc5912::ID_SHA_256;
+use const_oid::db::rfc5912::ID_SHA_384;
+use const_oid::db::rfc5912::ID_SHA_512;
+use const_oid::db::rfc5912::RSA_ENCRYPTION;
+use const_oid::db::rfc5912::SHA_256_WITH_RSA_ENCRYPTION;
+use const_oid::db::rfc5912::SHA_384_WITH_RSA_ENCRYPTION;
+use const_oid::db::rfc5912::SHA_512_WITH_RSA_ENCRYPTION;
+use der::Decode;
+use der::Encode;
+use der::Tag;
+use der::Tagged;
+use der::asn1::GeneralizedTime;
+use der::asn1::OctetString;
+use der::asn1::UtcTime;
+use rustls_pki_types::CertificateDer;
+use rustls_pki_types::UnixTime;
+use webpki::EndEntityCert;
+use webpki::anchor_from_trusted_cert;
 use x509_cert::Certificate;
-use x509_cert::ext::pkix::{BasicConstraints, KeyUsage as X509KeyUsage};
+use x509_cert::ext::pkix::BasicConstraints;
+use x509_cert::ext::pkix::KeyUsage as X509KeyUsage;
 
 use std::time::SystemTime;
 
-use crate::{PkiError, PkiResult, RsaPssParams, compute_digest, pem};
+use crate::PkiError;
+use crate::PkiResult;
+use crate::RsaPssParams;
+use crate::compute_digest;
+use crate::pem;
 
 /// OID for RSA-PSS signature algorithm (1.2.840.113549.1.1.10)
 const ID_RSASSA_PSS: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.10");

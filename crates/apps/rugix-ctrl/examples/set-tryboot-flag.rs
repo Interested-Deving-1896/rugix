@@ -3,7 +3,8 @@ use std::path::Path;
 
 use nix::errno::Errno;
 use nix::fcntl;
-use nix::libc::{c_char, c_int};
+use nix::libc::c_char;
+use nix::libc::c_int;
 use nix::sys::stat;
 use reportify::Report;
 

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
-use reportify::{Report, ResultExt};
-use rugix_common::boot::grub::{grub_envblk_encode, GrubEnvError, RUGIX_BOOT_SPARE};
+use reportify::Report;
+use reportify::ResultExt;
+use rugix_common::boot::grub::grub_envblk_encode;
+use rugix_common::boot::grub::GrubEnvError;
+use rugix_common::boot::grub::RUGIX_BOOT_SPARE;
 use tracing::info;
 
 use crate::system::System;

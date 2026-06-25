@@ -7,10 +7,12 @@ use crate::payload_db;
 use crate::system::paths::MOUNT_POINT_DATA;
 use crate::system::System;
 
-use crate::config::output::{
-    BootGroupInfoOutput, BootInfoOutput, SlotInfoOutput, StateInfoActiveOutput, StateInfoOutput,
-    SystemInfoOutput,
-};
+use crate::config::output::BootGroupInfoOutput;
+use crate::config::output::BootInfoOutput;
+use crate::config::output::SlotInfoOutput;
+use crate::config::output::StateInfoActiveOutput;
+use crate::config::output::StateInfoOutput;
+use crate::config::output::SystemInfoOutput;
 
 pub fn state_from_system(system: &System) -> SystemInfoOutput {
     let boot_flow = system.boot_flow().name().to_owned();

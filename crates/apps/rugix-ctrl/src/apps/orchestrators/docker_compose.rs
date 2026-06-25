@@ -6,9 +6,13 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use reportify::ResultExt;
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
-use super::{AppContext, AppStatus, AppStatusMessage, Orchestrator};
+use super::AppContext;
+use super::AppStatus;
+use super::AppStatusMessage;
+use super::Orchestrator;
 use crate::apps::AppsResult;
 
 /// Name of the env file written into the generation directory.

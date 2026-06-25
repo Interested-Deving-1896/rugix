@@ -7,12 +7,21 @@
 //! HTTP using range queries for efficient skipping.
 
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::{self};
 use std::marker::PhantomData;
 
-use byte_calc::{ByteLen, NumBytes};
-use reportify::{ResultExt, bail};
-use si_crypto_hashes::{HashAlgorithm, HashDigest, Hasher};
+use byte_calc::ByteLen;
+use byte_calc::NumBytes;
+use reportify::ResultExt;
+use reportify::bail;
+use si_crypto_hashes::HashAlgorithm;
+use si_crypto_hashes::HashDigest;
+use si_crypto_hashes::Hasher;
 
 use crate::BundleResult;
 

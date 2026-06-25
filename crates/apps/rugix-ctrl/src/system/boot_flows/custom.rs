@@ -1,12 +1,17 @@
 use std::path::PathBuf;
 
-use reportify::{bail, ResultExt};
-use serde::{Deserialize, Serialize};
-use xscript::{read_str, Run};
+use reportify::bail;
+use reportify::ResultExt;
+use serde::Deserialize;
+use serde::Serialize;
+use xscript::read_str;
+use xscript::Run;
 
-use tracing::{debug, error};
+use tracing::debug;
+use tracing::error;
 
-use super::{BootFlow, BootFlowCapabilities};
+use super::BootFlow;
+use super::BootFlowCapabilities;
 use crate::system::boot_groups::BootGroups;
 
 /// Custom boot flow implementation.

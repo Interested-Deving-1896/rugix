@@ -1,17 +1,24 @@
 //! Payload database for block indices and payload state.
 
 use std::hash::BuildHasher;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use crate::system::SystemResult;
 use byte_calc::NumBytes;
-use hashbrown::{DefaultHashBuilder, HashTable};
-use reportify::{whatever, ResultExt};
-use rugix_bundle::block_encoding::block_index::{compute_block_index, BlockIndexConfig};
-use rugix_bundle::format::decode::{Decode, Decoder};
-use rugix_bundle::format::{self, BlockIndex};
+use hashbrown::DefaultHashBuilder;
+use hashbrown::HashTable;
+use reportify::whatever;
+use reportify::ResultExt;
+use rugix_bundle::block_encoding::block_index::compute_block_index;
+use rugix_bundle::block_encoding::block_index::BlockIndexConfig;
+use rugix_bundle::format::decode::Decode;
+use rugix_bundle::format::decode::Decoder;
+use rugix_bundle::format::BlockIndex;
+use rugix_bundle::format::{self};
 use rugix_bundle::manifest::ChunkerAlgorithm;
-use rugix_bundle::reader::block_provider::{StoredBlock, StoredBlockProvider};
+use rugix_bundle::reader::block_provider::StoredBlock;
+use rugix_bundle::reader::block_provider::StoredBlockProvider;
 use rugix_bundle::source::FileSource;
 use rugix_common::slots::SlotState;
 use si_crypto_hashes::HashAlgorithm;

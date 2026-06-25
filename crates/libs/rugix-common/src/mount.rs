@@ -1,10 +1,13 @@
 use std::ffi::OsStr;
 use std::os::linux::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use reportify::{Report, ResultExt};
+use reportify::Report;
+use reportify::ResultExt;
 use tracing::debug;
-use xscript::{run, Run};
+use xscript::run;
+use xscript::Run;
 
 reportify::new_whatever_type! {
     MountError

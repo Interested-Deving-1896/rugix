@@ -2,20 +2,25 @@
 
 //! Implementation of Rugix Ctrl's update bundle format.
 
-use std::io::{BufReader, BufWriter, Write};
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::Write;
 use std::path::Path;
 
 use byte_calc::NumBytes;
 use format::BundleHeader;
 use format::decode::decode_slice;
-use reader::{expect_start, read_into_vec};
-use reportify::{Report, ResultExt};
+use reader::expect_start;
+use reader::read_into_vec;
+use reportify::Report;
+use reportify::ResultExt;
 use si_crypto_hashes::HashDigest;
 use source::FileSource;
 
+use crate::format::Bytes;
+use crate::format::SignedMetadata;
 use crate::format::encode::Encode;
 use crate::format::stlv::write_segment_start;
-use crate::format::{Bytes, SignedMetadata};
 use crate::reader::read_optional_metadata;
 
 pub mod block_encoding;
