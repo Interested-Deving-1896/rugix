@@ -82,30 +82,35 @@ function ComponentList({ components }: { components: api.LoadedComponent[] }) {
 
   return (
     <div className="divide-y divide-divider">
-      {components.map(({ component, source }) => (
-        <details key={`${source.path}:${component.id}`} className="group">
-          <summary className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-elevation-2 md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="break-words text-sm font-semibold text-foreground">{component.id}</span>
-                {component.version && <Badge color="bg-elevation-2 text-foreground-muted ring-divider">{component.version}</Badge>}
-                <SourceBadge source={source} />
+      {components.map(({ component, source }) => {
+        const claims = component.claims ?? [];
+        return (
+          <details key={`${source.path}:${component.id}`} className="group">
+            <summary className="grid cursor-pointer gap-3 px-4 py-3 transition hover:bg-elevation-2 md:grid-cols-[minmax(0,1fr)_auto]">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="break-words text-sm font-semibold text-foreground">{component.id}</span>
+                  {component.version && <Badge color="bg-elevation-2 text-foreground-muted ring-divider">{component.version}</Badge>}
+                  <SourceBadge source={source} />
+                </div>
+                <div className="mt-1 break-all text-xs text-foreground-muted">{source.path}</div>
               </div>
-              <div className="mt-1 break-all text-xs text-foreground-muted">{source.path}</div>
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <CountBadge label="provides" count={component.provides.length} />
+                <CountBadge label="claims" count={claims.length} />
+                <CountBadge label="requires" count={component.requires.length} />
+                <CountBadge label="conflicts" count={component.conflicts.length} />
+              </div>
+            </summary>
+            <div className="grid gap-3 border-t border-divider bg-elevation-0 px-4 py-3 lg:grid-cols-4">
+              <CapabilityGroup title="Provides" items={component.provides} empty="No provided capabilities." />
+              <CapabilityGroup title="Claims" items={claims} empty="No exclusive claims." />
+              <CapabilityGroup title="Requires" items={component.requires} empty="No requirements." />
+              <CapabilityGroup title="Conflicts" items={component.conflicts} empty="No conflicts." />
             </div>
-            <div className="flex flex-wrap items-center gap-2 md:justify-end">
-              <CountBadge label="provides" count={component.provides.length} />
-              <CountBadge label="requires" count={component.requires.length} />
-              <CountBadge label="conflicts" count={component.conflicts.length} />
-            </div>
-          </summary>
-          <div className="grid gap-3 border-t border-divider bg-elevation-0 px-4 py-3 lg:grid-cols-3">
-            <CapabilityGroup title="Provides" items={component.provides} empty="No provided capabilities." />
-            <CapabilityGroup title="Requires" items={component.requires} empty="No requirements." />
-            <CapabilityGroup title="Conflicts" items={component.conflicts} empty="No conflicts." />
-          </div>
-        </details>
-      ))}
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -169,7 +174,7 @@ function CapabilityGroup({
   empty,
 }: {
   title: string;
-  items: Array<api.Capability | api.CapabilitySelector>;
+  items: Array<api.Capability | api.CapabilitySelector | api.Claim>;
   empty: string;
 }) {
   return (
@@ -180,10 +185,10 @@ function CapabilityGroup({
           items.map((item, index) => (
             <div key={`${item.id}:${index}`} className="rounded-md border border-divider bg-elevation-1 px-2 py-1.5">
               <div className="break-words font-mono text-xs text-foreground">{item.id}</div>
-              {(item.version || item.value) && (
+              {(itemDetail(item).version || itemDetail(item).value) && (
                 <div className="mt-1 flex flex-wrap gap-1.5 text-xs text-foreground-muted">
-                  {item.version && <span className="rounded bg-elevation-2 px-1.5 py-0.5">version {item.version}</span>}
-                  {item.value && <span className="rounded bg-elevation-2 px-1.5 py-0.5">value {item.value}</span>}
+                  {itemDetail(item).version && <span className="rounded bg-elevation-2 px-1.5 py-0.5">version {itemDetail(item).version}</span>}
+                  {itemDetail(item).value && <span className="rounded bg-elevation-2 px-1.5 py-0.5">value {itemDetail(item).value}</span>}
                 </div>
               )}
             </div>
@@ -200,6 +205,8 @@ function problemLabel(kind: api.ComponentProblem["kind"]) {
   switch (kind) {
     case "DuplicateComponent":
       return "duplicate";
+    case "DuplicateClaim":
+      return "claim";
     case "UnsatisfiedRequirement":
       return "missing";
     case "Conflict":
@@ -211,6 +218,8 @@ function problemTitle(problem: api.ComponentProblem) {
   switch (problem.kind) {
     case "DuplicateComponent":
       return `Duplicate component ${problem.id}`;
+    case "DuplicateClaim":
+      return `Duplicate claim ${problem.id}`;
     case "UnsatisfiedRequirement":
       return `${problem.component.id} requires ${selectorText(problem.selector)}`;
     case "Conflict":
@@ -222,11 +231,20 @@ function problemDescription(problem: api.ComponentProblem) {
   switch (problem.kind) {
     case "DuplicateComponent":
       return `Declared by ${problem.sources.map(sourceSummary).join(", ")}.`;
+    case "DuplicateClaim":
+      return `Claimed by ${problem.components.map(componentRefSummary).join(", ")}.`;
     case "UnsatisfiedRequirement":
       return `No loaded component provides ${selectorText(problem.selector)}.`;
     case "Conflict":
       return `${problem.provider.id} provides ${capabilityText(problem.capability)}, matching ${selectorText(problem.selector)}.`;
   }
+}
+
+function componentRefSummary(component: api.ComponentRef) {
+  if (!component.source) {
+    return component.id;
+  }
+  return `${component.id} (${sourceSummary(component.source)})`;
 }
 
 function sourceSummary(source: api.ComponentSource) {
@@ -243,6 +261,13 @@ function selectorText(selector: api.Capability | api.CapabilitySelector) {
   const version = selector.version ? ` ${selector.version}` : "";
   const value = selector.value ? ` = ${selector.value}` : "";
   return `${selector.id}${version}${value}`;
+}
+
+function itemDetail(item: api.Capability | api.CapabilitySelector | api.Claim) {
+  return {
+    version: "version" in item ? item.version : undefined,
+    value: "value" in item ? item.value : undefined,
+  };
 }
 
 function sourceKindLabel(kind: api.ComponentSourceKind) {

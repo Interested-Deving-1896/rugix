@@ -5,15 +5,16 @@ use std::{fs, io, str};
 use reportify::{bail, whatever, ErrorExt, ResultExt};
 use rugix_bundle::format::BundleComponents;
 use rugix_component_set::{
-    Capability, CapabilitySelector, Component, ComponentId, ComponentSet, Problem,
+    Capability, CapabilitySelector, Claim, Component, ComponentId, ComponentSet, Problem,
 };
 
 use crate::apps::manager::AppManager;
 use crate::config::output::{
-    CapabilityOutput, CapabilitySelectorOutput, ComponentConflictProblemOutput, ComponentOutput,
-    ComponentProblemOutput, ComponentRefOutput, ComponentRootOutput, ComponentSourceKindOutput,
-    ComponentSourceOutput, ComponentsCheckOutput, ComponentsOutput,
-    DuplicateComponentProblemOutput, LoadedComponentOutput, UnsatisfiedRequirementProblemOutput,
+    CapabilityOutput, CapabilitySelectorOutput, ClaimOutput, ComponentConflictProblemOutput,
+    ComponentOutput, ComponentProblemOutput, ComponentRefOutput, ComponentRootOutput,
+    ComponentSourceKindOutput, ComponentSourceOutput, ComponentsCheckOutput, ComponentsOutput,
+    DuplicateClaimProblemOutput, DuplicateComponentProblemOutput, LoadedComponentOutput,
+    UnsatisfiedRequirementProblemOutput,
 };
 use crate::system::SystemResult;
 
@@ -278,6 +279,15 @@ impl InstalledComponents {
                 ComponentProblemOutput::DuplicateComponent(DuplicateComponentProblemOutput::new(
                     id.to_string(),
                     self.sources_for_component(id),
+                ))
+            }
+            Problem::DuplicateClaim { id, components } => {
+                ComponentProblemOutput::DuplicateClaim(DuplicateClaimProblemOutput::new(
+                    id.to_string(),
+                    components
+                        .iter()
+                        .map(|component_id| self.component_ref_output(component_id))
+                        .collect(),
                 ))
             }
             Problem::UnsatisfiedRequirement {
@@ -568,10 +578,15 @@ fn component_output(component: &Component) -> ComponentOutput {
     ComponentOutput::new(
         component.id().to_string(),
         component.provides().iter().map(capability_output).collect(),
+        component.claims().iter().map(claim_output).collect(),
         component.requires().iter().map(selector_output).collect(),
         component.conflicts().iter().map(selector_output).collect(),
     )
     .with_version(component.version().map(ToString::to_string))
+}
+
+fn claim_output(claim: &Claim) -> ClaimOutput {
+    ClaimOutput::new(claim.id().to_string())
 }
 
 fn capability_output(capability: &Capability) -> CapabilityOutput {
@@ -750,6 +765,39 @@ id = "component.a"
     }
 
     #[test]
+    fn loads_component_claims_from_metadata() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path().join("components");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("app.toml"),
+            r#"
+id = "app.web"
+
+[[claims]]
+id = "network.tcp.8080"
+"#,
+        )
+        .unwrap();
+
+        let mut components = InstalledComponents {
+            roots: Vec::new(),
+            components: Vec::new(),
+        };
+        components
+            .load_root(ComponentLocation::new(
+                ComponentSourceKindOutput::Local,
+                root,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            components.components[0].component.claims()[0].id().as_str(),
+            "network.tcp.8080"
+        );
+    }
+
+    #[test]
     fn reports_duplicate_component_sources() {
         let source_a = ComponentLocation {
             kind: ComponentSourceKindOutput::Local,
@@ -840,6 +888,67 @@ id = "component.a"
                 .as_ref()
                 .map(|source| source.path.as_str()),
             Some("/etc/rugix/components/provider.toml")
+        );
+    }
+
+    #[test]
+    fn reports_duplicate_claim_participants_as_component_refs() {
+        let first_source = ComponentLocation {
+            kind: ComponentSourceKindOutput::Local,
+            path: PathBuf::from("/etc/rugix/components/first.toml"),
+            app: None,
+            generation: None,
+        };
+        let second_source = ComponentLocation {
+            kind: ComponentSourceKindOutput::Runtime,
+            path: PathBuf::from("/run/rugix/components/second.toml"),
+            app: None,
+            generation: None,
+        };
+        let components = InstalledComponents {
+            roots: Vec::new(),
+            components: vec![
+                LoadedComponent {
+                    source: first_source,
+                    component: Component::new("component.first")
+                        .with_claim(Claim::new("network.tcp.8080")),
+                },
+                LoadedComponent {
+                    source: second_source,
+                    component: Component::new("component.second")
+                        .with_claim(Claim::new("network.tcp.8080")),
+                },
+            ],
+        };
+
+        let output = components.check_output();
+        assert!(!output.consistent);
+        assert_eq!(output.problems.len(), 1);
+        let ComponentProblemOutput::DuplicateClaim(problem) = &output.problems[0] else {
+            panic!("expected duplicate claim problem");
+        };
+        assert_eq!(problem.id, "network.tcp.8080");
+        assert_eq!(
+            problem
+                .components
+                .iter()
+                .map(|component| component.id.as_str())
+                .collect::<Vec<_>>(),
+            ["component.first", "component.second"]
+        );
+        assert_eq!(
+            problem.components[0]
+                .source
+                .as_ref()
+                .map(|source| source.path.as_str()),
+            Some("/etc/rugix/components/first.toml")
+        );
+        assert_eq!(
+            problem.components[1]
+                .source
+                .as_ref()
+                .map(|source| source.path.as_str()),
+            Some("/run/rugix/components/second.toml")
         );
     }
 

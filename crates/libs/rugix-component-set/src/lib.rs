@@ -4,12 +4,14 @@
 //! compatible. A component may represent an operating system image, an app, a
 //! runtime, a hardware description, or any other participant in the system.
 //!
-//! Compatibility is modeled in terms of capabilities. Each component contributes
-//! a union of provided capabilities, including an implicit capability for its
-//! own component ID and version. Components can also declare requirement
-//! selectors (`requires`) and conflict selectors (`conflicts`) over that union.
-//! A set is consistent when every requirement selector matches at least one
-//! provided capability and no conflict selector matches any provided capability.
+//! Compatibility is modeled in terms of capabilities and exclusive claims. Each
+//! component contributes a union of provided capabilities, including an implicit
+//! capability for its own component ID and version. Components can also declare
+//! requirement selectors (`requires`) and conflict selectors (`conflicts`) over
+//! that union. Claims (`claims`) are exclusive resource ownership keys. A set is
+//! consistent when every requirement selector matches at least one provided
+//! capability, no conflict selector matches any provided capability, and no
+//! claim is owned by more than one component.
 //!
 //! The set is purely in-memory and has no opinion about where component
 //! metadata comes from. Callers can use it to validate a complete component set,
@@ -21,7 +23,7 @@
 //! empty selector lists are omitted when serializing component metadata.
 
 use std::borrow::Borrow;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 
 pub use rugix_versioning::{ParseError as VersionParseError, Version, VersionReq};
@@ -36,6 +38,8 @@ pub struct Component {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     provides: Vec<Capability>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    claims: Vec<Claim>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     requires: Vec<CapabilitySelector>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     conflicts: Vec<CapabilitySelector>,
@@ -48,6 +52,7 @@ impl Component {
             id: id.into(),
             version: None,
             provides: Vec::new(),
+            claims: Vec::new(),
             requires: Vec::new(),
             conflicts: Vec::new(),
         }
@@ -73,6 +78,11 @@ impl Component {
         &self.provides
     }
 
+    /// Exclusive resource claims made by this component.
+    pub fn claims(&self) -> &[Claim] {
+        &self.claims
+    }
+
     /// Requirement selectors.
     pub fn requires(&self) -> &[CapabilitySelector] {
         &self.requires
@@ -95,6 +105,12 @@ impl Component {
         self
     }
 
+    /// Add an exclusive resource claim.
+    pub fn with_claim(mut self, claim: Claim) -> Self {
+        self.claims.push(claim);
+        self
+    }
+
     /// Add a requirement selector.
     pub fn with_requirement(mut self, selector: CapabilitySelector) -> Self {
         self.requires.push(selector);
@@ -113,6 +129,30 @@ impl Component {
             version: self.version.clone(),
             value: None,
         }
+    }
+}
+
+/// An exclusive resource claim made by a component.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Claim {
+    id: ClaimId,
+}
+
+impl Claim {
+    /// Create an exclusive resource claim.
+    pub fn new(id: impl Into<ClaimId>) -> Self {
+        Self { id: id.into() }
+    }
+
+    /// Claim identifier.
+    pub fn id(&self) -> &ClaimId {
+        &self.id
+    }
+}
+
+impl fmt::Display for Claim {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
     }
 }
 
@@ -334,6 +374,7 @@ impl ComponentSet {
     pub fn check(&self) -> ConsistencyReport {
         let mut problems = Vec::new();
         self.check_duplicate_components(&mut problems);
+        self.check_duplicate_claims(&mut problems);
 
         let provided = self.provided_capabilities();
         for component in &self.components {
@@ -418,6 +459,27 @@ impl ComponentSet {
             problems.push(Problem::DuplicateComponent { id });
         }
     }
+
+    fn check_duplicate_claims(&self, problems: &mut Vec<Problem>) {
+        let mut claims: BTreeMap<ClaimId, Vec<ComponentId>> = BTreeMap::new();
+        for component in &self.components {
+            let mut component_claims = HashSet::new();
+            for claim in &component.claims {
+                if !component_claims.insert(claim.id()) {
+                    continue;
+                }
+                claims
+                    .entry(claim.id.clone())
+                    .or_default()
+                    .push(component.id.clone());
+            }
+        }
+        for (id, components) in claims {
+            if components.len() > 1 {
+                problems.push(Problem::DuplicateClaim { id, components });
+            }
+        }
+    }
 }
 
 /// Consistency check result.
@@ -453,6 +515,13 @@ pub enum Problem {
         /// Duplicate component ID.
         id: ComponentId,
     },
+    /// More than one component claims the same exclusive resource.
+    DuplicateClaim {
+        /// Duplicate claim ID.
+        id: ClaimId,
+        /// Components declaring the duplicate claim.
+        components: Vec<ComponentId>,
+    },
     /// A requirement selector did not match any provided capability.
     UnsatisfiedRequirement {
         /// Component declaring the requirement selector.
@@ -478,6 +547,14 @@ impl fmt::Display for Problem {
         match self {
             Self::DuplicateComponent { id } => {
                 write!(f, "duplicate component id {:?}", id.as_str())
+            }
+            Self::DuplicateClaim { id, components } => {
+                write!(
+                    f,
+                    "duplicate claim id {:?} declared by {} components",
+                    id.as_str(),
+                    components.len()
+                )
             }
             Self::UnsatisfiedRequirement {
                 component,
@@ -558,6 +635,58 @@ impl fmt::Display for ComponentId {
     }
 }
 
+/// Identifier of a claim.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ClaimId(String);
+
+impl ClaimId {
+    /// Create a claim identifier.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+
+    /// Borrow the identifier as a string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consume the identifier and return the owned string.
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl From<String> for ClaimId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ClaimId {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
+    }
+}
+
+impl AsRef<str> for ClaimId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for ClaimId {
+    fn borrow(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl fmt::Display for ClaimId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Identifier of a capability.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -630,12 +759,15 @@ mod tests {
     fn ids_are_typed_but_remain_ergonomic() {
         let component_id = ComponentId::from("app.gateway");
         let capability_id = CapabilityId::from("service.modbus");
+        let claim_id = ClaimId::from("network.tcp.502");
         let component = Component::new(component_id.clone())
-            .with_provided_capability(Capability::new(capability_id.clone()));
+            .with_provided_capability(Capability::new(capability_id.clone()))
+            .with_claim(Claim::new(claim_id.clone()));
         let set = ComponentSet::new(vec![component]);
 
         assert_eq!(set.components()[0].id(), &component_id);
         assert_eq!(set.components()[0].provides()[0].id(), &capability_id);
+        assert_eq!(set.components()[0].claims()[0].id(), &claim_id);
 
         let provided = set.provided_capabilities();
         assert_eq!(provided[0].provider, component_id);
@@ -708,6 +840,47 @@ mod tests {
         assert!(matches!(
             report.problems(),
             [Problem::DuplicateComponent { id }] if id.as_str() == "system.edge-os"
+        ));
+    }
+
+    #[test]
+    fn duplicate_claims_are_reported() {
+        let first = Component::new("app.gateway-a").with_claim(Claim::new("network.tcp.502"));
+        let second = Component::new("app.gateway-b").with_claim(Claim::new("network.tcp.502"));
+        let set = ComponentSet::new(vec![first, second]);
+        let report = set.check();
+
+        assert!(!report.is_consistent());
+        assert!(matches!(
+            report.problems(),
+            [Problem::DuplicateClaim { id, components }]
+                if id.as_str() == "network.tcp.502"
+                    && components.iter().map(ComponentId::as_str).collect::<Vec<_>>()
+                        == ["app.gateway-a", "app.gateway-b"]
+        ));
+    }
+
+    #[test]
+    fn duplicate_claims_within_one_component_are_ignored() {
+        let component = Component::new("app.gateway")
+            .with_claim(Claim::new("network.tcp.502"))
+            .with_claim(Claim::new("network.tcp.502"));
+        let set = ComponentSet::new(vec![component]);
+
+        assert!(set.check().is_consistent());
+    }
+
+    #[test]
+    fn claims_do_not_satisfy_requirements() {
+        let provider = Component::new("app.gateway").with_claim(Claim::new("network.tcp.502"));
+        let consumer = Component::new("app.client")
+            .with_requirement(CapabilitySelector::new("network.tcp.502"));
+        let set = ComponentSet::new(vec![provider, consumer]);
+        let report = set.check();
+
+        assert!(matches!(
+            report.problems(),
+            [Problem::UnsatisfiedRequirement { component, .. }] if component.as_str() == "app.client"
         ));
     }
 

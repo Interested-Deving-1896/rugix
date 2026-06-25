@@ -63,6 +63,20 @@
       ],
       "unevaluatedProperties": false
     },
+    "rugix_ctrl.output.ClaimOutput": {
+      "$id": "rugix_ctrl.output.ClaimOutput",
+      "type": "object",
+      "description": "Exclusive resource claim.",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "unevaluatedProperties": false
+    },
     "rugix_ctrl.output.ComponentOutput": {
       "$id": "rugix_ctrl.output.ComponentOutput",
       "type": "object",
@@ -78,6 +92,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/rugix_ctrl.output.CapabilityOutput"
+          }
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rugix_ctrl.output.ClaimOutput"
           }
         },
         "requires": {
@@ -96,6 +116,7 @@
       "required": [
         "id",
         "provides",
+        "claims",
         "requires",
         "conflicts"
       ],

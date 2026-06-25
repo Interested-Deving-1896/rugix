@@ -108,10 +108,18 @@ record Component {
     version?: string,
     /// Explicit capabilities provided by the component.
     provides: [Capability],
+    /// Exclusive resource claims declared by the component.
+    claims?: [Claim],
     /// Requirement selectors declared by the component.
     requires: [CapabilitySelector],
     /// Conflict selectors declared by the component.
     conflicts: [CapabilitySelector],
+}
+
+/// Exclusive resource claim.
+record Claim {
+    /// Claim ID.
+    id: string,
 }
 
 /// Provided capability.
@@ -139,6 +147,8 @@ record CapabilitySelector {
 variant ComponentProblem {
     /// More than one component uses the same component ID.
     DuplicateComponent: DuplicateComponentProblem,
+    /// More than one component claims the same exclusive resource.
+    DuplicateClaim: DuplicateClaimProblem,
     /// A requirement selector was not satisfied.
     UnsatisfiedRequirement: UnsatisfiedRequirementProblem,
     /// A conflict selector matched a provided capability.
@@ -151,6 +161,14 @@ record DuplicateComponentProblem {
     id: string,
     /// Sources declaring the duplicate component ID.
     sources: [ComponentSource],
+}
+
+/// Duplicate exclusive resource claim problem.
+record DuplicateClaimProblem {
+    /// Duplicate claim ID.
+    id: string,
+    /// Components declaring the duplicate claim.
+    components: [ComponentRef],
 }
 
 /// Reference to a component and its source, if known.

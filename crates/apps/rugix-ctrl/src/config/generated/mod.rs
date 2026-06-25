@@ -11741,6 +11741,8 @@ pub mod output {
         pub version: ::std::option::Option<::std::string::String>,
         #[doc = "Explicit capabilities provided by the component.\n"]
         pub provides: ::std::vec::Vec<CapabilityOutput>,
+        #[doc = "Exclusive resource claims declared by the component.\n"]
+        pub claims: ::std::vec::Vec<ClaimOutput>,
         #[doc = "Requirement selectors declared by the component.\n"]
         pub requires: ::std::vec::Vec<CapabilitySelectorOutput>,
         #[doc = "Conflict selectors declared by the component.\n"]
@@ -11751,12 +11753,14 @@ pub mod output {
         pub fn new(
             id: ::std::string::String,
             provides: ::std::vec::Vec<CapabilityOutput>,
+            claims: ::std::vec::Vec<ClaimOutput>,
             requires: ::std::vec::Vec<CapabilitySelectorOutput>,
             conflicts: ::std::vec::Vec<CapabilitySelectorOutput>,
         ) -> Self {
             Self {
                 id,
                 provides,
+                claims,
                 requires,
                 conflicts,
                 version: ::std::default::Default::default(),
@@ -11796,6 +11800,16 @@ pub mod output {
         #[doc = "Sets the value of `provides`."]
         pub fn with_provides(mut self, provides: ::std::vec::Vec<CapabilityOutput>) -> Self {
             self.provides = provides;
+            self
+        }
+        #[doc = "Sets the value of `claims`."]
+        pub fn set_claims(&mut self, claims: ::std::vec::Vec<ClaimOutput>) -> &mut Self {
+            self.claims = claims;
+            self
+        }
+        #[doc = "Sets the value of `claims`."]
+        pub fn with_claims(mut self, claims: ::std::vec::Vec<ClaimOutput>) -> Self {
+            self.claims = claims;
             self
         }
         #[doc = "Sets the value of `requires`."]
@@ -11842,7 +11856,7 @@ pub mod output {
             __serializer: __S,
         ) -> ::std::result::Result<__S::Ok, __S::Error> {
             let mut __record =
-                __sidex_serde::ser::RecordSerializer::new(__serializer, "ComponentOutput", 5usize)?;
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "ComponentOutput", 6usize)?;
             __record . serialize_field ("id" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . id) ,) ? ;
             {
                 let __wrapped = ::core::option::Option::map(
@@ -11862,6 +11876,13 @@ pub mod output {
                     ::std::vec::Vec<CapabilityOutput>,
                     ::std::vec::Vec<__sidex_serde::AsSelf>,
                 >::new(&self.provides),
+            )?;
+            __record.serialize_field(
+                "claims",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<ClaimOutput>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.claims),
             )?;
             __record.serialize_field(
                 "requires",
@@ -11915,7 +11936,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(0usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(0usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -11929,7 +11950,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(1usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(1usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -11943,13 +11964,13 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(2usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(2usize, &"record with 6 fields"),
                             );
                         }
                     };
                     let __field3 = match __serde::de::SeqAccess::next_element::<
                         __sidex_serde::DeserializeAsWrap<
-                            ::std::vec::Vec<CapabilitySelectorOutput>,
+                            ::std::vec::Vec<ClaimOutput>,
                             ::std::vec::Vec<__sidex_serde::AsSelf>,
                         >,
                     >(&mut __seq)?
@@ -11957,7 +11978,7 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(3usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(3usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -11971,7 +11992,21 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value.into_inner(),
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                __serde::de::Error::invalid_length(4usize, &"record with 5 fields"),
+                                __serde::de::Error::invalid_length(4usize, &"record with 6 fields"),
+                            );
+                        }
+                    };
+                    let __field5 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<CapabilitySelectorOutput>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(5usize, &"record with 6 fields"),
                             );
                         }
                     };
@@ -11979,8 +12014,9 @@ pub mod output {
                         id: __field0,
                         version: __field1,
                         provides: __field2,
-                        requires: __field3,
-                        conflicts: __field4,
+                        claims: __field3,
+                        requires: __field4,
+                        conflicts: __field5,
                     })
                 }
                 #[inline]
@@ -11992,10 +12028,16 @@ pub mod output {
                     __A: __serde::de::MapAccess<'de>,
                 {
                     #[doc(hidden)]
-                    const __IDENTIFIERS: &'static [&'static str] =
-                        &["id", "version", "provides", "requires", "conflicts"];
+                    const __IDENTIFIERS: &'static [&'static str] = &[
+                        "id",
+                        "version",
+                        "provides",
+                        "claims",
+                        "requires",
+                        "conflicts",
+                    ];
                     #[doc(hidden)]
-                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"id\", \"version\", \"provides\", \"requires\", \"conflicts\"]" ;
+                    const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"id\", \"version\", \"provides\", \"claims\", \"requires\", \"conflicts\"]" ;
                     #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
                     #[doc(hidden)]
                     enum __Identifier {
@@ -12004,6 +12046,7 @@ pub mod output {
                         __Identifier2,
                         __Identifier3,
                         __Identifier4,
+                        __Identifier5,
                         __Unknown,
                     }
                     #[doc(hidden)]
@@ -12029,6 +12072,7 @@ pub mod output {
                                 2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
                                 3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
                                 4u64 => ::core::result::Result::Ok(__Identifier::__Identifier4),
+                                5u64 => ::core::result::Result::Ok(__Identifier::__Identifier5),
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
                         }
@@ -12047,11 +12091,12 @@ pub mod output {
                                 "provides" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
+                                "claims" => ::core::result::Result::Ok(__Identifier::__Identifier3),
                                 "requires" => {
-                                    ::core::result::Result::Ok(__Identifier::__Identifier3)
+                                    ::core::result::Result::Ok(__Identifier::__Identifier4)
                                 }
                                 "conflicts" => {
-                                    ::core::result::Result::Ok(__Identifier::__Identifier4)
+                                    ::core::result::Result::Ok(__Identifier::__Identifier5)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -12071,11 +12116,14 @@ pub mod output {
                                 b"provides" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier2)
                                 }
-                                b"requires" => {
+                                b"claims" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier3)
                                 }
-                                b"conflicts" => {
+                                b"requires" => {
                                     ::core::result::Result::Ok(__Identifier::__Identifier4)
+                                }
+                                b"conflicts" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier5)
                                 }
                                 _ => ::core::result::Result::Ok(__Identifier::__Unknown),
                             }
@@ -12102,10 +12150,12 @@ pub mod output {
                     > = ::core::option::Option::None;
                     let mut __field2: ::core::option::Option<::std::vec::Vec<CapabilityOutput>> =
                         ::core::option::Option::None;
-                    let mut __field3: ::core::option::Option<
+                    let mut __field3: ::core::option::Option<::std::vec::Vec<ClaimOutput>> =
+                        ::core::option::Option::None;
+                    let mut __field4: ::core::option::Option<
                         ::std::vec::Vec<CapabilitySelectorOutput>,
                     > = ::core::option::Option::None;
-                    let mut __field4: ::core::option::Option<
+                    let mut __field5: ::core::option::Option<
                         ::std::vec::Vec<CapabilitySelectorOutput>,
                     > = ::core::option::Option::None;
                     while let ::core::option::Option::Some(__key) =
@@ -12168,14 +12218,14 @@ pub mod output {
                                 if ::core::option::Option::is_some(&__field3) {
                                     return ::core::result::Result::Err(
                                         <__A::Error as __serde::de::Error>::duplicate_field(
-                                            "requires",
+                                            "claims",
                                         ),
                                     );
                                 }
                                 __field3 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
                                         __sidex_serde::DeserializeAsWrap<
-                                            ::std::vec::Vec<CapabilitySelectorOutput>,
+                                            ::std::vec::Vec<ClaimOutput>,
                                             ::std::vec::Vec<__sidex_serde::AsSelf>,
                                         >,
                                     >(&mut __map)?
@@ -12186,11 +12236,29 @@ pub mod output {
                                 if ::core::option::Option::is_some(&__field4) {
                                     return ::core::result::Result::Err(
                                         <__A::Error as __serde::de::Error>::duplicate_field(
-                                            "conflicts",
+                                            "requires",
                                         ),
                                     );
                                 }
                                 __field4 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<CapabilitySelectorOutput>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
+                                );
+                            }
+                            __Identifier::__Identifier5 => {
+                                if ::core::option::Option::is_some(&__field5) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "conflicts",
+                                        ),
+                                    );
+                                }
+                                __field5 = ::core::option::Option::Some(
                                     __serde::de::MapAccess::next_value::<
                                         __sidex_serde::DeserializeAsWrap<
                                             ::std::vec::Vec<CapabilitySelectorOutput>,
@@ -12231,11 +12299,19 @@ pub mod output {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
-                                <__A::Error as __serde::de::Error>::missing_field("requires"),
+                                <__A::Error as __serde::de::Error>::missing_field("claims"),
                             );
                         }
                     };
                     let __field4 = match __field4 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("requires"),
+                            );
+                        }
+                    };
+                    let __field5 = match __field5 {
                         ::core::option::Option::Some(__value) => __value,
                         ::core::option::Option::None => {
                             return ::core::result::Result::Err(
@@ -12247,17 +12323,234 @@ pub mod output {
                         id: __field0,
                         version: __field1,
                         provides: __field2,
-                        requires: __field3,
-                        conflicts: __field4,
+                        claims: __field3,
+                        requires: __field4,
+                        conflicts: __field5,
                     })
                 }
             }
             #[doc(hidden)]
-            const __FIELDS: &'static [&'static str] =
-                &["id", "version", "provides", "requires", "conflicts"];
+            const __FIELDS: &'static [&'static str] = &[
+                "id",
+                "version",
+                "provides",
+                "claims",
+                "requires",
+                "conflicts",
+            ];
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "ComponentOutput",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Exclusive resource claim.\n"]
+    #[derive(Clone, Debug)]
+    pub struct ClaimOutput {
+        #[doc = "Claim ID.\n"]
+        pub id: ::std::string::String,
+    }
+    impl ClaimOutput {
+        #[doc = "Creates a new [`ClaimOutput`]."]
+        pub fn new(id: ::std::string::String) -> Self {
+            Self { id }
+        }
+        #[doc = "Sets the value of `id`."]
+        pub fn set_id(&mut self, id: ::std::string::String) -> &mut Self {
+            self.id = id;
+            self
+        }
+        #[doc = "Sets the value of `id`."]
+        pub fn with_id(mut self, id: ::std::string::String) -> Self {
+            self.id = id;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __sidex_serde::SidexType for ClaimOutput {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for ClaimOutput {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record =
+                __sidex_serde::ser::RecordSerializer::new(__serializer, "ClaimOutput", 1usize)?;
+            __record . serialize_field ("id" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . id) ,) ? ;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for ClaimOutput {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = ClaimOutput;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(__formatter, "record ClaimOutput")
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 1 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(ClaimOutput { id: __field0 })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["id"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str = "an identifier in [\"id\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "id" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"id" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("id"),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("id"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(ClaimOutput { id: __field0 })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["id"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "ClaimOutput",
                 __FIELDS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,
@@ -13019,6 +13312,8 @@ pub mod output {
     pub enum ComponentProblemOutput {
         #[doc = "More than one component uses the same component ID.\n"]
         DuplicateComponent(DuplicateComponentProblemOutput),
+        #[doc = "More than one component claims the same exclusive resource.\n"]
+        DuplicateClaim(DuplicateClaimProblemOutput),
         #[doc = "A requirement selector was not satisfied.\n"]
         UnsatisfiedRequirement(UnsatisfiedRequirementProblemOutput),
         #[doc = "A conflict selector matched a provided capability.\n"]
@@ -13046,10 +13341,19 @@ pub mod output {
                         __sidex_serde::AsSelf,
                     >::new(__value),
                 ),
+                Self::DuplicateClaim(__value) => __serializer.serialize_internally_tagged(
+                    "kind",
+                    "DuplicateClaim",
+                    1u32,
+                    &__sidex_serde::SerializeAsWrap::<
+                        DuplicateClaimProblemOutput,
+                        __sidex_serde::AsSelf,
+                    >::new(__value),
+                ),
                 Self::UnsatisfiedRequirement(__value) => __serializer.serialize_internally_tagged(
                     "kind",
                     "UnsatisfiedRequirement",
-                    1u32,
+                    2u32,
                     &__sidex_serde::SerializeAsWrap::<
                         UnsatisfiedRequirementProblemOutput,
                         __sidex_serde::AsSelf,
@@ -13058,7 +13362,7 @@ pub mod output {
                 Self::Conflict(__value) => __serializer.serialize_internally_tagged(
                     "kind",
                     "Conflict",
-                    2u32,
+                    3u32,
                     &__sidex_serde::SerializeAsWrap::<
                         ComponentConflictProblemOutput,
                         __sidex_serde::AsSelf,
@@ -13073,16 +13377,21 @@ pub mod output {
             __deserializer: __D,
         ) -> ::std::result::Result<Self, __D::Error> {
             #[doc(hidden)]
-            const __IDENTIFIERS: &'static [&'static str] =
-                &["DuplicateComponent", "UnsatisfiedRequirement", "Conflict"];
+            const __IDENTIFIERS: &'static [&'static str] = &[
+                "DuplicateComponent",
+                "DuplicateClaim",
+                "UnsatisfiedRequirement",
+                "Conflict",
+            ];
             #[doc(hidden)]
-            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"DuplicateComponent\", \"UnsatisfiedRequirement\", \"Conflict\"]" ;
+            const __EXPECTING_IDENTIFIERS : & 'static str = "an identifier in [\"DuplicateComponent\", \"DuplicateClaim\", \"UnsatisfiedRequirement\", \"Conflict\"]" ;
             #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
             #[doc(hidden)]
             enum __Identifier {
                 __Identifier0,
                 __Identifier1,
                 __Identifier2,
+                __Identifier3,
             }
             #[doc(hidden)]
             struct __IdentifierVisitor;
@@ -13102,6 +13411,7 @@ pub mod output {
                         0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
                         1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
                         2u64 => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        3u64 => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Unsigned(__variant),
@@ -13118,10 +13428,11 @@ pub mod output {
                         "DuplicateComponent" => {
                             ::core::result::Result::Ok(__Identifier::__Identifier0)
                         }
+                        "DuplicateClaim" => ::core::result::Result::Ok(__Identifier::__Identifier1),
                         "UnsatisfiedRequirement" => {
-                            ::core::result::Result::Ok(__Identifier::__Identifier1)
+                            ::core::result::Result::Ok(__Identifier::__Identifier2)
                         }
-                        "Conflict" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        "Conflict" => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => ::core::result::Result::Err(
                             __serde::de::Error::unknown_variant(__variant, __IDENTIFIERS),
                         ),
@@ -13138,10 +13449,13 @@ pub mod output {
                         b"DuplicateComponent" => {
                             ::core::result::Result::Ok(__Identifier::__Identifier0)
                         }
-                        b"UnsatisfiedRequirement" => {
+                        b"DuplicateClaim" => {
                             ::core::result::Result::Ok(__Identifier::__Identifier1)
                         }
-                        b"Conflict" => ::core::result::Result::Ok(__Identifier::__Identifier2),
+                        b"UnsatisfiedRequirement" => {
+                            ::core::result::Result::Ok(__Identifier::__Identifier2)
+                        }
+                        b"Conflict" => ::core::result::Result::Ok(__Identifier::__Identifier3),
                         __variant => {
                             ::core::result::Result::Err(__serde::de::Error::invalid_value(
                                 __serde::de::Unexpected::Bytes(__variant),
@@ -13164,8 +13478,12 @@ pub mod output {
                 }
             }
             #[doc(hidden)]
-            const __VARIANTS: &'static [&'static str] =
-                &["DuplicateComponent", "UnsatisfiedRequirement", "Conflict"];
+            const __VARIANTS: &'static [&'static str] = &[
+                "DuplicateComponent",
+                "DuplicateClaim",
+                "UnsatisfiedRequirement",
+                "Conflict",
+            ];
             if __serde::Deserializer::is_human_readable(&__deserializer) {
                 let __tagged = __sidex_serde::de::tagged::deserialize_tagged_variant::<
                     __Identifier,
@@ -13183,6 +13501,16 @@ pub mod output {
                         ))
                     }
                     __Identifier::__Identifier1 => {
+                        ::core::result::Result::Ok(ComponentProblemOutput::DuplicateClaim(
+                            __tagged
+                                .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
+                                    DuplicateClaimProblemOutput,
+                                    __sidex_serde::AsSelf,
+                                >, __D::Error>()?
+                                .into_inner(),
+                        ))
+                    }
+                    __Identifier::__Identifier2 => {
                         ::core::result::Result::Ok(ComponentProblemOutput::UnsatisfiedRequirement(
                             __tagged
                                 .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
@@ -13192,7 +13520,7 @@ pub mod output {
                                 .into_inner(),
                         ))
                     }
-                    __Identifier::__Identifier2 => {
+                    __Identifier::__Identifier3 => {
                         ::core::result::Result::Ok(ComponentProblemOutput::Conflict(
                             __tagged
                                 .deserialize_internally_tagged::<__sidex_serde::DeserializeAsWrap<
@@ -13261,6 +13589,17 @@ pub mod output {
                             (__Identifier::__Identifier1, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
                                     __sidex_serde::DeserializeAsWrap<
+                                        DuplicateClaimProblemOutput,
+                                        __sidex_serde::AsSelf,
+                                    >,
+                                >(__variant)?;
+                                ::core::result::Result::Ok(ComponentProblemOutput::DuplicateClaim(
+                                    __value.into_inner(),
+                                ))
+                            }
+                            (__Identifier::__Identifier2, __variant) => {
+                                let __value = __serde::de::VariantAccess::newtype_variant::<
+                                    __sidex_serde::DeserializeAsWrap<
                                         UnsatisfiedRequirementProblemOutput,
                                         __sidex_serde::AsSelf,
                                     >,
@@ -13271,7 +13610,7 @@ pub mod output {
                                     ),
                                 )
                             }
-                            (__Identifier::__Identifier2, __variant) => {
+                            (__Identifier::__Identifier3, __variant) => {
                                 let __value = __serde::de::VariantAccess::newtype_variant::<
                                     __sidex_serde::DeserializeAsWrap<
                                         ComponentConflictProblemOutput,
@@ -13588,6 +13927,304 @@ pub mod output {
             __serde::Deserializer::deserialize_struct(
                 __deserializer,
                 "DuplicateComponentProblemOutput",
+                __FIELDS,
+                __Visitor {
+                    __phantom_vars: ::core::marker::PhantomData,
+                },
+            )
+        }
+    }
+    #[doc = "Duplicate exclusive resource claim problem.\n"]
+    #[derive(Clone, Debug)]
+    pub struct DuplicateClaimProblemOutput {
+        #[doc = "Duplicate claim ID.\n"]
+        pub id: ::std::string::String,
+        #[doc = "Components declaring the duplicate claim.\n"]
+        pub components: ::std::vec::Vec<ComponentRefOutput>,
+    }
+    impl DuplicateClaimProblemOutput {
+        #[doc = "Creates a new [`DuplicateClaimProblemOutput`]."]
+        pub fn new(
+            id: ::std::string::String,
+            components: ::std::vec::Vec<ComponentRefOutput>,
+        ) -> Self {
+            Self { id, components }
+        }
+        #[doc = "Sets the value of `id`."]
+        pub fn set_id(&mut self, id: ::std::string::String) -> &mut Self {
+            self.id = id;
+            self
+        }
+        #[doc = "Sets the value of `id`."]
+        pub fn with_id(mut self, id: ::std::string::String) -> Self {
+            self.id = id;
+            self
+        }
+        #[doc = "Sets the value of `components`."]
+        pub fn set_components(
+            &mut self,
+            components: ::std::vec::Vec<ComponentRefOutput>,
+        ) -> &mut Self {
+            self.components = components;
+            self
+        }
+        #[doc = "Sets the value of `components`."]
+        pub fn with_components(mut self, components: ::std::vec::Vec<ComponentRefOutput>) -> Self {
+            self.components = components;
+            self
+        }
+    }
+    #[automatically_derived]
+    impl __sidex_serde::SidexType for DuplicateClaimProblemOutput {
+        type Encoding = __sidex_serde::AsSelf;
+    }
+    #[automatically_derived]
+    impl __serde::Serialize for DuplicateClaimProblemOutput {
+        fn serialize<__S: __serde::Serializer>(
+            &self,
+            __serializer: __S,
+        ) -> ::std::result::Result<__S::Ok, __S::Error> {
+            let mut __record = __sidex_serde::ser::RecordSerializer::new(
+                __serializer,
+                "DuplicateClaimProblemOutput",
+                2usize,
+            )?;
+            __record . serialize_field ("id" , & __sidex_serde :: SerializeAsWrap :: < :: std :: string :: String < > , __sidex_serde :: AsSelf > :: new (& self . id) ,) ? ;
+            __record.serialize_field(
+                "components",
+                &__sidex_serde::SerializeAsWrap::<
+                    ::std::vec::Vec<ComponentRefOutput>,
+                    ::std::vec::Vec<__sidex_serde::AsSelf>,
+                >::new(&self.components),
+            )?;
+            __record.end()
+        }
+    }
+    #[automatically_derived]
+    impl<'de> __serde::Deserialize<'de> for DuplicateClaimProblemOutput {
+        fn deserialize<__D: __serde::Deserializer<'de>>(
+            __deserializer: __D,
+        ) -> ::std::result::Result<Self, __D::Error> {
+            #[doc(hidden)]
+            struct __Visitor {
+                __phantom_vars: ::core::marker::PhantomData<fn(&())>,
+            }
+            impl<'de> __serde::de::Visitor<'de> for __Visitor {
+                type Value = DuplicateClaimProblemOutput;
+                fn expecting(
+                    &self,
+                    __formatter: &mut ::core::fmt::Formatter,
+                ) -> ::core::fmt::Result {
+                    ::core::fmt::Formatter::write_str(
+                        __formatter,
+                        "record DuplicateClaimProblemOutput",
+                    )
+                }
+                #[inline]
+                fn visit_seq<__A>(
+                    self,
+                    mut __seq: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::SeqAccess<'de>,
+                {
+                    let __field0 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::string::String,
+                            __sidex_serde::AsSelf,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(0usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    let __field1 = match __serde::de::SeqAccess::next_element::<
+                        __sidex_serde::DeserializeAsWrap<
+                            ::std::vec::Vec<ComponentRefOutput>,
+                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                        >,
+                    >(&mut __seq)?
+                    {
+                        ::core::option::Option::Some(__value) => __value.into_inner(),
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                __serde::de::Error::invalid_length(1usize, &"record with 2 fields"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(DuplicateClaimProblemOutput {
+                        id: __field0,
+                        components: __field1,
+                    })
+                }
+                #[inline]
+                fn visit_map<__A>(
+                    self,
+                    mut __map: __A,
+                ) -> ::core::result::Result<Self::Value, __A::Error>
+                where
+                    __A: __serde::de::MapAccess<'de>,
+                {
+                    #[doc(hidden)]
+                    const __IDENTIFIERS: &'static [&'static str] = &["id", "components"];
+                    #[doc(hidden)]
+                    const __EXPECTING_IDENTIFIERS: &'static str =
+                        "an identifier in [\"id\", \"components\"]";
+                    #[derive(:: core :: clone :: Clone, :: core :: marker :: Copy)]
+                    #[doc(hidden)]
+                    enum __Identifier {
+                        __Identifier0,
+                        __Identifier1,
+                        __Unknown,
+                    }
+                    #[doc(hidden)]
+                    struct __IdentifierVisitor;
+                    impl<'de> __serde::de::Visitor<'de> for __IdentifierVisitor {
+                        type Value = __Identifier;
+                        fn expecting(
+                            &self,
+                            __formatter: &mut ::core::fmt::Formatter,
+                        ) -> ::core::fmt::Result {
+                            ::core::fmt::Formatter::write_str(__formatter, __EXPECTING_IDENTIFIERS)
+                        }
+                        fn visit_u64<__E>(
+                            self,
+                            __value: u64,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                0u64 => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                1u64 => ::core::result::Result::Ok(__Identifier::__Identifier1),
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_str<__E>(
+                            self,
+                            __value: &str,
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                "id" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                "components" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                        fn visit_bytes<__E>(
+                            self,
+                            __value: &[u8],
+                        ) -> ::core::result::Result<Self::Value, __E>
+                        where
+                            __E: __serde::de::Error,
+                        {
+                            match __value {
+                                b"id" => ::core::result::Result::Ok(__Identifier::__Identifier0),
+                                b"components" => {
+                                    ::core::result::Result::Ok(__Identifier::__Identifier1)
+                                }
+                                _ => ::core::result::Result::Ok(__Identifier::__Unknown),
+                            }
+                        }
+                    }
+                    impl<'de> __serde::Deserialize<'de> for __Identifier {
+                        #[inline]
+                        fn deserialize<__D>(
+                            __deserializer: __D,
+                        ) -> ::core::result::Result<Self, __D::Error>
+                        where
+                            __D: __serde::Deserializer<'de>,
+                        {
+                            __serde::Deserializer::deserialize_identifier(
+                                __deserializer,
+                                __IdentifierVisitor,
+                            )
+                        }
+                    }
+                    let mut __field0: ::core::option::Option<::std::string::String> =
+                        ::core::option::Option::None;
+                    let mut __field1: ::core::option::Option<::std::vec::Vec<ComponentRefOutput>> =
+                        ::core::option::Option::None;
+                    while let ::core::option::Option::Some(__key) =
+                        __serde::de::MapAccess::next_key::<__Identifier>(&mut __map)?
+                    {
+                        match __key {
+                            __Identifier::__Identifier0 => {
+                                if ::core::option::Option::is_some(&__field0) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field("id"),
+                                    );
+                                }
+                                __field0 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::string::String,
+                                            __sidex_serde::AsSelf,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
+                                );
+                            }
+                            __Identifier::__Identifier1 => {
+                                if ::core::option::Option::is_some(&__field1) {
+                                    return ::core::result::Result::Err(
+                                        <__A::Error as __serde::de::Error>::duplicate_field(
+                                            "components",
+                                        ),
+                                    );
+                                }
+                                __field1 = ::core::option::Option::Some(
+                                    __serde::de::MapAccess::next_value::<
+                                        __sidex_serde::DeserializeAsWrap<
+                                            ::std::vec::Vec<ComponentRefOutput>,
+                                            ::std::vec::Vec<__sidex_serde::AsSelf>,
+                                        >,
+                                    >(&mut __map)?
+                                    .into_inner(),
+                                );
+                            }
+                            _ => {
+                                __serde::de::MapAccess::next_value::<__serde::de::IgnoredAny>(
+                                    &mut __map,
+                                )?;
+                            }
+                        }
+                    }
+                    let __field0 = match __field0 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("id"),
+                            );
+                        }
+                    };
+                    let __field1 = match __field1 {
+                        ::core::option::Option::Some(__value) => __value,
+                        ::core::option::Option::None => {
+                            return ::core::result::Result::Err(
+                                <__A::Error as __serde::de::Error>::missing_field("components"),
+                            );
+                        }
+                    };
+                    ::core::result::Result::Ok(DuplicateClaimProblemOutput {
+                        id: __field0,
+                        components: __field1,
+                    })
+                }
+            }
+            #[doc(hidden)]
+            const __FIELDS: &'static [&'static str] = &["id", "components"];
+            __serde::Deserializer::deserialize_struct(
+                __deserializer,
+                "DuplicateClaimProblemOutput",
                 __FIELDS,
                 __Visitor {
                     __phantom_vars: ::core::marker::PhantomData,
