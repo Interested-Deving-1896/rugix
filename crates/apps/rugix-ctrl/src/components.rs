@@ -497,8 +497,15 @@ fn synthetic_host_component() -> Component {
 }
 
 fn rugix_ctrl_capability(version: &str) -> Capability {
-    Capability::versioned("rugix.ctrl", version)
-        .unwrap_or_else(|_| Capability::value("rugix.ctrl", version))
+    if let Ok(capability) = Capability::versioned("rugix.ctrl", version) {
+        return capability;
+    }
+    if let Some(normalized) = version.strip_prefix('v') {
+        if let Ok(capability) = Capability::versioned("rugix.ctrl", normalized) {
+            return capability;
+        }
+    }
+    Capability::value("rugix.ctrl", version)
 }
 
 fn prepare_component_root_parent(root: &Path) -> SystemResult<()> {
@@ -1136,6 +1143,17 @@ version = "2.0.0"
     #[test]
     fn rugix_ctrl_capability_prefers_parseable_versions() {
         let capability = rugix_ctrl_capability("1.2.3");
+        assert_eq!(capability.id().as_str(), "rugix.ctrl");
+        assert_eq!(
+            capability.version().map(ToString::to_string).as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(capability.value_str(), None);
+    }
+
+    #[test]
+    fn rugix_ctrl_capability_strips_tag_version_prefix() {
+        let capability = rugix_ctrl_capability("v1.2.3");
         assert_eq!(capability.id().as_str(), "rugix.ctrl");
         assert_eq!(
             capability.version().map(ToString::to_string).as_deref(),
