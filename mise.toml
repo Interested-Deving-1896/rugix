@@ -3,13 +3,12 @@ rust = { version = "nightly", profile = "default", components = "rustfmt,clippy"
 "github:silitics/sidex" = { version = "0.2.6", exe = "sidex" }
 
 [tasks.codegen]
-description = "Regenerate Sidex-generated Rust code and JSON schemas."
+description = "Regenerate Sidex-generated JSON schemas."
 run = """
 set -euo pipefail
 
 pushd crates/apps/rugix-ctrl
 mkdir -p generated && rm -rf generated/*
-sidex generate rust src/config/generated
 sidex generate json-schema generated/
 
 # Copy generated JSON schemas to the schemas directory (repo root)
@@ -23,7 +22,6 @@ popd
 
 pushd crates/libs/rugix-bundle
 mkdir -p generated && rm -rf generated/*
-sidex generate rust src/manifest/generated
 sidex generate json-schema generated/
 
 cp generated/rugix_bundle.manifest.BundleManifest.schema.json ../../../schemas/rugix-bundle-manifest.schema.json

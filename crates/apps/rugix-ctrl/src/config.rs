@@ -1,13 +1,17 @@
-#[allow(clippy::redundant_static_lifetimes, clippy::empty_docs)]
-mod generated;
 use std::fs;
 use std::path::Path;
 
-// Re-export the generated data structures.
-pub use generated::*;
 use reportify::ResultExt;
 
 use crate::system::SystemResult;
+
+sidex::include_bundle! {
+    #[allow(clippy::redundant_static_lifetimes, clippy::empty_docs)]
+    rugix_ctrl as generated
+}
+
+// Re-export the generated data structures.
+pub use generated::*;
 
 /// Ctrl config path.
 const CTRL_CONFIG_PATH: &str = "/etc/rugix/ctrl.toml";

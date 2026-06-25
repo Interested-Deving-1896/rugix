@@ -1,10 +1,13 @@
-#[allow(
-    clippy::redundant_static_lifetimes,
-    clippy::empty_docs,
-    clippy::manual_unwrap_or_default,
-    clippy::match_single_binding
-)]
-mod generated;
+sidex::include_bundle! {
+    #[allow(
+        clippy::redundant_static_lifetimes,
+        clippy::empty_docs,
+        clippy::manual_unwrap_or_default,
+        clippy::match_single_binding
+    )]
+    rugix_bundle as generated
+}
+
 pub use generated::manifest::*;
 
 use crate::BundleResult;

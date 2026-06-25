@@ -59,6 +59,9 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
 ] }
 
+[build-dependencies]
+sidex-build-rs.workspace = true
+
 
 [lints]
 workspace = true
