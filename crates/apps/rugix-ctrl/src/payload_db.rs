@@ -90,14 +90,13 @@ impl BlockProvider {
                 BlockIndex::decode(&mut decoder, atom).whatever("unable to decode block index")?;
             let file_idx = self.files.len();
             self.files.push(data_file);
-            let mut next_block_idx = self.hashes.len() / self.hash_algorithm.hash_size();
+            let first_block_idx = self.hashes.len() / self.hash_algorithm.hash_size();
             self.hashes.extend_from_slice(&index.block_hashes.raw);
             let mut current_offset = NumBytes::ZERO;
-            for size in index.block_sizes.raw.chunks_exact(4) {
+            for (block, size) in (first_block_idx..).zip(index.block_sizes.raw.chunks_exact(4)) {
                 let size = NumBytes::new(u32::from_be_bytes(size.try_into().unwrap()).into());
                 self.dimensions.push((current_offset, size));
                 current_offset += size;
-                let block = next_block_idx;
                 let table_hash = self.table_hasher.hash_one(self.get_hash(block));
                 self.table
                     .entry(
@@ -116,7 +115,6 @@ impl BlockProvider {
                         },
                     )
                     .or_insert_with(|| (block, file_idx));
-                next_block_idx += 1;
             }
             break;
         }

@@ -472,7 +472,7 @@ impl Copier {
                         )?;
                         dst.write(&self.buffer)?;
                         let chunk_read = self.buffer.len();
-                        self.buffer.truncate(0);
+                        self.buffer.clear();
                         chunk_read
                     };
                     chunk_remaining -= chunk_read as i64;
@@ -516,7 +516,7 @@ impl Copier {
                 src.read_into_vec(&mut self.buffer, Some(remaining.min(CHUNK_SIZE)))?;
                 dst.write(&self.buffer)?;
                 remaining -= self.buffer.byte_len();
-                self.buffer.truncate(0);
+                self.buffer.clear();
             }
             Ok(())
         }

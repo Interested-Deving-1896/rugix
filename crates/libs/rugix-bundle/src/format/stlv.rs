@@ -278,10 +278,8 @@ impl AtomHead {
         let mut size = TAG_SIZE as u64;
         size += 1;
         match self {
-            AtomHead::Value { length, .. } => {
-                if length.raw >= 127 {
-                    size += compute_varint_size(length.raw - 127) as u64;
-                }
+            AtomHead::Value { length, .. } if length.raw >= 127 => {
+                size += compute_varint_size(length.raw - 127) as u64;
             }
             _ => { /* nothing to do */ }
         }

@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rugix_ctrl.output.ComponentsCheckOutput",
+  "type": "object",
+  "description": "Output of the component consistency check command.",
+  "properties": {
+    "roots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rugix_ctrl.output.ComponentRootOutput"
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rugix_ctrl.output.LoadedComponentOutput"
+      }
+    },
+    "consistent": {
+      "type": "boolean"
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rugix_ctrl.output.ComponentProblemOutput"
+      }
+    }
+  },
+  "required": [
+    "roots",
+    "components",
+    "consistent",
+    "problems"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "rugix_ctrl.output.CapabilityOutput": {
+      "$id": "rugix_ctrl.output.CapabilityOutput",
+      "type": "object",
+      "description": "Provided capability.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.CapabilitySelectorOutput": {
+      "$id": "rugix_ctrl.output.CapabilitySelectorOutput",
+      "type": "object",
+      "description": "Capability selector used by requirements and conflicts.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.ComponentOutput": {
+      "$id": "rugix_ctrl.output.ComponentOutput",
+      "type": "object",
+      "description": "Component declaration.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "provides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rugix_ctrl.output.CapabilityOutput"
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rugix_ctrl.output.CapabilitySelectorOutput"
+          }
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rugix_ctrl.output.CapabilitySelectorOutput"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "provides",
+        "requires",
+        "conflicts"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.ComponentProblemOutput": {
+      "$id": "rugix_ctrl.output.ComponentProblemOutput",
+      "description": "Internal consistency problem in the component set.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "DuplicateComponent"
+            },
+            "id": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceOutput"
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "id",
+            "sources"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "UnsatisfiedRequirement"
+            },
+            "component": {
+              "$ref": "#/$defs/rugix_ctrl.output.ComponentRefOutput"
+            },
+            "selector": {
+              "$ref": "#/$defs/rugix_ctrl.output.CapabilitySelectorOutput"
+            }
+          },
+          "required": [
+            "kind",
+            "component",
+            "selector"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "Conflict"
+            },
+            "component": {
+              "$ref": "#/$defs/rugix_ctrl.output.ComponentRefOutput"
+            },
+            "selector": {
+              "$ref": "#/$defs/rugix_ctrl.output.CapabilitySelectorOutput"
+            },
+            "provider": {
+              "$ref": "#/$defs/rugix_ctrl.output.ComponentRefOutput"
+            },
+            "capability": {
+              "$ref": "#/$defs/rugix_ctrl.output.CapabilityOutput"
+            }
+          },
+          "required": [
+            "kind",
+            "component",
+            "selector",
+            "provider",
+            "capability"
+          ]
+        }
+      ]
+    },
+    "rugix_ctrl.output.ComponentRefOutput": {
+      "$id": "rugix_ctrl.output.ComponentRefOutput",
+      "type": "object",
+      "description": "Reference to a component and its source, if known.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceOutput"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.ComponentRootOutput": {
+      "$id": "rugix_ctrl.output.ComponentRootOutput",
+      "type": "object",
+      "description": "Root directory scanned for component metadata.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceKindOutput"
+        },
+        "path": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.ComponentSourceKindOutput": {
+      "$id": "rugix_ctrl.output.ComponentSourceKindOutput",
+      "enum": [
+        "System",
+        "Local",
+        "Runtime",
+        "App"
+      ],
+      "description": "Kind of component source."
+    },
+    "rugix_ctrl.output.ComponentSourceOutput": {
+      "$id": "rugix_ctrl.output.ComponentSourceOutput",
+      "type": "object",
+      "description": "Source file for a component declaration.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceKindOutput"
+        },
+        "path": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer",
+          "format": "uint64"
+        }
+      },
+      "required": [
+        "kind",
+        "path"
+      ],
+      "unevaluatedProperties": false
+    },
+    "rugix_ctrl.output.LoadedComponentOutput": {
+      "$id": "rugix_ctrl.output.LoadedComponentOutput",
+      "type": "object",
+      "description": "Component loaded from a source file.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/rugix_ctrl.output.ComponentSourceOutput"
+        },
+        "component": {
+          "$ref": "#/$defs/rugix_ctrl.output.ComponentOutput"
+        }
+      },
+      "required": [
+        "source",
+        "component"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

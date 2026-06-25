@@ -298,6 +298,28 @@ pub fn main() -> SystemResult<()> {
                 system.reboot()?;
             }
         },
+        Command::Components(cmd) => match cmd {
+            ComponentsCommand::List => {
+                let components = crate::components::InstalledComponents::load()?;
+                let output = components.output();
+                rugix_cli::json::print_json(&output, false)
+                    .whatever("unable to write component list to stdout")?;
+            }
+            ComponentsCommand::Info { component } => {
+                let components = crate::components::InstalledComponents::load()?;
+                let output = components.output_for_component(component)?;
+                rugix_cli::json::print_json(&output, false)
+                    .whatever("unable to write component info to stdout")?;
+            }
+            ComponentsCommand::Check => match run_components_check() {
+                Ok(true) => {}
+                Ok(false) => std::process::exit(1),
+                Err(report) => {
+                    eprintln!("{report:?}");
+                    std::process::exit(2);
+                }
+            },
+        },
         Command::Data(cmd) => match cmd {
             DataCommand::Wipe { yes, no_reboot } => {
                 run_data_wipe(*yes, *no_reboot)?;
@@ -769,6 +791,15 @@ pub fn main() -> SystemResult<()> {
         }
     }
     Ok(())
+}
+
+fn run_components_check() -> SystemResult<bool> {
+    let components = crate::components::InstalledComponents::load()?;
+    let output = components.check_output();
+    let consistent = output.consistent;
+    rugix_cli::json::print_json(&output, false)
+        .whatever("unable to write component check report to stdout")?;
+    Ok(consistent)
 }
 
 /// Resolve an optional [`AppStatus`], defaulting to `Unknown`.
@@ -1279,6 +1310,7 @@ fn verify_bundle_signature<S: BundleSource>(
     Ok(false)
 }
 
+#[expect(clippy::too_many_arguments)]
 fn install_update_bundle<R: BundleSource>(
     system: &System,
     config: &Config,
@@ -1764,6 +1796,9 @@ pub enum Command {
     /// Manage the system.
     #[clap(subcommand)]
     System(SystemCommand),
+    /// Inspect compatibility components and constraints.
+    #[clap(subcommand)]
+    Components(ComponentsCommand),
     /// Manage the update slots of the system.
     #[clap(subcommand)]
     Slots(SlotsCommand),
@@ -1926,6 +1961,19 @@ pub enum SystemCommand {
         #[clap(long)]
         spare: bool,
     },
+}
+
+#[derive(Debug, Parser)]
+pub enum ComponentsCommand {
+    /// List installed compatibility components.
+    List,
+    /// Show installed compatibility components with a specific component ID.
+    Info {
+        /// Component ID.
+        component: String,
+    },
+    /// Check installed compatibility components for internal consistency.
+    Check,
 }
 
 #[derive(Debug, Parser)]

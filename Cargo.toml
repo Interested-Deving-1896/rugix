@@ -58,6 +58,7 @@ rugix-bundle = { path = "crates/libs/rugix-bundle" }
 rugix-chunker = { path = "crates/libs/rugix-chunker" }
 rugix-cli = { path = "crates/libs/rugix-cli" }
 rugix-common = { path = "crates/libs/rugix-common" }
+rugix-component-set = { path = "crates/libs/rugix-component-set" }
 rugix-compression = { path = "crates/libs/rugix-compression" }
 rugix-fs = { path = "crates/libs/rugix-fs" }
 rugix-hooks = { path = "crates/libs/rugix-hooks" }

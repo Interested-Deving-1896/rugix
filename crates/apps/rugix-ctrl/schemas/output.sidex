@@ -113,3 +113,149 @@ record AppGcAppOutput {
     /// Generation numbers that were removed.
     removed: [u64],
 }
+
+/// Output for component inventory commands.
+record ComponentsOutput {
+    /// Component roots that were scanned.
+    roots: [ComponentRootOutput],
+    /// Components loaded from the scanned roots.
+    components: [LoadedComponentOutput],
+}
+
+/// Output of the component consistency check command.
+record ComponentsCheckOutput {
+    /// Component roots that were scanned.
+    roots: [ComponentRootOutput],
+    /// Components loaded from the scanned roots.
+    components: [LoadedComponentOutput],
+    /// Whether the loaded component set is internally consistent.
+    consistent: bool,
+    /// Problems found while checking the component set.
+    problems: [ComponentProblemOutput],
+}
+
+/// Root directory scanned for component metadata.
+record ComponentRootOutput {
+    /// Kind of component source.
+    kind: ComponentSourceKindOutput,
+    /// Root path.
+    path: string,
+    /// App name for app-owned roots.
+    app?: string,
+    /// Active app generation for app-owned roots.
+    generation?: u64,
+}
+
+/// Component loaded from a source file.
+record LoadedComponentOutput {
+    /// Source file from which the component was loaded.
+    source: ComponentSourceOutput,
+    /// Loaded component declaration.
+    component: ComponentOutput,
+}
+
+/// Source file for a component declaration.
+record ComponentSourceOutput {
+    /// Kind of component source.
+    kind: ComponentSourceKindOutput,
+    /// Source file path.
+    path: string,
+    /// App name for app-owned sources.
+    app?: string,
+    /// Active app generation for app-owned sources.
+    generation?: u64,
+}
+
+/// Kind of component source.
+#[json(tagged = externally)]
+variant ComponentSourceKindOutput {
+    /// Components installed as part of the system image.
+    System,
+    /// Persistent local or admin-provided components.
+    Local,
+    /// Runtime-generated components.
+    Runtime,
+    /// Component metadata owned by an active app generation.
+    App,
+}
+
+/// Component declaration.
+record ComponentOutput {
+    /// Component ID.
+    id: string,
+    /// Component version, if any.
+    version?: string,
+    /// Explicit capabilities provided by the component.
+    provides: [CapabilityOutput],
+    /// Requirement selectors declared by the component.
+    requires: [CapabilitySelectorOutput],
+    /// Conflict selectors declared by the component.
+    conflicts: [CapabilitySelectorOutput],
+}
+
+/// Provided capability.
+record CapabilityOutput {
+    /// Capability ID.
+    id: string,
+    /// Capability version, if any.
+    version?: string,
+    /// Capability value, if any.
+    value?: string,
+}
+
+/// Capability selector used by requirements and conflicts.
+record CapabilitySelectorOutput {
+    /// Capability ID selected by the selector.
+    id: string,
+    /// Version requirement, if any.
+    version?: string,
+    /// Value matched by the selector, if any.
+    value?: string,
+}
+
+/// Internal consistency problem in the component set.
+#[json(tag = "kind")]
+variant ComponentProblemOutput {
+    /// More than one component uses the same component ID.
+    DuplicateComponent: DuplicateComponentProblemOutput,
+    /// A requirement selector was not satisfied.
+    UnsatisfiedRequirement: UnsatisfiedRequirementProblemOutput,
+    /// A conflict selector matched a provided capability.
+    Conflict: ComponentConflictProblemOutput,
+}
+
+/// Duplicate component ID problem.
+record DuplicateComponentProblemOutput {
+    /// Duplicate component ID.
+    id: string,
+    /// Sources declaring the duplicate component ID.
+    sources: [ComponentSourceOutput],
+}
+
+/// Reference to a component and its source, if known.
+record ComponentRefOutput {
+    /// Component ID.
+    id: string,
+    /// Source of the component, if known.
+    source?: ComponentSourceOutput,
+}
+
+/// Unsatisfied requirement problem.
+record UnsatisfiedRequirementProblemOutput {
+    /// Component declaring the requirement selector.
+    component: ComponentRefOutput,
+    /// Requirement selector that was not satisfied.
+    selector: CapabilitySelectorOutput,
+}
+
+/// Conflict problem.
+record ComponentConflictProblemOutput {
+    /// Component declaring the conflict selector.
+    component: ComponentRefOutput,
+    /// Conflict selector that matched.
+    selector: CapabilitySelectorOutput,
+    /// Component providing the conflicting capability.
+    provider: ComponentRefOutput,
+    /// Capability matched by the conflict selector.
+    capability: CapabilityOutput,
+}

@@ -1667,6 +1667,7 @@ dependencies = [
  "rugix-bundle",
  "rugix-cli",
  "rugix-common",
+ "rugix-component-set",
  "rugix-fs",
  "rugix-hooks",
  "rugix-pki",
