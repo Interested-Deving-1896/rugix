@@ -1,4 +1,4 @@
-import { Boxes, ExternalLink, HardDriveUpload, Moon, RefreshCw, Server, Sun } from "lucide-react";
+import { Boxes, ExternalLink, HardDriveUpload, Moon, Network, RefreshCw, Server, Sun } from "lucide-react";
 import type { jobs } from "../../generated";
 import { iconButtonClass } from "../../shared/styles";
 import type { Tab, Theme } from "../../types";
@@ -34,6 +34,12 @@ export function TopNav({
 
         <nav className="order-3 flex w-full rounded-lg border border-divider bg-elevation-1 p-1 sm:order-none sm:ml-4 sm:w-auto">
           <TabButton active={tab === "system"} icon={<Server size={16} />} label="System" onClick={() => onTabChange("system")} />
+          <TabButton
+            active={tab === "components"}
+            icon={<Network size={16} />}
+            label="Components"
+            onClick={() => onTabChange("components")}
+          />
           <TabButton active={tab === "apps"} icon={<Boxes size={16} />} label="Apps" onClick={() => onTabChange("apps")} />
           <TabButton
             active={tab === "jobs"}

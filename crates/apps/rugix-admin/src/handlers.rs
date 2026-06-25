@@ -9,7 +9,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
-use crate::ctrl::{run_json_command, spawn_command_job, stream_upload_job, CommandSpec};
+use crate::ctrl::{
+    run_components_check_command, run_json_command, spawn_command_job, stream_upload_job,
+    CommandSpec,
+};
 use crate::error::ApiError;
 use crate::generated::{api, apps, events};
 use crate::{ApiResult, ServerState};
@@ -38,6 +41,12 @@ pub(crate) async fn system_info() -> ApiResult<Json<api::SystemInfoResponse>> {
                 .and_then(Value::as_str)
                 .map(ToOwned::to_owned),
         );
+    Ok(Json(response))
+}
+
+pub(crate) async fn components() -> ApiResult<Json<api::ComponentsCheckResponse>> {
+    let raw = run_components_check_command().await?;
+    let response = serde_json::from_value(raw).map_err(ApiError::invalid_ctrl_output)?;
     Ok(Json(response))
 }
 

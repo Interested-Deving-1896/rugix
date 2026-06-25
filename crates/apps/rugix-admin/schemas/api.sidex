@@ -39,6 +39,148 @@ record SystemInfoResponse {
     raw: JsonValue,
 }
 
+/// Output of the component consistency check.
+record ComponentsCheckResponse {
+    /// Component roots that were scanned.
+    roots: [ComponentRoot],
+    /// Components loaded from the scanned roots.
+    components: [LoadedComponent],
+    /// Whether the loaded component set is internally consistent.
+    consistent: bool,
+    /// Problems found while checking the component set.
+    problems: [ComponentProblem],
+}
+
+/// Root directory scanned for component metadata.
+record ComponentRoot {
+    /// Kind of component source.
+    kind: ComponentSourceKind,
+    /// Root path.
+    path: string,
+    /// App name for app-owned roots.
+    app?: string,
+    /// Active app generation for app-owned roots.
+    generation?: u64,
+}
+
+/// Component loaded from a source.
+record LoadedComponent {
+    /// Source from which the component was loaded.
+    source: ComponentSource,
+    /// Loaded component declaration.
+    component: Component,
+}
+
+/// Source for a component declaration.
+record ComponentSource {
+    /// Kind of component source.
+    kind: ComponentSourceKind,
+    /// Source path or identifier.
+    path: string,
+    /// App name for app-owned sources.
+    app?: string,
+    /// Active app generation for app-owned sources.
+    generation?: u64,
+}
+
+/// Kind of component source.
+#[json(tagged = externally)]
+variant ComponentSourceKind {
+    /// Components installed as part of the system image.
+    System,
+    /// Persistent local or admin-provided components.
+    Local,
+    /// Runtime-generated components.
+    Runtime,
+    /// Component metadata owned by an active app generation.
+    App,
+    /// Component metadata declared by a bundle.
+    Bundle,
+    /// Component metadata synthesized by Rugix Ctrl.
+    Synthetic,
+}
+
+/// Component declaration.
+record Component {
+    /// Component ID.
+    id: string,
+    /// Component version, if any.
+    version?: string,
+    /// Explicit capabilities provided by the component.
+    provides: [Capability],
+    /// Requirement selectors declared by the component.
+    requires: [CapabilitySelector],
+    /// Conflict selectors declared by the component.
+    conflicts: [CapabilitySelector],
+}
+
+/// Provided capability.
+record Capability {
+    /// Capability ID.
+    id: string,
+    /// Capability version, if any.
+    version?: string,
+    /// Capability value, if any.
+    value?: string,
+}
+
+/// Capability selector used by requirements and conflicts.
+record CapabilitySelector {
+    /// Capability ID selected by the selector.
+    id: string,
+    /// Version requirement, if any.
+    version?: string,
+    /// Value matched by the selector, if any.
+    value?: string,
+}
+
+/// Internal consistency problem in the component set.
+#[json(tag = "kind")]
+variant ComponentProblem {
+    /// More than one component uses the same component ID.
+    DuplicateComponent: DuplicateComponentProblem,
+    /// A requirement selector was not satisfied.
+    UnsatisfiedRequirement: UnsatisfiedRequirementProblem,
+    /// A conflict selector matched a provided capability.
+    Conflict: ComponentConflictProblem,
+}
+
+/// Duplicate component ID problem.
+record DuplicateComponentProblem {
+    /// Duplicate component ID.
+    id: string,
+    /// Sources declaring the duplicate component ID.
+    sources: [ComponentSource],
+}
+
+/// Reference to a component and its source, if known.
+record ComponentRef {
+    /// Component ID.
+    id: string,
+    /// Source of the component, if known.
+    source?: ComponentSource,
+}
+
+/// Unsatisfied requirement problem.
+record UnsatisfiedRequirementProblem {
+    /// Component declaring the requirement selector.
+    component: ComponentRef,
+    /// Requirement selector that was not satisfied.
+    selector: CapabilitySelector,
+}
+
+/// Conflict problem.
+record ComponentConflictProblem {
+    /// Component declaring the conflict selector.
+    component: ComponentRef,
+    /// Conflict selector that matched.
+    selector: CapabilitySelector,
+    /// Component providing the conflicting capability.
+    provider: ComponentRef,
+    /// Capability matched by the conflict selector.
+    capability: Capability,
+}
+
 /// List of installed apps.
 record AppsListResponse {
     /// Apps sorted by name.

@@ -1,6 +1,6 @@
 import type { events, jobs } from "./generated";
 
-export type Tab = "system" | "apps" | "jobs";
+export type Tab = "system" | "components" | "apps" | "jobs";
 
 export type Theme = "light" | "dark";
 

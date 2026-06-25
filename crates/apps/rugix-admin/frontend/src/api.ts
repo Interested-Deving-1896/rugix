@@ -39,6 +39,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 export const AdminApi = {
   health: () => request<api.HealthResponse>("/api/health"),
   systemInfo: () => request<api.SystemInfoResponse>("/api/system/info"),
+  components: () => request<api.ComponentsCheckResponse>("/api/components"),
   apps: () => request<api.AppsListResponse>("/api/apps"),
   app: (name: string) => request<api.AppInfoResponse>(`/api/apps/${encodeURIComponent(name)}`),
   jobs: () => request<api.JobsListResponse>("/api/jobs"),

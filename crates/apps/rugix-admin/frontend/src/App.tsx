@@ -7,6 +7,7 @@ import {
   uploadSystemUpdate,
 } from "./api";
 import { AppsPage } from "./features/apps/AppsPage";
+import { ComponentsPage } from "./features/components/ComponentsPage";
 import { ActiveOperation } from "./features/jobs/ActiveOperation";
 import { JobsPage } from "./features/jobs/JobsPage";
 import { DemoDisclaimer } from "./features/shell/DemoDisclaimer";
@@ -24,6 +25,7 @@ import type { JobLog, Tab, Theme } from "./types";
 export function App() {
   const [tab, setTab] = useState<Tab>("system");
   const [system, setSystem] = useState<api.SystemInfoResponse>();
+  const [components, setComponents] = useState<api.ComponentsCheckResponse>();
   const [appsList, setAppsList] = useState<api.AppSummary[]>([]);
   const [selectedApp, setSelectedApp] = useState<string>();
   const [appInfo, setAppInfo] = useState<api.AppInfoResponse>();
@@ -43,15 +45,17 @@ export function App() {
 
   async function refresh() {
     setError(undefined);
-    const [systemInfo, appList, jobList] = await Promise.allSettled([
+    const [systemInfo, componentReport, appList, jobList] = await Promise.allSettled([
       AdminApi.systemInfo(),
+      AdminApi.components(),
       AdminApi.apps(),
       AdminApi.jobs(),
     ]);
     if (systemInfo.status === "fulfilled") setSystem(systemInfo.value);
+    if (componentReport.status === "fulfilled") setComponents(componentReport.value);
     if (appList.status === "fulfilled") setAppsList(appList.value.apps);
     if (jobList.status === "fulfilled") setJobsList(jobList.value.jobs);
-    const firstError = [systemInfo, appList, jobList].find((result) => result.status === "rejected");
+    const firstError = [systemInfo, componentReport, appList, jobList].find((result) => result.status === "rejected");
     if (firstError?.status === "rejected") setError(errorMessage(firstError.reason));
   }
 
@@ -181,6 +185,7 @@ export function App() {
             onUpload={(file, options) => void upload("system", file, options)}
           />
         )}
+        {tab === "components" && <ComponentsPage report={components} />}
         {tab === "apps" && (
           <AppsPage
             apps={appsList}

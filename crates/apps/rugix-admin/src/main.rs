@@ -43,6 +43,7 @@ async fn main() {
     let app = Router::new()
         .route("/api/health", get(handlers::health))
         .route("/api/system/info", get(handlers::system_info))
+        .route("/api/components", get(handlers::components))
         .route(
             "/api/system/update/:job_id",
             post(handlers::upload_system_update),

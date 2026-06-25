@@ -43,6 +43,22 @@ pub(crate) async fn run_json_command(args: &[&str]) -> ApiResult<Value> {
     serde_json::from_slice(&output.stdout).map_err(ApiError::invalid_ctrl_output)
 }
 
+pub(crate) async fn run_components_check_command() -> ApiResult<Value> {
+    let args = ["components", "check"];
+    let output = Command::new("rugix-ctrl")
+        .args(args)
+        .output()
+        .await
+        .map_err(|err| ApiError::command_spawn("rugix-ctrl", err))?;
+
+    match output.status.code() {
+        Some(0 | 1) => {
+            serde_json::from_slice(&output.stdout).map_err(ApiError::invalid_ctrl_output)
+        }
+        _ => Err(ApiError::command_failed("rugix-ctrl", &args, &output)),
+    }
+}
+
 pub(crate) fn spawn_command_job(jobs: JobManager, job_id: String, args: Vec<String>) {
     tokio::spawn(async move {
         jobs.set_status(&job_id, jobs::JobStatus::Running).await;

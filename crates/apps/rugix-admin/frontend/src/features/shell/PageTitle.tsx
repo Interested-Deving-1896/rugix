@@ -3,6 +3,7 @@ import type { Tab } from "../../types";
 export function PageTitle({ tab }: { tab: Tab }) {
   const meta = {
     system: { eyebrow: "Device", title: "System" },
+    components: { eyebrow: "Compatibility", title: "Components" },
     apps: { eyebrow: "Runtime", title: "Apps" },
     jobs: { eyebrow: "Operations", title: "Jobs" },
   }[tab];
