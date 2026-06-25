@@ -9,14 +9,22 @@ Rugix Ctrl:
 - Add `overlay-fallback: in-memory` state configuration to retry root overlay setup with an in-memory overlay when the configured overlay fails.
 - Add boot flow capability reporting for userspace failure recovery and fall back to starting the underlying init on committed systems when Rugix init fails and the boot flow cannot recover userspace failures.
 - Write Docker Compose activation diagnostics, including service status and recent logs, when bringing up a Rugix App generation fails.
+- Add component compatibility metadata discovery and `rugix-ctrl components` inspection commands for checking installed system, local, runtime, app, and synthetic host components.
+- Check component compatibility before installing system updates, installing apps, or removing apps. Pass `--skip-compatibility-check` to bypass these checks.
 
 Rugix Admin:
 
 - Rework the admin interface as a Vite, React, and Tailwind SPA with Sidex-generated API/event types, Rugix Apps support, streamed installations, embedded frontend assets, and CI frontend artifact injection for one-binary Linux builds.
+- Add a Components tab showing the current component compatibility report, including scanned roots, loaded components, capabilities, and consistency problems.
 
 Rugix Bundler:
 
 - Rework Docker Compose image bundling to copy images with Skopeo, infer Compose `build:` entries, default local builds to Podman, and rewrite packaged Compose files to Rugix-owned bundle-local image tags. `--disable-pinning` now keeps the original Compose image references while still bundling the images.
+- Allow update bundles to carry declared component metadata for compatibility checks.
+
+Libraries:
+
+- Add `rugix-versioning` for parsing and comparing version strings and `rugix-component-set` for evaluating component capabilities, requirements, and conflicts.
 
 ## Version 1.2.0
 
