@@ -3,6 +3,10 @@
 This directory contains standalone installer scripts for integrating Rugix
 components into existing Linux systems.
 
+The installers must be run as root. Open an interactive root shell first, for
+example with `sudo -i` or `su -`, and then run the commands below. The `#`
+prompt in the examples indicates that the command is run as root.
+
 ## Rugix Apps
 
 `install-rugix-apps.sh` installs:
@@ -16,7 +20,7 @@ components into existing Linux systems.
 Run it as root on an apt-based system with systemd, such as Debian or Ubuntu:
 
 ```sh
-sudo bash installer/install-rugix-apps.sh
+# bash installer/install-rugix-apps.sh
 ```
 
 By default, `RUGIX_VERSION=v1` resolves to the latest stable `v1.x` release
@@ -24,18 +28,18 @@ from `rugix/rugix`. `latest` and `vN` selectors ignore prereleases. Pass an
 exact tag or set `RUGIX_VERSION` to install that tag, including prerelease tags:
 
 ```sh
-sudo bash installer/install-rugix-apps.sh v1.2.0
-sudo RUGIX_VERSION=latest bash installer/install-rugix-apps.sh
-sudo RUGIX_VERSION=v1.2.0 bash installer/install-rugix-apps.sh
-sudo RUGIX_GITHUB_REPO=my-org/rugix RUGIX_VERSION=v1.2.0 bash installer/install-rugix-apps.sh
+# bash installer/install-rugix-apps.sh v1.2.0
+# RUGIX_VERSION=latest bash installer/install-rugix-apps.sh
+# RUGIX_VERSION=v1.2.0 bash installer/install-rugix-apps.sh
+# RUGIX_GITHUB_REPO=my-org/rugix RUGIX_VERSION=v1.2.0 bash installer/install-rugix-apps.sh
 ```
 
 When installing directly from GitHub, pass the version to `bash`, not to
 `curl`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-apps.sh | sudo bash
-curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-apps.sh | sudo bash -s -- v1.2.1-dev.2
+# curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-apps.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-apps.sh | bash -s -- v1.2.1-dev.2
 ```
 
 Do not put `RUGIX_VERSION=...` before `curl` in a pipeline; that only sets the
@@ -58,7 +62,7 @@ are installed by this script.
 Run it as root on an apt-based system with systemd, such as Debian or Ubuntu:
 
 ```sh
-sudo bash installer/install-rugix-admin.sh
+# bash installer/install-rugix-admin.sh
 ```
 
 By default, Rugix Admin listens on `0.0.0.0:8088` and `RUGIX_VERSION=v1`
@@ -66,18 +70,18 @@ resolves to the latest stable `v1.x` release. `latest` and `vN` selectors
 ignore prereleases. Override the release, address, or firewalld zone if needed:
 
 ```sh
-sudo bash installer/install-rugix-admin.sh v1.2.0
-sudo RUGIX_VERSION=v1.2.0 bash installer/install-rugix-admin.sh
-sudo RUGIX_ADMIN_ADDRESS=0.0.0.0:8088 bash installer/install-rugix-admin.sh
-sudo RUGIX_ADMIN_FIREWALL_ZONE=public bash installer/install-rugix-admin.sh
+# bash installer/install-rugix-admin.sh v1.2.0
+# RUGIX_VERSION=v1.2.0 bash installer/install-rugix-admin.sh
+# RUGIX_ADMIN_ADDRESS=0.0.0.0:8088 bash installer/install-rugix-admin.sh
+# RUGIX_ADMIN_FIREWALL_ZONE=public bash installer/install-rugix-admin.sh
 ```
 
 When installing directly from GitHub, pass the version to `bash`, not to
 `curl`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-admin.sh | sudo bash
-curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-admin.sh | sudo bash -s -- v1.2.1-dev.2
+# curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-admin.sh | bash
+# curl -fsSL https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/installer/install-rugix-admin.sh | bash -s -- v1.2.1-dev.2
 ```
 
 Do not put `RUGIX_VERSION=...` before `curl` in a pipeline; that only sets the
