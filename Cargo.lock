@@ -1522,10 +1522,12 @@ dependencies = [
  "mime_guess",
  "serde",
  "serde_json",
+ "si-observability",
  "sidex",
  "sidex-build-rs",
  "sidex-serde",
  "tokio",
+ "tracing",
  "uuid",
  "xscript 0.4.0",
 ]

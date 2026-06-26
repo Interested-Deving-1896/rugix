@@ -66,7 +66,7 @@ pub(crate) async fn upload_system_update(
     multipart: Multipart,
 ) -> ApiResult<Json<api::JobResponse>> {
     let mut args = vec!["update".to_owned(), "install".to_owned()];
-    apply_install_options(&mut args, &query.common);
+    apply_install_options(&mut args, &query.common());
     if let Some(reboot) = query.reboot {
         args.extend(["--reboot".to_owned(), reboot]);
     }
@@ -173,7 +173,7 @@ pub(crate) async fn upload_app_bundle(
     multipart: Multipart,
 ) -> ApiResult<Json<api::JobResponse>> {
     let mut args = vec!["apps".to_owned(), "install".to_owned()];
-    apply_install_options(&mut args, &query.common);
+    apply_install_options(&mut args, &query.common());
     args.push("-".to_owned());
 
     state
@@ -297,7 +297,7 @@ pub(crate) struct AppActionQuery {
     keep: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct InstallQuery {
     bundle_hash: Option<String>,
     root_cert: Option<String>,
@@ -306,18 +306,56 @@ pub(crate) struct InstallQuery {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SystemInstallQuery {
-    #[serde(flatten)]
-    common: InstallQuery,
+    #[serde(alias = "bundle_hash")]
+    bundle_hash: Option<String>,
+    #[serde(alias = "root_cert")]
+    root_cert: Option<String>,
+    #[serde(alias = "insecure_skip_bundle_verification")]
+    insecure_skip_bundle_verification: Option<bool>,
+    #[serde(alias = "insecure_allow_missing_block_index")]
+    insecure_allow_missing_block_index: Option<bool>,
     reboot: Option<String>,
+    #[serde(alias = "boot_group")]
     boot_group: Option<String>,
+    #[serde(alias = "keep_overlay")]
     keep_overlay: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AppInstallQuery {
-    #[serde(flatten)]
-    common: InstallQuery,
+    #[serde(alias = "bundle_hash")]
+    bundle_hash: Option<String>,
+    #[serde(alias = "root_cert")]
+    root_cert: Option<String>,
+    #[serde(alias = "insecure_skip_bundle_verification")]
+    insecure_skip_bundle_verification: Option<bool>,
+    #[serde(alias = "insecure_allow_missing_block_index")]
+    insecure_allow_missing_block_index: Option<bool>,
+}
+
+impl SystemInstallQuery {
+    fn common(&self) -> InstallQuery {
+        InstallQuery {
+            bundle_hash: self.bundle_hash.clone(),
+            root_cert: self.root_cert.clone(),
+            insecure_skip_bundle_verification: self.insecure_skip_bundle_verification,
+            insecure_allow_missing_block_index: self.insecure_allow_missing_block_index,
+        }
+    }
+}
+
+impl AppInstallQuery {
+    fn common(&self) -> InstallQuery {
+        InstallQuery {
+            bundle_hash: self.bundle_hash.clone(),
+            root_cert: self.root_cert.clone(),
+            insecure_skip_bundle_verification: self.insecure_skip_bundle_verification,
+            insecure_allow_missing_block_index: self.insecure_allow_missing_block_index,
+        }
+    }
 }
 
 fn apply_install_options(args: &mut Vec<String>, query: &InstallQuery) {

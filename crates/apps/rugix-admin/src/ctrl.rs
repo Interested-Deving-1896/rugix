@@ -1,12 +1,20 @@
 use std::process::Stdio;
 
+use axum::extract::multipart::Field;
 use axum::extract::Multipart;
 use serde_json::Value;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
+use tokio::process::Child;
 use tokio::process::Command;
+use tokio::task::JoinHandle;
+use tracing::debug;
+use tracing::error;
+use tracing::info;
+use tracing::warn;
+use tracing::Instrument;
 
 use crate::error::ApiError;
 use crate::generated::jobs;
@@ -33,101 +41,113 @@ impl CommandSpec {
 }
 
 pub(crate) async fn run_json_command(args: &[&str]) -> ApiResult<Value> {
+    debug!(args = ?args, "running rugix-ctrl JSON command");
     let output = Command::new("rugix-ctrl")
         .args(args)
         .output()
         .await
-        .map_err(|err| ApiError::command_spawn("rugix-ctrl", err))?;
+        .map_err(|err| {
+            error!(args = ?args, error = %err, "unable to spawn rugix-ctrl");
+            ApiError::command_spawn("rugix-ctrl", err)
+        })?;
 
     if !output.status.success() {
+        warn!(
+            args = ?args,
+            status = %output.status,
+            stderr = %String::from_utf8_lossy(&output.stderr),
+            "rugix-ctrl command failed"
+        );
         return Err(ApiError::command_failed("rugix-ctrl", args, &output));
     }
 
+    debug!(
+        args = ?args,
+        stdout_bytes = output.stdout.len(),
+        "rugix-ctrl JSON command completed"
+    );
     serde_json::from_slice(&output.stdout).map_err(ApiError::invalid_ctrl_output)
 }
 
 pub(crate) async fn run_components_check_command() -> ApiResult<Value> {
     let args = ["components", "check"];
+    debug!(args = ?args, "running rugix-ctrl components check");
     let output = Command::new("rugix-ctrl")
         .args(args)
         .output()
         .await
-        .map_err(|err| ApiError::command_spawn("rugix-ctrl", err))?;
+        .map_err(|err| {
+            error!(args = ?args, error = %err, "unable to spawn rugix-ctrl");
+            ApiError::command_spawn("rugix-ctrl", err)
+        })?;
 
     match output.status.code() {
         Some(0 | 1) => {
+            debug!(
+                args = ?args,
+                status = %output.status,
+                stdout_bytes = output.stdout.len(),
+                "rugix-ctrl components check completed"
+            );
             serde_json::from_slice(&output.stdout).map_err(ApiError::invalid_ctrl_output)
         }
-        _ => Err(ApiError::command_failed("rugix-ctrl", &args, &output)),
+        _ => {
+            warn!(
+                args = ?args,
+                status = %output.status,
+                stderr = %String::from_utf8_lossy(&output.stderr),
+                "rugix-ctrl components check failed"
+            );
+            Err(ApiError::command_failed("rugix-ctrl", &args, &output))
+        }
     }
 }
 
 pub(crate) fn spawn_command_job(jobs: JobManager, job_id: String, args: Vec<String>) {
-    tokio::spawn(async move {
-        jobs.set_status(&job_id, jobs::JobStatus::Running).await;
-        let mut child = match Command::new("rugix-ctrl")
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(err) => {
-                jobs.fail(&job_id, format!("unable to spawn rugix-ctrl: {err}"), None)
-                    .await;
-                return;
-            }
-        };
+    let span = tracing::info_span!("rugix_ctrl_job", %job_id, args = ?args);
+    tokio::spawn(
+        async move {
+            info!("starting rugix-ctrl job");
+            jobs.set_status(&job_id, jobs::JobStatus::Running).await;
+            let mut child = match Command::new("rugix-ctrl")
+                .args(&args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+            {
+                Ok(child) => child,
+                Err(err) => {
+                    error!(error = %err, "unable to spawn rugix-ctrl for job");
+                    jobs.fail(&job_id, format!("unable to spawn rugix-ctrl: {err}"), None)
+                        .await;
+                    return;
+                }
+            };
 
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-        let stdout_task = stdout.map(|stdout| {
-            tokio::spawn(read_output_lines(
-                jobs.clone(),
-                job_id.clone(),
-                "stdout",
-                stdout,
-            ))
-        });
-        let stderr_task = stderr.map(|stderr| {
-            tokio::spawn(read_output_lines(
-                jobs.clone(),
-                job_id.clone(),
-                "stderr",
-                stderr,
-            ))
-        });
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+            let stdout_task = stdout.map(|stdout| {
+                tokio::spawn(read_output_lines(
+                    jobs.clone(),
+                    job_id.clone(),
+                    "stdout",
+                    stdout,
+                ))
+            });
+            let stderr_task = stderr.map(|stderr| {
+                tokio::spawn(read_output_lines(
+                    jobs.clone(),
+                    job_id.clone(),
+                    "stderr",
+                    stderr,
+                ))
+            });
 
-        match child.wait().await {
-            Ok(status) if status.success() => {
-                jobs.set_status(&job_id, jobs::JobStatus::Succeeded).await
-            }
-            Ok(status) => {
-                jobs.fail(
-                    &job_id,
-                    format!("rugix-ctrl exited with {status}"),
-                    status.code(),
-                )
-                .await;
-            }
-            Err(err) => {
-                jobs.fail(
-                    &job_id,
-                    format!("unable to wait for rugix-ctrl: {err}"),
-                    None,
-                )
-                .await;
-            }
+            wait_for_child(jobs, job_id, child, stdout_task, stderr_task, true).await;
         }
-
-        if let Some(task) = stdout_task {
-            let _ = task.await;
-        }
-        if let Some(task) = stderr_task {
-            let _ = task.await;
-        }
-    });
+        .instrument(span),
+    );
 }
 
 pub(crate) async fn stream_upload_job(
@@ -137,6 +157,7 @@ pub(crate) async fn stream_upload_job(
     mut multipart: Multipart,
     file_field: &'static str,
 ) {
+    info!(%job_id, args = ?args, %file_field, "starting upload job");
     jobs.set_status(&job_id, jobs::JobStatus::Running).await;
     let mut child = match Command::new("rugix-ctrl")
         .args(&args)
@@ -147,8 +168,10 @@ pub(crate) async fn stream_upload_job(
     {
         Ok(child) => child,
         Err(err) => {
+            error!(%job_id, args = ?args, error = %err, "unable to spawn rugix-ctrl for upload");
             jobs.fail(&job_id, format!("unable to spawn rugix-ctrl: {err}"), None)
                 .await;
+            drain_upload_after_failure(&job_id, &mut multipart).await;
             return;
         }
     };
@@ -170,108 +193,191 @@ pub(crate) async fn stream_upload_job(
         ))
     });
 
-    let Some(mut stdin) = child.stdin.take() else {
+    let Some(stdin) = child.stdin.take() else {
+        error!(%job_id, "rugix-ctrl stdin is unavailable");
         jobs.fail(&job_id, "rugix-ctrl stdin is unavailable".to_owned(), None)
             .await;
+        drain_upload_after_failure(&job_id, &mut multipart).await;
+        spawn_wait_for_child(jobs, job_id, child, stdout_task, stderr_task, false);
         return;
     };
 
+    let mut stdin = Some(stdin);
     let mut found_file = false;
-    let mut bytes = 0u64;
-    loop {
+    let mut bytes_read = 0u64;
+    let mut bytes_written = 0u64;
+    let mut upload_error = None::<String>;
+    'fields: loop {
         match multipart.next_field().await {
             Ok(Some(mut field)) => {
-                if field.name() != Some(file_field) {
+                let field_name = field.name().map(ToOwned::to_owned);
+                debug!(%job_id, field = ?field_name, "received multipart field");
+                if field_name.as_deref() != Some(file_field) {
+                    if let Err(err) = drain_field(&mut field).await {
+                        let message = format!("unable to drain multipart field: {err}");
+                        warn!(%job_id, field = ?field_name, %message);
+                        upload_error.get_or_insert(message);
+                        break 'fields;
+                    }
                     continue;
                 }
                 found_file = true;
                 loop {
                     match field.chunk().await {
                         Ok(Some(chunk)) => {
-                            if let Err(err) = stdin.write_all(&chunk).await {
-                                jobs.fail(
-                                    &job_id,
-                                    format!("unable to stream upload to rugix-ctrl: {err}"),
-                                    None,
-                                )
-                                .await;
-                                drop(stdin);
-                                wait_after_upload(jobs, job_id, child, stdout_task, stderr_task)
-                                    .await;
-                                return;
+                            bytes_read += chunk.len() as u64;
+                            if let Some(child_stdin) = stdin.as_mut() {
+                                if let Err(err) = child_stdin.write_all(&chunk).await {
+                                    let message =
+                                        format!("unable to stream upload to rugix-ctrl: {err}");
+                                    warn!(
+                                        %job_id,
+                                        bytes_read,
+                                        bytes_written,
+                                        %message,
+                                        "rugix-ctrl stopped accepting upload data"
+                                    );
+                                    upload_error.get_or_insert(message);
+                                    stdin.take();
+                                } else {
+                                    bytes_written += chunk.len() as u64;
+                                    jobs.emit_upload_progress(&job_id, bytes_written).await;
+                                }
                             }
-                            bytes += chunk.len() as u64;
-                            jobs.emit_upload_progress(&job_id, bytes).await;
                         }
                         Ok(None) => break,
                         Err(err) => {
-                            jobs.fail(
-                                &job_id,
-                                format!("unable to read upload stream: {err}"),
-                                None,
-                            )
-                            .await;
-                            drop(stdin);
-                            wait_after_upload(jobs, job_id, child, stdout_task, stderr_task).await;
-                            return;
+                            let message = format!("unable to read upload stream: {err}");
+                            warn!(
+                                %job_id,
+                                bytes_read,
+                                bytes_written,
+                                %message,
+                                "failed reading upload stream"
+                            );
+                            upload_error.get_or_insert(message);
+                            stdin.take();
+                            break 'fields;
                         }
                     }
                 }
             }
             Ok(None) => break,
             Err(err) => {
-                jobs.fail(&job_id, format!("invalid multipart upload: {err}"), None)
-                    .await;
-                drop(stdin);
-                wait_after_upload(jobs, job_id, child, stdout_task, stderr_task).await;
-                return;
+                let message = format!("invalid multipart upload: {err}");
+                warn!(
+                    %job_id,
+                    bytes_read,
+                    bytes_written,
+                    %message,
+                    "failed reading multipart upload"
+                );
+                upload_error.get_or_insert(message);
+                stdin.take();
+                break;
             }
         }
     }
 
     if !found_file {
-        jobs.fail(&job_id, format!("missing `{file_field}` file field"), None)
-            .await;
+        upload_error.get_or_insert_with(|| format!("missing `{file_field}` file field"));
+    }
+
+    if let Some(message) = &upload_error {
+        jobs.fail(&job_id, message.clone(), None).await;
+    } else {
+        info!(
+            %job_id,
+            bytes_read,
+            bytes_written,
+            "upload streamed to rugix-ctrl"
+        );
     }
 
     drop(stdin);
-    wait_after_upload(jobs, job_id, child, stdout_task, stderr_task).await;
+    spawn_wait_for_child(
+        jobs,
+        job_id,
+        child,
+        stdout_task,
+        stderr_task,
+        upload_error.is_none(),
+    );
 }
 
-async fn wait_after_upload(
+fn spawn_wait_for_child(
     jobs: JobManager,
     job_id: String,
-    mut child: tokio::process::Child,
-    stdout_task: Option<tokio::task::JoinHandle<()>>,
-    stderr_task: Option<tokio::task::JoinHandle<()>>,
+    child: Child,
+    stdout_task: Option<JoinHandle<()>>,
+    stderr_task: Option<JoinHandle<()>>,
+    update_job_status: bool,
+) {
+    let span = tracing::info_span!("rugix_ctrl_wait", %job_id, update_job_status);
+    tokio::spawn(
+        async move {
+            wait_for_child(
+                jobs,
+                job_id,
+                child,
+                stdout_task,
+                stderr_task,
+                update_job_status,
+            )
+            .await;
+        }
+        .instrument(span),
+    );
+}
+
+async fn wait_for_child(
+    jobs: JobManager,
+    job_id: String,
+    mut child: Child,
+    stdout_task: Option<JoinHandle<()>>,
+    stderr_task: Option<JoinHandle<()>>,
+    update_job_status: bool,
 ) {
     match child.wait().await {
         Ok(status) if status.success() => {
-            jobs.set_status(&job_id, jobs::JobStatus::Succeeded).await
+            info!(%job_id, %status, "rugix-ctrl exited successfully");
+            if update_job_status {
+                jobs.set_status(&job_id, jobs::JobStatus::Succeeded).await;
+            }
         }
         Ok(status) => {
-            jobs.fail(
-                &job_id,
-                format!("rugix-ctrl exited with {status}"),
-                status.code(),
-            )
-            .await;
+            warn!(%job_id, %status, "rugix-ctrl exited with failure");
+            if update_job_status {
+                jobs.fail(
+                    &job_id,
+                    format!("rugix-ctrl exited with {status}"),
+                    status.code(),
+                )
+                .await;
+            }
         }
         Err(err) => {
-            jobs.fail(
-                &job_id,
-                format!("unable to wait for rugix-ctrl: {err}"),
-                None,
-            )
-            .await;
+            error!(%job_id, error = %err, "unable to wait for rugix-ctrl");
+            if update_job_status {
+                jobs.fail(
+                    &job_id,
+                    format!("unable to wait for rugix-ctrl: {err}"),
+                    None,
+                )
+                .await;
+            }
         }
     }
 
     if let Some(task) = stdout_task {
-        let _ = task.await;
+        if let Err(err) = task.await {
+            warn!(%job_id, error = %err, "rugix-ctrl stdout reader task failed");
+        }
     }
     if let Some(task) = stderr_task {
-        let _ = task.await;
+        if let Err(err) = task.await {
+            warn!(%job_id, error = %err, "rugix-ctrl stderr reader task failed");
+        }
     }
 }
 
@@ -280,7 +386,48 @@ where
     R: AsyncRead + Unpin,
 {
     let mut lines = BufReader::new(reader).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        jobs.emit_output(&job_id, stream, line).await;
+    loop {
+        match lines.next_line().await {
+            Ok(Some(line)) => {
+                debug!(%job_id, %stream, line = %line, "rugix-ctrl output");
+                jobs.emit_output(&job_id, stream, line).await;
+            }
+            Ok(None) => break,
+            Err(err) => {
+                warn!(%job_id, %stream, error = %err, "unable to read rugix-ctrl output");
+                break;
+            }
+        }
     }
+}
+
+async fn drain_upload_after_failure(job_id: &str, multipart: &mut Multipart) {
+    match drain_multipart(multipart).await {
+        Ok(bytes) => {
+            debug!(%job_id, bytes, "drained upload body after early failure");
+        }
+        Err(err) => {
+            warn!(%job_id, error = %err, "unable to drain upload body after early failure");
+        }
+    }
+}
+
+async fn drain_multipart(multipart: &mut Multipart) -> Result<u64, String> {
+    let mut bytes = 0u64;
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        bytes += drain_field(&mut field).await?;
+    }
+    Ok(bytes)
+}
+
+async fn drain_field(field: &mut Field<'_>) -> Result<u64, String> {
+    let mut bytes = 0u64;
+    while let Some(chunk) = field.chunk().await.map_err(|err| err.to_string())? {
+        bytes += chunk.len() as u64;
+    }
+    Ok(bytes)
 }

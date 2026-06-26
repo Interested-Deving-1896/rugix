@@ -77,9 +77,19 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = api::ApiErrorResponse::new(
-            api::ApiError::new(self.code, self.message).with_details(self.details),
-        );
-        (self.status, Json(body)).into_response()
+        let Self {
+            status,
+            code,
+            message,
+            details,
+        } = self;
+        if status.is_server_error() {
+            tracing::error!(%status, %code, %message, details = ?details, "API request failed");
+        } else {
+            tracing::warn!(%status, %code, %message, details = ?details, "API request failed");
+        }
+        let body =
+            api::ApiErrorResponse::new(api::ApiError::new(code, message).with_details(details));
+        (status, Json(body)).into_response()
     }
 }

@@ -31,6 +31,7 @@ impl JobManager {
         target: Option<String>,
     ) -> ApiResult<jobs::Job> {
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        tracing::info!(job_id = %id, %title, %kind, target = ?target, "creating job");
         let now = now();
         let job = jobs::Job::new(
             id.clone(),
@@ -96,10 +97,12 @@ impl JobManager {
     }
 
     pub(crate) async fn set_status(&self, job_id: &str, status: jobs::JobStatus) {
+        tracing::info!(%job_id, ?status, "updating job status");
         self.update_job(job_id, |job| job.status = status).await;
     }
 
     pub(crate) async fn fail(&self, job_id: &str, message: String, exit_code: Option<i32>) {
+        tracing::warn!(%job_id, %message, ?exit_code, "failing job");
         self.set_status(
             job_id,
             jobs::JobStatus::Failed(jobs::JobFailure::new(message).with_exit_code(exit_code)),
