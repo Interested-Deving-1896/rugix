@@ -315,6 +315,9 @@ fn is_component_file(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::block_encoding::block_index::BlockIndexConfig;
+    use crate::block_encoding::block_index::compute_block_index;
+    use crate::manifest::ChunkerAlgorithm;
     use crate::reader::BundleReader;
     use crate::source::ReaderSource;
     use crate::source::SkipSeek;
@@ -352,5 +355,67 @@ payloads = []
         assert_eq!(components.files[0].data.raw, br#"{"id": "component.a"}"#);
         assert_eq!(components.files[1].path, "z.toml");
         assert_eq!(components.files[1].data.raw, b"id = \"component.z\"\n");
+    }
+
+    /// Verifies that decoding exposes the verified index of the installed payload data.
+    #[test]
+    fn decoded_payload_includes_its_block_index() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let bundle_dir = tempdir.path().join("bundle");
+        std::fs::create_dir_all(bundle_dir.join("payloads")).unwrap();
+        std::fs::write(
+            bundle_dir.join("rugix-bundle.toml"),
+            r#"
+update-type = "full"
+
+[[payloads]]
+filename = "system.img"
+[payloads.delivery]
+type = "slot"
+slot = "system"
+[payloads.block-encoding]
+chunker = "casync-64"
+"#,
+        )
+        .unwrap();
+        let payload_path = bundle_dir.join("payloads/system.img");
+        let payload_data = (0..256 * 1024)
+            .map(|offset| (offset % 251) as u8)
+            .collect::<Vec<_>>();
+        std::fs::write(&payload_path, &payload_data).unwrap();
+
+        let bundle_path = tempdir.path().join("bundle.rugixb");
+        let hash = pack(&bundle_dir, &bundle_path).unwrap();
+        let source = ReaderSource::<_, SkipSeek>::from_unbuffered(
+            std::fs::File::open(&bundle_path).unwrap(),
+        );
+        let mut reader = BundleReader::start(source, Some(hash)).unwrap();
+        let payload = reader.next_payload().unwrap().unwrap();
+        let decoded_path = tempdir.path().join("decoded.img");
+        let target = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .read(true)
+            .write(true)
+            .open(&decoded_path)
+            .unwrap();
+        let decoded = payload.decode_into(target, None, &mut |_| {}).unwrap();
+        let decoded_index = decoded.block_index.unwrap();
+        let expected_index = compute_block_index(
+            BlockIndexConfig {
+                hash_algorithm: si_crypto_hashes::HashAlgorithm::Sha512_256,
+                chunker: ChunkerAlgorithm::Casync {
+                    avg_block_size_kib: 64,
+                },
+            },
+            &payload_path,
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(decoded_path).unwrap(), payload_data);
+        assert_eq!(
+            format::encode::to_vec(&decoded_index, format::tags::BLOCK_INDEX),
+            expected_index.encode()
+        );
     }
 }

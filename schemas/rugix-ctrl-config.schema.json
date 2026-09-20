@@ -9,6 +9,9 @@
     },
     "compatibility": {
       "$ref": "#/$defs/rugix_ctrl.config.CompatibilityConfig"
+    },
+    "automatic-delta-updates": {
+      "type": "boolean"
     }
   },
   "required": [],

@@ -11,6 +11,7 @@ use reportify::bail;
 use reportify::whatever;
 use reportify::ErrorExt;
 use reportify::ResultExt;
+use rugix_bundle::block_encoding::block_index::BlockIndexConfig;
 use rugix_bundle::format;
 use rugix_bundle::reader::block_provider::StoredBlockProvider;
 use rugix_bundle::reader::BundleReader;
@@ -44,6 +45,7 @@ use crate::payload_db;
 use crate::payload_db::BlockProvider;
 use crate::system::boot_groups::BootGroup;
 use crate::system::boot_groups::BootGroupIdx;
+use crate::system::slots::Slot;
 use crate::system::slots::SlotIdx;
 use crate::system::slots::SlotKind;
 use crate::system::slots::SystemSlots;
@@ -62,6 +64,8 @@ pub(super) fn install_payloads<R: BundleSource>(
     run_compatibility_check(options, BundleKind::System, events, |events| {
         check_system_update_compatibility(config, &bundle_reader, events)
     })?;
+    let automatic_delta_updates =
+        automatic_delta_updates_enabled(config, bundle_reader.header().is_incremental);
 
     let update_hooks = HooksLoader::default()
         .load_hooks("update-install")
@@ -169,38 +173,32 @@ pub(super) fn install_payloads<R: BundleSource>(
                     payload.idx(),
                     slot.name()
                 );
+                let block_index_config =
+                    payload
+                        .header()
+                        .block_encoding
+                        .as_ref()
+                        .map(|encoding| BlockIndexConfig {
+                            chunker: encoding.chunker.clone(),
+                            hash_algorithm: encoding.hash_algorithm,
+                        });
+                let block_provider =
+                    if let Some(block_encoding) = payload.header().block_encoding.as_ref() {
+                        Some(prepare_block_provider(
+                            system,
+                            slot_idx,
+                            block_encoding,
+                            automatic_delta_updates,
+                        )?)
+                    } else if options.insecure_allow_missing_block_index {
+                        None
+                    } else {
+                        return Err(whatever!(
+                            "payload {} does not have a block index, refusing to install",
+                            payload.idx()
+                        ));
+                    };
                 payload_db::erase(slot.name())?;
-                let block_provider = if !options.insecure_allow_missing_block_index {
-                    let block_encoding =
-                        payload.header().block_encoding.as_ref().ok_or_else(|| {
-                            whatever!(
-                                "payload {} does not have a block index, refusing to install",
-                                payload.idx()
-                            )
-                        })?;
-                    let mut provider = BlockProvider::new(
-                        block_encoding.chunker.clone(),
-                        block_encoding.hash_algorithm,
-                    );
-                    for (_, source_slot) in system.slots().iter() {
-                        match source_slot.kind() {
-                            SlotKind::Block(block_slot) => {
-                                let Some(device) = block_slot.device() else {
-                                    continue;
-                                };
-                                provider
-                                    .add_slot(source_slot.name(), device.path().to_path_buf())?;
-                            }
-                            SlotKind::File { path } => {
-                                provider.add_slot(source_slot.name(), path.to_path_buf())?;
-                            }
-                            SlotKind::Custom { .. } => {}
-                        }
-                    }
-                    Some(provider)
-                } else {
-                    None
-                };
                 let _write_guard = if let SlotKind::File { path } = slot.kind() {
                     system
                         .config_partition()
@@ -325,6 +323,7 @@ pub(super) fn install_payloads<R: BundleSource>(
                             DecodedPayloadInfo {
                                 hash: target_hash,
                                 size: target_size.into(),
+                                block_index: None,
                             }
                         } else {
                             match slot.kind() {
@@ -382,6 +381,13 @@ pub(super) fn install_payloads<R: BundleSource>(
                         Ok(decoded_payload_info)
                     },
                     |decoded_payload_info| {
+                        if automatic_delta_updates {
+                            store_installed_block_index(
+                                slot,
+                                &decoded_payload_info,
+                                block_index_config.as_ref(),
+                            )?;
+                        }
                         payload_db::save_slot_state(
                             slot.name(),
                             &SlotState {
@@ -447,6 +453,78 @@ pub(super) fn install_payloads<R: BundleSource>(
         .run_hooks("post-update", hook_vars, &Default::default())
         .whatever("error running `post-update` hooks")?;
     Ok(reboot_mode)
+}
+
+/// Prepare locally indexed blocks for decoding a payload.
+fn prepare_block_provider(
+    system: &System,
+    target_slot_idx: SlotIdx,
+    block_encoding: &format::BlockEncoding,
+    automatic_delta_updates: bool,
+) -> SystemResult<BlockProvider> {
+    let mut provider = BlockProvider::new(
+        block_encoding.chunker.clone(),
+        block_encoding.hash_algorithm,
+    );
+    for (source_idx, source_slot) in system.slots().iter() {
+        if source_idx == target_slot_idx {
+            continue;
+        }
+        let source_path = match source_slot.kind() {
+            SlotKind::Block(block_slot) => {
+                let Some(device) = block_slot.device() else {
+                    continue;
+                };
+                device.path()
+            }
+            SlotKind::File { path } => path,
+            SlotKind::Custom { .. } => continue,
+        };
+        if automatic_delta_updates && source_path.exists() {
+            payload_db::ensure_index(
+                source_slot.name(),
+                source_path,
+                &block_encoding.chunker,
+                &block_encoding.hash_algorithm,
+            )?;
+        }
+        provider.add_slot(source_slot.name(), source_path.to_path_buf())?;
+    }
+    Ok(provider)
+}
+
+/// Store an installed payload's index or compute one when decoding did not yield it.
+fn store_installed_block_index(
+    slot: &Slot,
+    decoded_payload_info: &DecodedPayloadInfo,
+    block_index_config: Option<&BlockIndexConfig>,
+) -> SystemResult<()> {
+    let slot_file = match slot.kind() {
+        SlotKind::Block(_) => Some(slot.require_available_block()?.path()),
+        SlotKind::File { path } => Some(path.as_path()),
+        SlotKind::Custom { .. } => None,
+    };
+    let Some(slot_file) = slot_file else {
+        return Ok(());
+    };
+    if let Some(block_index) = &decoded_payload_info.block_index {
+        payload_db::store_index(slot.name(), block_index)?;
+    } else if let Some(config) = block_index_config {
+        payload_db::ensure_index(
+            slot.name(),
+            slot_file,
+            &config.chunker,
+            &config.hash_algorithm,
+        )?;
+    }
+    Ok(())
+}
+
+fn automatic_delta_updates_enabled(
+    config: &crate::config::config::Config,
+    is_incremental: bool,
+) -> bool {
+    !is_incremental && config.automatic_delta_updates.unwrap_or(false)
 }
 
 fn check_system_update_compatibility<S: BundleSource>(
@@ -691,12 +769,14 @@ mod tests {
 
     use indexmap::IndexMap;
 
+    use super::automatic_delta_updates_enabled;
     use super::clear_target_overlay_with;
     use super::finalize_payload_and_record;
     use super::preflight_system_deliveries;
     use super::prepare_system_update;
     use super::PayloadDelivery;
     use super::SystemPayloadDestination;
+    use crate::config::config::Config;
     use crate::config::system::BlockSlotConfig;
     use crate::config::system::BootGroupConfig;
     use crate::config::system::FileSlotConfig;
@@ -742,6 +822,17 @@ mod tests {
             })
             .collect::<IndexMap<_, _>>();
         SystemSlots::from_config(None, Some(&config)).unwrap()
+    }
+
+    /// Verifies that automatic delta indexing is opt-in and limited to full updates.
+    #[test]
+    fn automatic_delta_updates_apply_only_to_full_updates_when_enabled() {
+        let disabled = Config::default();
+        assert!(!automatic_delta_updates_enabled(&disabled, false));
+
+        let enabled: Config = toml::from_str("automatic-delta-updates = true").unwrap();
+        assert!(automatic_delta_updates_enabled(&enabled, false));
+        assert!(!automatic_delta_updates_enabled(&enabled, true));
     }
 
     #[test]
