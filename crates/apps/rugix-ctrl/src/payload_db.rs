@@ -158,24 +158,41 @@ pub fn erase(slot_name: &str) -> SystemResult<()> {
     })
 }
 
+/// Store a block index included with an installed payload.
+pub fn store_index(slot_name: &str, block_index: &BlockIndex) -> SystemResult<()> {
+    store_index_in(db_dir(), slot_name, block_index)
+}
+
+/// Compute and store a block index for a slot.
 pub fn add_index(
     slot_name: &str,
     slot_file: &Path,
     chunker_algorithm: &ChunkerAlgorithm,
     hash_algorithm: &HashAlgorithm,
 ) -> SystemResult<()> {
-    let path = db_dir().join(format!(
-        "{slot_name}/{chunker_algorithm}_{hash_algorithm:#}.rugix-block-index"
-    ));
-    std::fs::create_dir_all(path.parent().unwrap()).ok();
-    let index_config = BlockIndexConfig {
-        hash_algorithm: *hash_algorithm,
-        chunker: chunker_algorithm.clone(),
-    };
-    let block_index =
-        compute_block_index(index_config, slot_file).whatever("unable to compute block index")?;
-    std::fs::write(path, &block_index.encode()).whatever("unable to write block index")?;
-    Ok(())
+    add_index_in(
+        db_dir(),
+        slot_name,
+        slot_file,
+        chunker_algorithm,
+        hash_algorithm,
+    )
+}
+
+/// Compute and store a block index if a slot does not have a matching index.
+pub fn ensure_index(
+    slot_name: &str,
+    slot_file: &Path,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+) -> SystemResult<()> {
+    ensure_index_in(
+        db_dir(),
+        slot_name,
+        slot_file,
+        chunker_algorithm,
+        hash_algorithm,
+    )
 }
 
 /// Get the stored block indices.
@@ -313,5 +330,168 @@ pub fn db_dir() -> &'static Path {
         Path::new(DATA_PATH)
     } else {
         Path::new(VAR_PATH)
+    }
+}
+
+fn store_index_in(db_root: &Path, slot_name: &str, block_index: &BlockIndex) -> SystemResult<()> {
+    let bytes = format::encode::to_vec(block_index, format::tags::BLOCK_INDEX);
+    write_index(
+        db_root,
+        slot_name,
+        &block_index.chunker,
+        &block_index.hash_algorithm,
+        &bytes,
+    )
+}
+
+fn add_index_in(
+    db_root: &Path,
+    slot_name: &str,
+    slot_file: &Path,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+) -> SystemResult<()> {
+    let index_config = BlockIndexConfig {
+        hash_algorithm: *hash_algorithm,
+        chunker: chunker_algorithm.clone(),
+    };
+    let block_index =
+        compute_block_index(index_config, slot_file).whatever("unable to compute block index")?;
+    write_index(
+        db_root,
+        slot_name,
+        chunker_algorithm,
+        hash_algorithm,
+        &block_index.encode(),
+    )
+}
+
+fn ensure_index_in(
+    db_root: &Path,
+    slot_name: &str,
+    slot_file: &Path,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+) -> SystemResult<()> {
+    if index_path(db_root, slot_name, chunker_algorithm, hash_algorithm).exists() {
+        return Ok(());
+    }
+    add_index_in(
+        db_root,
+        slot_name,
+        slot_file,
+        chunker_algorithm,
+        hash_algorithm,
+    )
+}
+
+fn write_index(
+    db_root: &Path,
+    slot_name: &str,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+    bytes: &[u8],
+) -> SystemResult<()> {
+    let slot_dir = db_root.join(slot_name);
+    std::fs::create_dir_all(&slot_dir).whatever("unable to create block index directory")?;
+    rugix_common::fsutils::atomic_write(
+        &index_path(db_root, slot_name, chunker_algorithm, hash_algorithm),
+        bytes,
+    )
+    .whatever("unable to write block index")?;
+    Ok(())
+}
+
+fn index_path(
+    db_root: &Path,
+    slot_name: &str,
+    chunker_algorithm: &ChunkerAlgorithm,
+    hash_algorithm: &HashAlgorithm,
+) -> PathBuf {
+    db_root.join(format!(
+        "{slot_name}/{chunker_algorithm}_{hash_algorithm:#}.rugix-block-index"
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use rugix_bundle::block_encoding::block_index::BlockIndexConfig;
+    use rugix_bundle::format;
+    use rugix_bundle::manifest::ChunkerAlgorithm;
+    use si_crypto_hashes::HashAlgorithm;
+
+    use super::compute_block_index;
+    use super::ensure_index_in;
+    use super::index_path;
+    use super::store_index_in;
+
+    /// Verifies that an index delivered with a payload is stored without recomputation.
+    #[test]
+    fn delivered_block_index_is_stored_verbatim() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let chunker = ChunkerAlgorithm::Fixed { block_size_kib: 4 };
+        let hash_algorithm = HashAlgorithm::Sha256;
+        let slot_file = tempdir.path().join("system-b.img");
+        std::fs::write(&slot_file, vec![0x5a; 4096]).unwrap();
+        let encoded = compute_block_index(
+            BlockIndexConfig {
+                chunker: chunker.clone(),
+                hash_algorithm,
+            },
+            &slot_file,
+        )
+        .unwrap()
+        .encode();
+        let block_index: format::BlockIndex = format::decode::decode_slice(&encoded).unwrap();
+
+        store_index_in(tempdir.path(), "system-b", &block_index).unwrap();
+
+        let stored = std::fs::read(index_path(
+            tempdir.path(),
+            "system-b",
+            &chunker,
+            &hash_algorithm,
+        ))
+        .unwrap();
+        assert_eq!(stored, encoded);
+    }
+
+    /// Verifies that a missing matching index is computed once from existing slot data.
+    #[test]
+    fn missing_block_index_is_computed_without_replacing_an_existing_index() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let slot_file = tempdir.path().join("system-a.img");
+        std::fs::write(&slot_file, vec![0x3c; 8192]).unwrap();
+        let chunker = ChunkerAlgorithm::Fixed { block_size_kib: 4 };
+        let hash_algorithm = HashAlgorithm::Sha256;
+        let index_config = BlockIndexConfig {
+            chunker: chunker.clone(),
+            hash_algorithm,
+        };
+        let expected = compute_block_index(index_config, &slot_file)
+            .unwrap()
+            .encode();
+
+        ensure_index_in(
+            tempdir.path(),
+            "system-a",
+            &slot_file,
+            &chunker,
+            &hash_algorithm,
+        )
+        .unwrap();
+        let stored_path = index_path(tempdir.path(), "system-a", &chunker, &hash_algorithm);
+        assert_eq!(std::fs::read(&stored_path).unwrap(), expected);
+
+        std::fs::write(&slot_file, vec![0xa5; 8192]).unwrap();
+        ensure_index_in(
+            tempdir.path(),
+            "system-a",
+            &slot_file,
+            &chunker,
+            &hash_algorithm,
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(stored_path).unwrap(), expected);
     }
 }

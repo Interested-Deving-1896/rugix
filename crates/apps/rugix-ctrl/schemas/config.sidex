@@ -5,6 +5,8 @@ record Config {
     signatures?: SignaturesConfig,
     /// Component compatibility policy.
     compatibility?: CompatibilityConfig,
+    /// Automatically create and retain block indices for full system updates.
+    automatic_delta_updates?: bool,
 }
 
 #[json(rename_all = "kebab-case")]

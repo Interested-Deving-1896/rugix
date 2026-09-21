@@ -220,6 +220,7 @@ pub(super) fn install_payloads<S: BundleSource>(
                 DecodedPayloadInfo {
                     hash: target_hash,
                     size: target_size.into(),
+                    block_index: None,
                 }
             } else {
                 info!(

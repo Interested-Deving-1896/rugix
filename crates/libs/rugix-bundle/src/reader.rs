@@ -23,6 +23,7 @@ use crate::PAYLOAD_HEADER_SIZE_LIMIT;
 use crate::SIGNATURES_SIZE_LIMIT;
 use crate::block_encoding::block_index::BlockId;
 use crate::block_encoding::block_index::RawBlockIndex;
+use crate::block_encoding::block_index::encode_block_sizes;
 use crate::block_encoding::block_table::BlockTable;
 use crate::format::Signatures;
 use crate::format::decode::decode_slice;
@@ -220,7 +221,7 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
         let mut buffer = vec![0; 8192];
         let mut payload_hasher = self.reader.header.hash_algorithm.hasher();
         let mut bytes_written = NumBytes::ZERO;
-        if let Some(block_encoding) = self.header.block_encoding {
+        let block_index = if let Some(block_encoding) = self.header.block_encoding {
             let mut block_index_raw = block_encoding.block_hashes.raw;
             if let Some(format) = block_encoding.compression {
                 block_index_raw = uncompress_bytes(format, &block_index_raw)?;
@@ -248,10 +249,10 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
                 )?;
                 None
             };
-            let fixed_block_size = match block_encoding.chunker {
+            let fixed_block_size = match &block_encoding.chunker {
                 rugix_chunker::ChunkerAlgorithm::Casync { .. } => None,
                 rugix_chunker::ChunkerAlgorithm::Fixed { block_size_kib } => {
-                    Some((block_size_kib as u32) * 1024)
+                    Some((*block_size_kib as u32) * 1024)
                 }
             };
             if fixed_block_size.is_none() && block_sizes.is_none() {
@@ -390,6 +391,20 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
                 payload_hasher.update(&buffer);
                 progress(&self.reader.source);
             }
+            let block_sizes = target_sizes
+                .into_iter()
+                .map(|size| u32::try_from(size.raw).whatever("decoded block is larger than 4 GiB"))
+                .collect::<BundleResult<Vec<_>>>()?;
+            Some(format::BlockIndex {
+                chunker: block_encoding.chunker,
+                hash_algorithm: block_encoding.hash_algorithm,
+                block_hashes: format::Bytes {
+                    raw: block_index_raw,
+                },
+                block_sizes: format::Bytes {
+                    raw: encode_block_sizes(block_sizes.into_iter()),
+                },
+            })
         } else {
             // The next chunk is the whole payload.
             self.reader.source.hint_next_chunk(self.remaining_data);
@@ -404,7 +419,8 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
                     NumBytes::expect_from_usize(read, "bytes actually read always fit into u64");
                 progress(&self.reader.source);
             }
-        }
+            None
+        };
         if self.remaining_data != NumBytes::ZERO {
             bail!(
                 "payload contains {} trailing encoded bytes",
@@ -423,6 +439,7 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
         Ok(DecodedPayloadInfo {
             hash: payload_hash,
             size: bytes_written,
+            block_index,
         })
     }
 }
@@ -430,6 +447,8 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
 pub struct DecodedPayloadInfo {
     pub hash: HashDigest,
     pub size: NumBytes,
+    /// Verified block index of the decoded payload, when included in the bundle.
+    pub block_index: Option<format::BlockIndex>,
 }
 
 pub trait PayloadTarget: Sized {
