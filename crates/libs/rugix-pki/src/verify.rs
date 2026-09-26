@@ -93,6 +93,18 @@ impl CmsVerifier {
     /// 3. Verifies the signature
     /// 4. Returns the encapsulated content if verification succeeds
     pub fn verify(&self, cms_der: &[u8]) -> PkiResult<VerificationResult> {
+        self.verify_at(cms_der, SystemTime::now())
+    }
+
+    /// Verify a signature and its certificate chain at the supplied trusted time.
+    ///
+    /// Callers must establish the time independently of the signed message. The CMS
+    /// signing-time attribute is a signer claim, not a trusted source of current time.
+    pub fn verify_at(&self, cms_der: &[u8], time: SystemTime) -> PkiResult<VerificationResult> {
+        let time =
+            UnixTime::since_unix_epoch(time.duration_since(SystemTime::UNIX_EPOCH).map_err(
+                |_| PkiError::ChainValidation("verification time precedes Unix epoch".into()),
+            )?);
         let content_info = ContentInfo::from_der(cms_der)
             .map_err(|e| PkiError::InvalidCms(format!("failed to parse ContentInfo: {}", e)))?;
 
@@ -131,6 +143,7 @@ impl CmsVerifier {
                 &content,
                 &embedded_certs,
                 signer_info,
+                time,
             ) {
                 Ok(result) => return Ok(result),
                 Err(error) => signer_errors.push(error.to_string()),
@@ -160,6 +173,7 @@ fn verify_signer(
     content: &[u8],
     embedded_certs: &[Certificate],
     signer_info: &cms::signed_data::SignerInfo,
+    time: UnixTime,
 ) -> PkiResult<VerificationResult> {
     let signer_cert = find_signer_certificate(embedded_certs, &signer_info.sid)?;
 
@@ -168,7 +182,7 @@ fn verify_signer(
         .map_err(|e| PkiError::DerParse(e.to_string()))?;
 
     validate_end_entity_key_usage(signer_cert)?;
-    let chain_der = validate_certificate_chain(&signer_cert_der, embedded_certs, root_cert)?;
+    let chain_der = validate_certificate_chain(&signer_cert_der, embedded_certs, root_cert, time)?;
 
     // RFC 5652 Section 5.3: The digest algorithm used by the signer should be
     // among those listed in the SignedData digestAlgorithms set.
@@ -294,6 +308,7 @@ fn validate_certificate_chain(
     signer_cert_der: &[u8],
     embedded_certs: &[Certificate],
     root_cert: &Certificate,
+    time: UnixTime,
 ) -> PkiResult<Vec<Vec<u8>>> {
     let root_der = root_cert
         .to_der()
@@ -312,8 +327,6 @@ fn validate_certificate_chain(
         .iter()
         .map(|der| CertificateDer::from_slice(der))
         .collect();
-
-    let time = UnixTime::now();
 
     let usage = webpki::KeyUsage::required_if_present(
         const_oid::db::rfc5280::ID_KP_CODE_SIGNING.as_bytes(),
