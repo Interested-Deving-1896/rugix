@@ -222,7 +222,8 @@ exit 0
             daemon_install(bundle, group_grant)
             daemon_install(bundle, group_grant, success=False)
         finally:
-            daemon.terminate()
+            # SIGKILL makes cleanup independent of inherited signal masks.
+            daemon.kill()
             daemon.wait(timeout=10)
     print("PASS: daemon transport, group grant, and override rejection", flush=True)
 
