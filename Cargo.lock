@@ -1797,6 +1797,8 @@ dependencies = [
 name = "rugix-grants"
 version = "0.1.0"
 dependencies = [
+ "const-oid",
+ "der",
  "rcgen",
  "rugix-pki",
  "serde",
@@ -1806,6 +1808,7 @@ dependencies = [
  "sidex-build-rs",
  "sidex-serde",
  "thiserror 2.0.18",
+ "x509-cert",
 ]
 
 [[package]]

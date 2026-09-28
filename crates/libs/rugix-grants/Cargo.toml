@@ -9,6 +9,9 @@ homepage.workspace = true
 description = "Signed, constrained grants for typed device operations"
 
 [dependencies]
+const-oid.workspace = true
+der.workspace = true
+x509-cert.workspace = true
 rugix-pki.workspace = true
 serde.workspace = true
 serde_json.workspace = true

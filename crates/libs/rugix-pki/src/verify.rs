@@ -64,16 +64,14 @@ const ID_SIGNING_TIME: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.
 /// A CMS verifier that validates signatures against a trusted root certificate.
 pub struct CmsVerifier {
     root_cert: Certificate,
+    key_usage: webpki::KeyUsage,
 }
 
 impl CmsVerifier {
     /// Create a new CMS verifier with a PEM-encoded root certificate.
     pub fn new(root_cert_pem: &[u8]) -> PkiResult<Self> {
         let root_cert_der = pem::parse(root_cert_pem, "CERTIFICATE")?;
-        let root_cert = Certificate::from_der(&root_cert_der)
-            .map_err(|e| PkiError::CertificateParse(e.to_string()))?;
-
-        Ok(Self { root_cert })
+        Self::from_der(&root_cert_der)
     }
 
     /// Create a new CMS verifier from a DER-encoded root certificate.
@@ -81,7 +79,21 @@ impl CmsVerifier {
         let root_cert = Certificate::from_der(root_cert_der)
             .map_err(|e| PkiError::CertificateParse(e.to_string()))?;
 
-        Ok(Self { root_cert })
+        Ok(Self {
+            root_cert,
+            key_usage: webpki::KeyUsage::required_if_present(
+                const_oid::db::rfc5280::ID_KP_CODE_SIGNING.as_bytes(),
+            ),
+        })
+    }
+
+    /// Require a specific extended key usage on every non-root certificate.
+    ///
+    /// The OID is its DER value, without the tag and length. Application-specific
+    /// purposes require the caller to enforce the corresponding authorization policy.
+    pub fn with_required_key_usage(mut self, oid: &'static [u8]) -> Self {
+        self.key_usage = webpki::KeyUsage::required(oid);
+        self
     }
 
     /// Verify a DER-encoded CMS signature.
@@ -144,6 +156,7 @@ impl CmsVerifier {
                 &embedded_certs,
                 signer_info,
                 time,
+                self.key_usage,
             ) {
                 Ok(result) => return Ok(result),
                 Err(error) => signer_errors.push(error.to_string()),
@@ -174,6 +187,7 @@ fn verify_signer(
     embedded_certs: &[Certificate],
     signer_info: &cms::signed_data::SignerInfo,
     time: UnixTime,
+    key_usage: webpki::KeyUsage,
 ) -> PkiResult<VerificationResult> {
     let signer_cert = find_signer_certificate(embedded_certs, &signer_info.sid)?;
 
@@ -182,7 +196,8 @@ fn verify_signer(
         .map_err(|e| PkiError::DerParse(e.to_string()))?;
 
     validate_end_entity_key_usage(signer_cert)?;
-    let chain_der = validate_certificate_chain(&signer_cert_der, embedded_certs, root_cert, time)?;
+    let chain_der =
+        validate_certificate_chain(&signer_cert_der, embedded_certs, root_cert, time, key_usage)?;
 
     // RFC 5652 Section 5.3: The digest algorithm used by the signer should be
     // among those listed in the SignedData digestAlgorithms set.
@@ -309,6 +324,7 @@ fn validate_certificate_chain(
     embedded_certs: &[Certificate],
     root_cert: &Certificate,
     time: UnixTime,
+    usage: webpki::KeyUsage,
 ) -> PkiResult<Vec<Vec<u8>>> {
     let root_der = root_cert
         .to_der()
@@ -327,10 +343,6 @@ fn validate_certificate_chain(
         .iter()
         .map(|der| CertificateDer::from_slice(der))
         .collect();
-
-    let usage = webpki::KeyUsage::required_if_present(
-        const_oid::db::rfc5280::ID_KP_CODE_SIGNING.as_bytes(),
-    );
 
     let trust_anchors = [trust_anchor];
     let verified_path = end_entity

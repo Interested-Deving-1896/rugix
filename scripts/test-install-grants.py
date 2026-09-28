@@ -52,6 +52,25 @@ def certificate(directory, name):
     return root, cert, key
 
 
+def authority_certificate(directory, name, parent, parent_key, policy, intermediate=False,
+                          alter_extensions=None):
+    """Issue real constrained certificates using Bundler's policy encoder and OpenSSL."""
+    cert, key = directory / f"{name}.pem", directory / f"{name}.key"
+    csr, extensions = directory / f"{name}.csr", directory / f"{name}.ext"
+    policy_file = directory / f"{name}.json"
+    policy_file.write_text(json.dumps(policy))
+    run(BUNDLER, "grants", "authority-extensions", policy_file, extensions,
+        *(["--intermediate"] if intermediate else []))
+    if alter_extensions:
+        extensions.write_text(alter_extensions(extensions.read_text()))
+    run("openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
+        "-nodes", "-subj", f"/CN={name}", "-keyout", key, "-out", csr)
+    run("openssl", "x509", "-req", "-in", csr, "-CA", parent, "-CAkey", parent_key,
+        "-CAcreateserial", "-days", "2" if intermediate else "1",
+        "-extfile", extensions, "-out", cert)
+    return cert, key
+
+
 def recv_exact(stream, size):
     """Read one complete private-protocol field from the daemon."""
     data = b""
@@ -148,14 +167,15 @@ exit 0
     bundle_hash = run(BUNDLER, "hash", bundle).stdout.strip()
 
     def grant(name, sequence, device="device-1", group=None, start=None, end=None, target="apps",
-              payload=bundle, extra=()):
+              payload=bundle, extra=(), signer=None):
         now = int(time.time())
+        signing_cert, signing_key = signer or (cert, key)
         output = directory / f"{name}.cms"
         audience = ["--group", group] if group else ["--device", device]
         run(BUNDLER, "grants", "sign", "--bundle", payload, "--id", name,
-            "--namespace", "test", *audience, "--not-before", start if start is not None else now - 1,
+            "--namespace", "test", *audience, "--not-before", start if start is not None else now,
             "--expires-at", end if end is not None else now + 300, "--sequence", sequence,
-            "--target", target, "--cert", cert, "--key", key, *extra, output)
+            "--target", target, "--cert", signing_cert, "--key", signing_key, *extra, output)
         return output
 
     def install(signature, payload=bundle, success=True, extra=()):
@@ -204,6 +224,52 @@ exit 0
     run(CTRL, "apps", "rollback", "grant-test", success=False)
     print("PASS: CLI grant constraints, interrupted transfer retry, activation, and replay", flush=True)
 
+
+    # Certificate authority policy must hold before any reservation or installation.
+    authority_policy = {
+        "version": 1, "namespace": "test", "audiences": "Any",
+        "permissions": [{"verifier": "rugix-ctrl", "operation": "rugix.install.apps.v1"}],
+        "maxGrantLifetime": 600,
+    }
+    intermediate_cert, intermediate_key = authority_certificate(
+        directory, "deployment-authority", root, root.with_suffix(".key"),
+        authority_policy, intermediate=True)
+    signer_policy = dict(authority_policy, audiences={"Targets": [{"Group": "canary"}]},
+                         maxGrantLifetime=300)
+    scoped_signer = authority_certificate(
+        directory, "scoped-signer", intermediate_cert, intermediate_key, signer_policy)
+    chain_args = ["--intermediate-cert", intermediate_cert]
+    scoped_args = {"signer": scoped_signer, "extra": chain_args}
+    install(grant("authority-wrong-audience", 11, **scoped_args), success=False)
+    install(grant("authority-long-grant", 11, group="canary",
+                  end=int(time.time()) + 500, **scoped_args), success=False)
+
+    wider_policy = dict(signer_policy, audiences="Any")
+    # This broadens the child relative to a narrower parent, even for an allowed request.
+    narrow_ca_policy = dict(authority_policy, audiences={"Targets": [{"Group": "canary"}]})
+    narrow_ca, narrow_key = authority_certificate(
+        directory, "narrow-authority", root, root.with_suffix(".key"), narrow_ca_policy,
+        intermediate=True)
+    wider_signer = authority_certificate(
+        directory, "escalated-signer", narrow_ca, narrow_key, wider_policy)
+    install(grant("authority-escalation", 11, group="canary", signer=wider_signer,
+                  extra=["--intermediate-cert", narrow_ca]), success=False)
+
+    missing_policy_signer = authority_certificate(
+        directory, "missing-policy", intermediate_cert, intermediate_key, signer_policy,
+        alter_extensions=lambda text: "\n".join(line for line in text.splitlines()
+                                                if "=DER:" not in line) + "\n")
+    install(grant("authority-missing-policy", 11, group="canary", signer=missing_policy_signer,
+                  extra=chain_args), success=False)
+    mixed_purpose_signer = authority_certificate(
+        directory, "mixed-purpose", intermediate_cert, intermediate_key, signer_policy,
+        alter_extensions=lambda text: text.replace("extendedKeyUsage=critical,",
+                                                   "extendedKeyUsage=critical,codeSigning,"))
+    install(grant("authority-mixed-purpose", 11, group="canary", signer=mixed_purpose_signer,
+                  extra=chain_args), success=False)
+    assert int(state()["apps"]["sequence"]) == 10
+    print("PASS: constrained certificate issuance, scope, lifetime, escalation, and required policy", flush=True)
+
     # The daemon must enforce grants even when its legacy override switch is enabled.
     Path("/etc/rugix/daemon.toml").write_text("dangerously-insecure = true\n")
     daemon_log = directory / "daemon.log"
@@ -217,7 +283,7 @@ exit 0
                 time.sleep(0.02)
             daemon_install(bundle, None, success=False)
             daemon_install(bundle, good, success=False)
-            group_grant = grant("group", 11, group="canary")
+            group_grant = grant("group", 11, group="canary", **scoped_args)
             daemon_install(bundle, group_grant, {"insecure_skip_bundle_verification": True}, success=False)
             daemon_install(bundle, group_grant)
             daemon_install(bundle, group_grant, success=False)
@@ -330,7 +396,19 @@ hash-algorithm = "sha256"
 """)
     system_bundle = directory / "system.rugixb"
     run(BUNDLER, "bundle", bundle_dir, system_bundle)
+    scoped_system = grant("authority-system-denied", 1, target="system", payload=system_bundle,
+                          group="canary", signer=scoped_signer,
+                          extra=[*chain_args, "--boot-group", "B", "--reboot", "set"])
+    run(CTRL, "update", "install", system_bundle, "--grant", scoped_system,
+        "--boot-group", "B", "--reboot", "set", success=False)
+    assert slot_b.read_bytes() == b"old inactive system"
+    assert state().get("system") is None
+    system_policy = dict(authority_policy, audiences={"Targets": [{"Device": "device-1"}]},
+                         permissions=[{"verifier": "rugix-ctrl", "operation": "rugix.install.system.v1"}])
+    system_signer = authority_certificate(
+        directory, "system-authority", root, root.with_suffix(".key"), system_policy)
     system_grant = grant("system", 1, target="system", payload=system_bundle,
+                         signer=system_signer,
                          extra=["--boot-group", "B", "--reboot", "set"])
     base = [CTRL, "update", "install", system_bundle, "--grant", system_grant]
     for flags in [
@@ -359,7 +437,7 @@ hash-algorithm = "sha256"
     state_mount = Path("/run/rugix/state")
     state_mount.mkdir()
     run("mount", "--bind", profile, state_mount)
-    managed_grant = grant("managed", 16)
+    managed_grant = grant("managed", 16, group="canary", **scoped_args)
     install(managed_grant, success=False)
     state_dir = Path("/run/rugix/mounts/data/.rugix/grants")
     run(CTRL, "initialize-grant-state")

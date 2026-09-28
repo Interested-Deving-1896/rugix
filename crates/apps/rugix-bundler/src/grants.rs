@@ -15,6 +15,9 @@ use rugix_bundle::grants::InstallTarget;
 use rugix_bundle::grants::RebootMode;
 use rugix_bundle::grants::SystemInstallOptions;
 use rugix_bundle::BundleResult;
+use rugix_grants::authority::AuthorityConstraints;
+use rugix_grants::authority::AUTHORITY_CONSTRAINTS_OID;
+use rugix_grants::authority::GRANT_AUTHORITY_EKU;
 use rugix_grants::Audience;
 use rugix_grants::AudienceTarget;
 use rugix_grants::DeviceIdentity;
@@ -26,6 +29,16 @@ use rugix_pki::CmsSignerBuilder;
 
 #[derive(Debug, Subcommand)]
 pub enum GrantsCommand {
+    /// Prepare OpenSSL certificate extensions for a constrained grant authority.
+    AuthorityExtensions {
+        /// Sidex authority constraints in JSON format.
+        policy: PathBuf,
+        /// Output OpenSSL extension configuration file.
+        output: PathBuf,
+        /// Authorize signing subordinate certificates instead of signing grants directly.
+        #[clap(long)]
+        intermediate: bool,
+    },
     /// Create and sign an installation grant.
     Sign {
         #[clap(flatten)]
@@ -128,6 +141,33 @@ pub enum Reboot {
 
 pub fn run(command: GrantsCommand) -> BundleResult<()> {
     match command {
+        GrantsCommand::AuthorityExtensions {
+            policy,
+            output,
+            intermediate,
+        } => {
+            let constraints = AuthorityConstraints::from_json(
+                &fs::read(policy).whatever("unable to read authority policy")?,
+            )
+            .whatever("invalid authority policy")?;
+            let depth = constraints.max_delegation_depth.unwrap_or(0);
+            if !intermediate && depth != 0 {
+                bail!("a grant signer cannot delegate authority");
+            }
+            let (basic, usage) = if intermediate {
+                (format!("CA:TRUE,pathlen:{depth}"), "keyCertSign")
+            } else {
+                ("CA:FALSE".into(), "digitalSignature")
+            };
+            let der = constraints
+                .to_extension_der()
+                .whatever("unable to encode authority policy")?;
+            let encoded = hex::encode(der);
+            let extensions = format!(
+                "basicConstraints=critical,{basic}\nkeyUsage=critical,{usage}\nextendedKeyUsage=critical,{GRANT_AUTHORITY_EKU}\n{AUTHORITY_CONSTRAINTS_OID}=DER:{encoded}\n"
+            );
+            fs::write(output, extensions).whatever("unable to write authority extensions")?;
+        }
         GrantsCommand::Sign {
             grant,
             cert,

@@ -30,6 +30,8 @@ sidex::include_bundle! {
     rugix_grants as generated
 }
 
+pub mod authority;
+
 pub use generated::grant;
 pub use generated::grant::Audience;
 pub use generated::grant::AudienceTarget;
@@ -58,6 +60,15 @@ pub const DEFAULT_MAX_LIFETIME: Duration = Duration::from_secs(24 * 60 * 60);
 pub trait Operation: sidex_serde::SidexType {
     /// For example, `rugix.install.v1`.
     const TYPE: &'static str;
+
+    /// Permission required by this operation's authenticated arguments.
+    ///
+    /// Override this for operations with distinct authority scopes. Identifiers
+    /// must be globally distinct and versioned, and must never depend on untrusted
+    /// caller configuration. A future change in meaning requires a new identifier.
+    fn permission(&self) -> &'static str {
+        Self::TYPE
+    }
 }
 
 /// Device facts supplied by the executor's trusted identity provider.
@@ -92,6 +103,7 @@ pub struct VerificationContext<'a> {
 /// The trust root comes from local policy, never from the submitted grant.
 pub struct GrantVerifier {
     cms: CmsVerifier,
+    authority_cms: CmsVerifier,
     max_size: usize,
     max_lifetime: Duration,
 }
@@ -101,6 +113,9 @@ impl GrantVerifier {
     pub fn new(root_certificate: &[u8]) -> Result<Self, GrantError> {
         Ok(Self {
             cms: CmsVerifier::new(root_certificate).map_err(GrantError::Signature)?,
+            authority_cms: CmsVerifier::new(root_certificate)
+                .map_err(GrantError::Signature)?
+                .with_required_key_usage(authority::GRANT_AUTHORITY_EKU.as_bytes()),
             max_size: DEFAULT_MAX_GRANT_SIZE,
             max_lifetime: DEFAULT_MAX_LIFETIME,
         })
@@ -125,9 +140,16 @@ impl GrantVerifier {
         if signed_grant.len() > self.max_size {
             return Err(GrantError::SizeLimit);
         }
-        let verified = self
-            .cms
+        let (verified, constrained) = self.authority_cms
             .verify_at(signed_grant, context.now)
+            .map(|verified| (verified, true))
+            .or_else(|authority_error| {
+                self.cms.verify_at(signed_grant, context.now)
+                    .map(|verified| (verified, false))
+                    .map_err(|legacy_error| PkiError::SignatureVerification(format!(
+                        "grant authority verification failed: {authority_error}; code signing verification failed: {legacy_error}"
+                    )))
+            })
             .map_err(GrantError::Signature)?;
         let content = verified
             .content
@@ -139,6 +161,7 @@ impl GrantVerifier {
             return Err(GrantError::LifetimeLimit);
         }
         validate_context(&grant, context)?;
+        authority::verify(&verified.certificate_chain, constrained, &grant)?;
         Ok(VerifiedGrant {
             grant,
             signer_certificate: verified.signer_certificate,
@@ -218,6 +241,15 @@ pub enum GrantError {
     /// The CMS envelope exceeds the local size limit.
     #[error("grant size exceeds the configured limit")]
     SizeLimit,
+    /// A certificate has an unsupported or malformed authority policy.
+    #[error("invalid grant authority certificate or constraints")]
+    InvalidAuthority,
+    /// A subordinate authority exceeds its parent's scope, validity, or delegation depth.
+    #[error("grant authority exceeds its parent delegation")]
+    AuthorityEscalation,
+    /// The grant exceeds its issuing authority's permissions or validity.
+    #[error("grant exceeds its issuing authority")]
+    AuthorityDenied,
 }
 
 /// Decode without accepting unknown constraints, duplicate fields, or trailing data.

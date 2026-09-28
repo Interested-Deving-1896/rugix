@@ -8,6 +8,13 @@ pub use crate::manifest::grants::*;
 
 impl rugix_grants::Operation for InstallOperation {
     const TYPE: &'static str = "rugix.install.v1";
+
+    fn permission(&self) -> &'static str {
+        match self.target {
+            InstallTarget::Apps => "rugix.install.apps.v1",
+            InstallTarget::System(_) => "rugix.install.system.v1",
+        }
+    }
 }
 
 /// Service audience for Rugix Ctrl installation grants.

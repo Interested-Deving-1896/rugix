@@ -66,7 +66,8 @@ and insecure verification options cannot bypass this requirement. The daemon's
 `dangerously-insecure` switch does not override grant policy.
 
 Grant roots authorize both system and app installation on the configured device.
-A grant issuer can authorize any bundle under `GrantOnly`. Use independent publisher
+Unconstrained grant issuers can authorize any bundle under `GrantOnly`.
+Constrained authority certificates can narrow this permission as described below. Use independent publisher
 verification when deployment authorities should only select publisher-approved
 software:
 
@@ -160,9 +161,128 @@ openssl cms -sign -binary -nodetach \
 
 The CMS envelope must include the signed content. Its signing certificate and
 intermediate chain must validate against a configured grant root. The existing
-Rugix PKI certificate rules apply, including digital signature key usage and
-code-signing extended key usage when present. The signing command also supports
+Rugix PKI certificate rules apply, including digital signature key usage.
+Unconstrained chains use code-signing extended key usage when present; constrained
+chains use the dedicated grant-authority purpose described below. The signing command also supports
 repeated `--intermediate-cert` arguments.
+
+## Constrained Grant Authorities
+
+An authority certificate delegates permission to issue grants or subordinate
+certificates. Its signed constraints bind the public key to a namespace, audience
+selectors, service-operation permissions, maximum grant lifetime, and delegation
+depth. Its X.509 validity period bounds when that authority is usable. Verification
+requires no certificate server: the grant carries its signing certificate and
+intermediates.
+
+A child must preserve or narrow its parent's namespace, audience selectors,
+permissions, and maximum grant lifetime. Its whole certificate validity period
+must fit inside its parent's. An omitted `maxDelegationDepth` means zero: a CA may
+issue grant-signing certificates but may not issue subordinate CAs. Each additional
+CA level reduces the remaining allowance. A signing certificate must have depth
+zero. A child that widens authority is rejected even if a particular grant would
+fit its parent's permissions.
+
+Audience selectors use exact matching. `"Any"` permits any selector within the
+namespace. `{"Targets":[{"Group":"canary"}]}` permits grants addressed to that group;
+it does not permit device-addressed grants, even for devices in the group.
+Device membership still comes from trusted local provisioning.
+
+Permissions pair a verifier identifier with an operation permission identifier:
+
+| Verifier | Permission | Authorized Operation |
+| --- | --- | --- |
+| `rugix-ctrl` | `rugix.install.apps.v1` | Application installation |
+| `rugix-ctrl` | `rugix.install.system.v1` | System installation |
+
+Both use the `rugix.install.v1` grant payload. Permissions distinguish the
+authenticated installation target. An empty permission or target list authorizes
+nothing. Unknown identifiers grant no additional permission. Unknown constraint
+fields, versions, duplicate fields, and malformed certificates are rejected.
+
+The grant's entire validity window must fit inside its signing certificate's
+window and its maximum grant lifetime. Device policy may impose a shorter limit.
+The certificate chain is checked again at reservation and consumption. A claimed
+signing time cannot extend authority beyond certificate expiry. Already authorized
+activation, recovery, and running software follow the rules in
+[Replay, Expiry, and Recovery](#replay-expiry-and-recovery).
+
+Configured trust roots remain administrative authorities. Existing unconstrained
+code-signing chains remain supported. Use separate keys for constrained authorities:
+issuing an unconstrained certificate for the same key creates another authorization
+path. A locally configured root's certificate expiry does not automatically expire
+local trust. If the root itself carries authority constraints, Rugix also enforces
+those constraints and its validity window.
+
+Constraints limit accepted requests. They do not reverse installations or replay
+state changes already authorized by a compromised key. In particular, issuers
+sharing an installation scope still share its authorization sequence.
+
+## Issue Constrained Certificates
+
+Create `authority.json` on a trusted signing machine:
+
+```json
+{
+  "version": 1,
+  "namespace": "example-production",
+  "audiences": {"Targets": [{"Group": "canary"}]},
+  "permissions": [
+    {"verifier": "rugix-ctrl", "operation": "rugix.install.apps.v1"}
+  ],
+  "maxGrantLifetime": 1800
+}
+```
+
+Use an existing grant root to issue an intermediate with a 90-day validity period:
+
+```sh
+umask 077
+rugix-bundler grants authority-extensions \
+  authority.json authority.ext --intermediate
+
+openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+  -nodes -subj "/CN=Application Deployment Authority" \
+  -keyout authority.key -out authority.csr
+
+openssl x509 -req -in authority.csr \
+  -CA grant-root.pem -CAkey grant-root.key -CAcreateserial \
+  -days 90 -extfile authority.ext -out authority.pem
+```
+
+Issue a grant-signing certificate with a shorter validity period:
+
+```sh
+rugix-bundler grants authority-extensions authority.json signer.ext
+
+openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+  -nodes -subj "/CN=Application Grant Signer" \
+  -keyout grant-signer.key -out grant-signer.csr
+
+openssl x509 -req -in grant-signer.csr \
+  -CA authority.pem -CAkey authority.key -CAcreateserial \
+  -days 1 -extfile signer.ext -out grant-signer.pem
+
+now=$(date +%s)
+rugix-bundler grants sign \
+  --bundle app.rugixb --id canary-app-42 \
+  --namespace example-production --group canary \
+  --not-before "$now" --expires-at "$((now + 600))" \
+  --sequence 42 --target apps \
+  --cert grant-signer.pem --key grant-signer.key \
+  --intermediate-cert authority.pem app.cms
+
+rugix-ctrl apps install --grant app.cms app.rugixb
+```
+
+Choose certificate and grant end times that fit inside their parent windows,
+including when renewing close to an authority's expiry. OpenSSL can issue
+certificates that exceed these limits; Rugix rejects them during verification.
+Renewed certificates can travel with the next grant.
+
+The extension generator validates the policy and emits the required certificate
+purpose and basic constraints. Certificate issuance remains with your CA tooling.
+It does not add a certificate service or maintain issuer state.
 
 ## Replay, Expiry, and Recovery
 
@@ -214,11 +334,26 @@ fields, and trailing content are rejected. A grant cannot be substituted for
 ordinary embedded bundle metadata.
 
 The Sidex source contracts are
-[`grant.sidex`](../crates/libs/rugix-grants/schemas/grant.sidex) and
+[`grant.sidex`](../crates/libs/rugix-grants/schemas/grant.sidex),
+[`authority.sidex`](../crates/libs/rugix-grants/schemas/authority.sidex), and
 [`grants.sidex`](../crates/libs/rugix-bundle/schemas/grants.sidex).
 The unsigned 64-bit fields `notBefore`, `expiresAt`, and `sequence` accept JSON
 integers or decimal strings. Sidex emits decimal strings for values above
 JavaScript's maximum safe integer, 9007199254740991.
+
+Authority constraints are UTF-8 Sidex JSON inside a DER UTF8String, carried in the
+certificate's non-critical authority extension. Every non-root certificate in a
+constrained path must carry this extension and a critical extended key usage
+containing only the dedicated grant-authority purpose. The verifier requires the
+constraints whenever that purpose is used. It evaluates only the path authenticated
+by X.509 validation, never unrelated certificates supplied in the CMS envelope.
+
+The dedicated purpose prevents existing code-signing verifiers from accepting
+constrained keys while ignoring their policy. A constrained key also cannot serve
+as an embedded bundle publisher. Unknown critical extensions on signing and
+intermediate certificates remain rejected.
+This profile uses the standard critical extended key usage extension because the
+X.509 validation library does not support custom critical extension handlers.
 
 ## Verify Changes
 
@@ -234,4 +369,6 @@ The end-to-end test needs Linux user and mount namespaces, Python, OpenSSL, and
 root access. It exercises real bundle creation, CMS issuance, app activation,
 system installation to file slots, boot selection through a test controller,
 streaming expiry, interrupted transfer recovery, replay protection, daemon policy,
-independent signing authorities, and external OpenSSL signing.
+independent signing authorities, external OpenSSL signing, constrained certificate
+issuance, delegation escalation rejection, and application-only authority rejection
+for system installations.

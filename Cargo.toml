@@ -14,6 +14,9 @@ homepage = "https://rugix.org/"
 bytes = "1.7.1"
 clap = { version = "4.5.24", features = ["derive"] }
 console = "0.15.10"
+const-oid = { version = "0.9", features = ["db"] }
+der = { version = "0.7", features = ["std", "alloc", "oid"] }
+x509-cert = "0.2.5"
 ctrlc = { version = "3.4.5", features = ["termination"] }
 flume = { version = "0.11.1", features = ["async"] }
 futures = "0.3.31"
