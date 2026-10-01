@@ -21,15 +21,15 @@ pub use crate::generated::authority::*;
 
 /// Dedicated key purpose for constrained grant authorities.
 ///
-/// TODO: Replace the documentation-only OID with the project's assigned OID.
+/// Assigned under Rugix's `1.3.6.1.4.1.67013.1` namespace (Silitics PEN 67013).
 pub const GRANT_AUTHORITY_EKU: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("1.3.6.1.4.1.32473.1.1");
+    ObjectIdentifier::new_unwrap("1.3.6.1.4.1.67013.1.1");
 
 /// Extension containing a DER UTF8String with the Sidex authority JSON.
 ///
-/// TODO: Replace the documentation-only OID with the project's assigned OID.
+/// Assigned alongside [`GRANT_AUTHORITY_EKU`] under the Rugix namespace.
 pub const AUTHORITY_CONSTRAINTS_OID: ObjectIdentifier =
-    ObjectIdentifier::new_unwrap("1.3.6.1.4.1.32473.1.2");
+    ObjectIdentifier::new_unwrap("1.3.6.1.4.1.67013.1.2");
 
 impl AuthorityConstraints {
     /// Parse and validate an authority policy, rejecting unknown or duplicate fields.
