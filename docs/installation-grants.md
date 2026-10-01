@@ -341,9 +341,7 @@ The unsigned 64-bit fields `notBefore`, `expiresAt`, and `sequence` accept JSON
 integers or decimal strings. Sidex emits decimal strings for values above
 JavaScript's maximum safe integer, 9007199254740991.
 
-Rugix uses the object identifier (OID) namespace `1.3.6.1.4.1.67013.100`, below
-Silitics GmbH's enterprise OID `1.3.6.1.4.1.67013` (PEN 67013). Branches `.1`
-through `.99` under the enterprise OID are reserved for shared Silitics definitions.
+Rugix's delegated object identifier (OID) namespace is `1.3.6.1.4.1.67013.100`.
 The following assignments are permanent and must not be reused for other purposes:
 
 | OID | Purpose |
