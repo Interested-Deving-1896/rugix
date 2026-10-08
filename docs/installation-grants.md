@@ -19,7 +19,6 @@ roots = ["/etc/rugix/grant-root.pem"]
 mode = { tag = "GrantOnly" }
 namespace = "example-production"
 identity-helper = "/usr/lib/rugix/grant-identity"
-trusted-system-clock = true
 max-lifetime = 86400
 ```
 
@@ -57,14 +56,14 @@ Omitting `groups` means no group memberships. Device-addressed grants use
 Membership never expands an issuer certificate's audience constraints. Changes
 in an external inventory take effect when the helper returns the updated memberships.
 
-Set `trusted-system-clock = true` only when the platform establishes trustworthy
-current time across power cycles, for example through a protected clock or an
-authenticated time service. The same time is used for grant and certificate
-validity. Grant timestamps and CMS signing-time are not time sources. A stored
-timestamp alone cannot account for time spent powered off. With this option false,
-Rugix refuses every granted installation. The flag does not synchronize or assess
-the clock. Platforms without trustworthy current time cannot use expiring grants;
-they must establish it before enabling this policy.
+Grant verification assumes that the system clock provides trustworthy current time.
+The platform must establish and maintain it before installations, including after
+reboots and power loss, for example through a protected clock or an authenticated
+time service. Rugix checks grant and certificate validity against that clock; it
+does not synchronize the clock or determine whether it is trustworthy. An incorrect
+clock can cause expired grants to be accepted or valid grants to be rejected.
+Grant timestamps and CMS signing-time do not establish current time. A stored
+timestamp alone cannot account for time spent powered off.
 
 Grant replay state uses `/run/rugix/mounts/data/.rugix/grants` when Rugix state
 management is active, detected by the presence of `/run/rugix/state`. This location
@@ -112,7 +111,6 @@ roots = ["/etc/rugix/grant-root.pem"]
 mode = { tag = "EmbeddedAndGrant" }
 namespace = "example-production"
 identity-helper = "/usr/lib/rugix/grant-identity"
-trusted-system-clock = true
 ```
 
 Both signatures are then mandatory. Adding several roots allows certificate

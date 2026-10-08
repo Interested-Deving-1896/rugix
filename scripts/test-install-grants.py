@@ -145,7 +145,7 @@ def suite(directory):
     identity_helper.write_text(helper_script)
     identity_helper.chmod(0o755)
 
-    def configure(mode="GrantOnly", trusted=True, max_lifetime=86400):
+    def configure(mode="GrantOnly", max_lifetime=86400):
         config.write_text(f"""
 [signatures]
 roots = ["{publisher_root}"]
@@ -154,7 +154,6 @@ roots = ["{publisher_root}", "{root}"]
 namespace = "test"
 identity-helper = "{identity_helper}"
 max-lifetime = {max_lifetime}
-trusted-system-clock = {str(trusted).lower()}
 mode = {{ tag = "{mode}" }}
 """)
 
@@ -267,9 +266,6 @@ exit 0
     ]:
         install(good, success=False, extra=flags)
     assert state().get("apps") is None
-    configure(trusted=False)
-    install(good, success=False)
-    configure()
 
     # Helper failures, invalid output, and changed identity must not reserve a grant.
     for output in ["invalid", "{}", '{"device":""}', '{"device":"device-2"}',

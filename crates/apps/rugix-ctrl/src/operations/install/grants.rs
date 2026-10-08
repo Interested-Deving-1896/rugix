@@ -281,9 +281,6 @@ fn verify(
     signed: &[u8],
     identity: &RecipientIdentity,
 ) -> SystemResult<VerifiedGrant<InstallOperation>> {
-    if !config.trusted_system_clock {
-        bail!("grant verification requires a trusted system clock");
-    }
     let context = VerificationContext {
         service: rugix_bundle::grants::SERVICE,
         identity,
@@ -405,7 +402,6 @@ mod tests {
                 mode: crate::config::grants::GrantPolicy::GrantOnly,
                 namespace: "test".into(),
                 identity_helper: helper.to_str().unwrap().into(),
-                trusted_system_clock: true,
                 max_lifetime: None,
             };
             initialize_in(
@@ -601,8 +597,8 @@ mod tests {
     /// Grant policy cannot be downgraded with the legacy hash, certificate, or insecure
     /// options.
     #[test]
-    fn required_grants_reject_legacy_overrides_and_untrusted_time() {
-        let mut fixture = Fixture::new();
+    fn required_grants_reject_legacy_overrides() {
+        let fixture = Fixture::new();
         let mut variants = Vec::new();
         let mut missing = fixture.options();
         missing.grant = None;
@@ -625,8 +621,6 @@ mod tests {
         for options in variants {
             assert!(fixture.begin_with(&options, &fixture.target).is_err());
         }
-        fixture.config.grants.as_mut().unwrap().trusted_system_clock = false;
-        assert!(fixture.begin().is_err());
         assert!(require_unconstrained_activation(&fixture.config).is_err());
     }
 }

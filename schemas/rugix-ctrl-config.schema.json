@@ -62,7 +62,7 @@
     "rugix_ctrl.grants.GrantsConfig": {
       "$id": "rugix_ctrl.grants.GrantsConfig",
       "type": "object",
-      "description": "Required detached installation grants.",
+      "description": "Required detached installation grants.\n\nGrant and certificate validity assume a trustworthy system clock supplied by the platform.",
       "properties": {
         "roots": {
           "type": "array",
@@ -79,9 +79,6 @@
         "identity-helper": {
           "type": "string"
         },
-        "trusted-system-clock": {
-          "type": "boolean"
-        },
         "max-lifetime": {
           "type": "integer",
           "format": "uint64"
@@ -91,8 +88,7 @@
         "roots",
         "mode",
         "namespace",
-        "identity-helper",
-        "trusted-system-clock"
+        "identity-helper"
       ],
       "unevaluatedProperties": false
     }

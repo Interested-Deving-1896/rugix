@@ -1,6 +1,8 @@
 //! Grant authorization policy and durable replay state.
 
 /// Required detached installation grants.
+///
+/// Grant and certificate validity assume a trustworthy system clock supplied by the platform.
 #[json(rename_all = "kebab-case")]
 record GrantsConfig {
     /// Trusted grant-issuing roots. These authorize both system and app installation.
@@ -13,10 +15,6 @@ record GrantsConfig {
     /// Called during provisioning and before admission, reservation, and activation.
     /// Failure or invalid output rejects the operation.
     identity_helper: string,
-    /// Assert that the system clock is trustworthy across power cycles.
-    /// When false, all granted installations are rejected. This does not synchronize
-    /// the clock; the platform must establish trusted time before enabling grants.
-    trusted_system_clock: bool,
     /// Maximum total signed validity window (expiresAt - notBefore), in seconds.
     /// Defaults to 86400. Longer grants are rejected, even near their expiry.
     /// This limits permission lifetime, not installation duration.
