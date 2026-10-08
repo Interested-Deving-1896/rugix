@@ -3,11 +3,14 @@
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::SystemTime;
 
 use clap::Args;
 use clap::Subcommand;
 use clap::ValueEnum;
+use jiff::SignedDuration;
+use jiff::Timestamp;
 use reportify::bail;
 use reportify::ResultExt;
 use rugix_bundle::grants::InstallOperation;
@@ -20,10 +23,10 @@ use rugix_grants::authority::AUTHORITY_CONSTRAINTS_OID;
 use rugix_grants::authority::GRANT_AUTHORITY_EKU;
 use rugix_grants::Audience;
 use rugix_grants::AudienceTarget;
-use rugix_grants::DeviceIdentity;
 use rugix_grants::Grant;
 use rugix_grants::GrantVerifier;
 use rugix_grants::Operation;
+use rugix_grants::RecipientIdentity;
 use rugix_grants::VerificationContext;
 use rugix_pki::CmsSignerBuilder;
 
@@ -102,12 +105,12 @@ pub struct GrantArgs {
     /// Exact provisioned group identity.
     #[clap(long)]
     group: Option<String>,
-    /// Inclusive validity start, in seconds since the Unix epoch.
+    /// Inclusive validity start as an RFC 3339 timestamp. Defaults to the current time.
     #[clap(long)]
-    not_before: u64,
-    /// Exclusive validity end, in seconds since the Unix epoch.
-    #[clap(long)]
-    expires_at: u64,
+    not_before: Option<Timestamp>,
+    /// Exclusive validity end as an RFC 3339 timestamp or duration from now (e.g. 1h).
+    #[clap(long, allow_hyphen_values = true)]
+    expires_at: GrantExpiry,
     /// Increasing authorization sequence within the system or apps scope.
     #[clap(long)]
     sequence: u64,
@@ -206,13 +209,13 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
             group,
             bundle,
         } => {
-            let identity = DeviceIdentity {
+            let identity = RecipientIdentity {
                 namespace,
-                device_id: device,
+                recipient_id: device,
                 groups: group,
             };
             let context = VerificationContext {
-                verifier: rugix_bundle::grants::VERIFIER,
+                service: rugix_bundle::grants::SERVICE,
                 identity: &identity,
                 now: SystemTime::now(),
             };
@@ -244,7 +247,7 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
 impl GrantArgs {
     fn build(self) -> BundleResult<Grant<InstallOperation>> {
         let audience = match (self.device, self.group) {
-            (Some(device), None) => AudienceTarget::Device(device),
+            (Some(device), None) => AudienceTarget::Recipient(device),
             (None, Some(group)) => AudienceTarget::Group(group),
             _ => bail!("specify exactly one device or group"),
         };
@@ -266,22 +269,52 @@ impl GrantArgs {
                 }),
             }),
         };
+        let now = Timestamp::now();
+        let not_before = self.not_before.unwrap_or(now);
+        let expires_at = match self.expires_at {
+            GrantExpiry::At(timestamp) => timestamp,
+            GrantExpiry::After(duration) => now
+                .checked_add(duration)
+                .whatever("grant expiry is outside the supported timestamp range")?,
+        };
         Ok(Grant {
             version: 1,
             id: self.id,
-            verifier: rugix_bundle::grants::VERIFIER.into(),
+            service: rugix_bundle::grants::SERVICE.into(),
             audience: Audience {
                 namespace: self.namespace,
                 target: audience,
             },
-            not_before: self.not_before,
-            expires_at: self.expires_at,
+            not_before: u64::try_from(not_before.as_second())
+                .whatever("grant validity cannot start before the Unix epoch")?,
+            expires_at: u64::try_from(expires_at.as_second())
+                .whatever("grant validity cannot end before the Unix epoch")?,
             operation_type: InstallOperation::TYPE.into(),
             operation: InstallOperation {
                 bundle_hash: rugix_bundle::bundle_hash(&self.bundle)?,
                 sequence: self.sequence,
                 target,
             },
+        })
+    }
+}
+
+/// Absolute expiry or an elapsed-time offset from the issuing clock.
+#[derive(Debug, Clone, Copy)]
+enum GrantExpiry {
+    At(Timestamp),
+    After(SignedDuration),
+}
+
+impl FromStr for GrantExpiry {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if let Ok(timestamp) = value.parse() {
+            return Ok(Self::At(timestamp));
+        }
+        value.parse().map(Self::After).map_err(|error| {
+            format!("expected an RFC 3339 timestamp or duration such as 1h: {error}")
         })
     }
 }

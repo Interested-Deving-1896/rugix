@@ -1,7 +1,7 @@
 [bundle]
 name = "rugix_grants"
 version = "1"
-description = "Signed grants for typed device operations."
+description = "Signed grants for typed operations."
 authors = ["Silitics GmbH <info@silitics.com>"]
 
 [backend.json-schema]

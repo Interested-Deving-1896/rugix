@@ -1,4 +1,4 @@
-//! Common envelope for signed device operation grants.
+//! Common envelope for signed operation grants.
 
 /// A constrained grant. All fields are authenticated together.
 record Grant<T> {
@@ -7,7 +7,7 @@ record Grant<T> {
     /// Identifier unique within the issuing authority.
     id: string,
     /// Exact identifier of the service that may execute the operation.
-    verifier: string,
+    service: string,
     /// Intended recipient.
     audience: Audience,
     /// Inclusive start of validity, in seconds since the Unix epoch.
@@ -24,15 +24,15 @@ record Grant<T> {
 record Audience {
     /// Namespace selected by the trusted issuer configuration.
     namespace: string,
-    /// Intended device or provisioned group.
+    /// Intended recipient or provisioned group.
     target: AudienceTarget,
 }
 
 /// Exact matching only. Empty identifiers never match.
 #[json(tagged = externally)]
 variant AudienceTarget {
-    /// One device identity.
-    Device: string,
+    /// One recipient identity.
+    Recipient: string,
     /// One group in the verifier's trusted membership records.
     Group: string,
 }

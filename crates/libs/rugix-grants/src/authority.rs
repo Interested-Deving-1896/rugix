@@ -59,13 +59,13 @@ impl AuthorityConstraints {
             || self
                 .permissions
                 .iter()
-                .any(|p| p.verifier.is_empty() || p.operation.is_empty())
+                .any(|p| p.service.is_empty() || p.operation.is_empty())
         {
             return Err(GrantError::InvalidAuthority);
         }
         if let AuthorityAudience::Targets(targets) = &self.audiences {
             for target in targets {
-                let (AudienceTarget::Device(id) | AudienceTarget::Group(id)) = target;
+                let (AudienceTarget::Recipient(id) | AudienceTarget::Group(id)) = target;
                 if id.is_empty() {
                     return Err(GrantError::InvalidAuthority);
                 }
@@ -95,9 +95,10 @@ impl AuthorityConstraints {
     fn permits<T: Operation>(&self, grant: &Grant<T>) -> bool {
         self.namespace == grant.audience.namespace
             && grant.expires_at - grant.not_before <= self.max_grant_lifetime
-            && self.permissions.iter().any(|p| {
-                p.verifier == grant.verifier && p.operation == grant.operation.permission()
-            })
+            && self
+                .permissions
+                .iter()
+                .any(|p| p.service == grant.service && p.operation == grant.operation.permission())
             && match &self.audiences {
                 AuthorityAudience::Any => true,
                 AuthorityAudience::Targets(targets) => targets.contains(&grant.audience.target),
@@ -220,8 +221,8 @@ mod tests {
 
     use super::*;
     use crate::Audience;
-    use crate::DeviceIdentity;
     use crate::GrantVerifier;
+    use crate::RecipientIdentity;
     use crate::VerificationContext;
     use crate::sign;
 
@@ -297,7 +298,7 @@ mod tests {
             namespace: "example".into(),
             audiences: AuthorityAudience::Any,
             permissions: vec![OperationPermission {
-                verifier: "agent".into(),
+                service: "agent".into(),
                 operation: Restart::TYPE.into(),
             }],
             max_grant_lifetime: 600,
@@ -309,10 +310,10 @@ mod tests {
         Grant {
             version: 1,
             id: "test".into(),
-            verifier: "agent".into(),
+            service: "agent".into(),
             audience: Audience {
                 namespace: "example".into(),
-                target: AudienceTarget::Device("device-1".into()),
+                target: AudienceTarget::Recipient("recipient-1".into()),
             },
             not_before: NOW,
             expires_at: NOW + 60,
@@ -336,9 +337,9 @@ mod tests {
     }
 
     fn verify(root: &Issued, chain: &[&Issued], grant: &Grant<Restart>) -> Result<(), GrantError> {
-        let identity = DeviceIdentity {
+        let identity = RecipientIdentity {
             namespace: grant.audience.namespace.clone(),
-            device_id: "device-1".into(),
+            recipient_id: "recipient-1".into(),
             groups: vec!["canary".into()],
         };
         GrantVerifier::new(root.cert.pem().as_bytes())
@@ -346,7 +347,7 @@ mod tests {
             .verify::<Restart>(
                 &signed(chain, grant),
                 &VerificationContext {
-                    verifier: &grant.verifier,
+                    service: &grant.service,
                     identity: &identity,
                     now: SystemTime::UNIX_EPOCH + Duration::from_secs(grant.not_before),
                 },
@@ -404,12 +405,12 @@ mod tests {
             Err(GrantError::AuthorityDenied)
         ));
         wrong = allowed;
-        wrong.verifier = "other".into();
+        wrong.service = "other".into();
         assert!(matches!(
             verify(&root, &[&leaf], &wrong),
             Err(GrantError::AuthorityDenied)
         ));
-        wrong.verifier = "agent".into();
+        wrong.service = "agent".into();
         wrong.expires_at = NOW + 601;
         assert!(matches!(
             verify(&root, &[&leaf], &wrong),
@@ -437,7 +438,7 @@ mod tests {
         let root = issue(None, None, true, |_| {});
         let mut parent_policy = policy();
         parent_policy.audiences =
-            AuthorityAudience::Targets(vec![AudienceTarget::Device("device-1".into())]);
+            AuthorityAudience::Targets(vec![AudienceTarget::Recipient("recipient-1".into())]);
         let parent = issue(
             Some(&root),
             Some(&parent_policy.to_extension_der().unwrap()),
@@ -460,7 +461,7 @@ mod tests {
         wider.push(p);
         let mut p = parent_policy.clone();
         p.permissions.push(OperationPermission {
-            verifier: "agent".into(),
+            service: "agent".into(),
             operation: "example.remove.v1".into(),
         });
         wider.push(p);
@@ -713,13 +714,14 @@ mod tests {
     fn unknown_nested_constraints_are_rejected() {
         let root = issue(None, None, true, |_| {});
         let mut p = policy();
-        p.audiences = AuthorityAudience::Targets(vec![AudienceTarget::Device("device-1".into())]);
+        p.audiences =
+            AuthorityAudience::Targets(vec![AudienceTarget::Recipient("recipient-1".into())]);
         let json = serde_json::to_string(&p).unwrap();
         for invalid in [
-            json.replace("\"verifier\":", "\"unknownConstraint\":true,\"verifier\":"),
+            json.replace("\"service\":", "\"unknownConstraint\":true,\"service\":"),
             json.replace(
-                "\"Device\":\"device-1\"",
-                "\"Device\":\"device-1\",\"unknownConstraint\":true",
+                "\"Recipient\":\"recipient-1\"",
+                "\"Recipient\":\"recipient-1\",\"unknownConstraint\":true",
             ),
         ] {
             assert_ne!(invalid, json);

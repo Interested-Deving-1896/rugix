@@ -18,4 +18,4 @@ impl rugix_grants::Operation for InstallOperation {
 }
 
 /// Service audience for Rugix Ctrl installation grants.
-pub const VERIFIER: &str = "rugix-ctrl";
+pub const SERVICE: &str = "rugix-ctrl";

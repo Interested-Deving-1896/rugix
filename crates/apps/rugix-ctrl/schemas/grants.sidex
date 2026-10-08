@@ -9,24 +9,36 @@ record GrantsConfig {
     mode: GrantPolicy,
     /// Provisioned identity namespace, independent of the submitting caller.
     namespace: string,
-    /// Provisioned device identity.
-    device: string,
-    /// Provisioned or independently authenticated group memberships.
-    groups?: [string],
-    /// Override the default persistent grant state directory with an absolute path.
-    /// Defaults to the data partition's `.rugix/grants` with Rugix state management,
-    /// or `/var/lib/rugix/grants` otherwise.
-    state_directory?: string,
+    /// Absolute path to an executable that writes GrantIdentity JSON to stdout.
+    /// Called during provisioning and before admission, reservation, and activation.
+    /// Failure or invalid output rejects the operation.
+    identity_helper: string,
     /// Assert that the system clock is trustworthy across power cycles.
+    /// When false, all granted installations are rejected. This does not synchronize
+    /// the clock; the platform must establish trusted time before enabling grants.
     trusted_system_clock: bool,
-    /// Maximum validity window in seconds. Defaults to 86400.
+    /// Maximum total signed validity window (expiresAt - notBefore), in seconds.
+    /// Defaults to 86400. Longer grants are rejected, even near their expiry.
+    /// This limits permission lifetime, not installation duration.
     max_lifetime?: u64,
 }
 
 /// Signature requirements in addition to the mandatory detached grant.
 variant GrantPolicy {
+    /// Require a detached grant; embedded publisher signatures are optional.
     GrantOnly,
+    /// Require both a detached grant and an independent embedded publisher signature.
     EmbeddedAndGrant,
+}
+
+/// Trusted facts supplied by the grant identity helper, independently of the request.
+record GrantIdentity {
+    /// Stable device identifier, for example derived from hardware or a trusted service.
+    device: string,
+    /// Current memberships within the configured namespace. Omission means no groups.
+    /// A group-addressed grant matches if its exact group identifier appears here.
+    /// Membership does not authorize additional groups or change certificate constraints.
+    groups?: [string],
 }
 
 /// Durable installation authorization state. Missing or invalid state fails closed.

@@ -1645,6 +1645,7 @@ dependencies = [
  "clap",
  "cms",
  "hex",
+ "jiff",
  "jsonschema",
  "reportify",
  "rugix-bundle",

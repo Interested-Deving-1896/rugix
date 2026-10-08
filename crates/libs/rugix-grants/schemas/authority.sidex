@@ -24,16 +24,16 @@ record AuthorityConstraints {
 /// Audience selectors are compared exactly, without inferring group membership.
 #[json(tagged = externally)]
 variant AuthorityAudience {
-    /// Any device or group within the authority's namespace.
+    /// Any recipient or group within the authority's namespace.
     Any,
-    /// Exact device or group selectors. An empty list authorizes nothing.
+    /// Exact recipient or group selectors. An empty list authorizes nothing.
     Targets: [AudienceTarget],
 }
 
 /// One permission. Pairing the identifiers prevents mixing unrelated authorities.
 record OperationPermission {
     /// Exact identifier of the executing service.
-    verifier: string,
+    service: string,
     /// Globally distinct, versioned permission identifier defined by the operation.
     operation: string,
 }

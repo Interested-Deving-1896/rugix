@@ -76,16 +76,7 @@
         "namespace": {
           "type": "string"
         },
-        "device": {
-          "type": "string"
-        },
-        "groups": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "state-directory": {
+        "identity-helper": {
           "type": "string"
         },
         "trusted-system-clock": {
@@ -100,7 +91,7 @@
         "roots",
         "mode",
         "namespace",
-        "device",
+        "identity-helper",
         "trusted-system-clock"
       ],
       "unevaluatedProperties": false

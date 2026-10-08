@@ -18,28 +18,58 @@ Configure `/etc/rugix/ctrl.toml`:
 roots = ["/etc/rugix/grant-root.pem"]
 mode = { tag = "GrantOnly" }
 namespace = "example-production"
-device = "device-001"
-groups = ["canary"]
+identity-helper = "/usr/lib/rugix/grant-identity"
 trusted-system-clock = true
 max-lifetime = 86400
 ```
 
-The namespace, device ID, and groups are trusted provisioning data. Protect the
-configuration and certificates from installation callers. Group names use exact
-matching. Updating a group in an external inventory does not update this local
-membership automatically.
+The executable at `identity-helper` supplies the device ID and current group
+memberships. It takes no arguments and must exit successfully with
+[`GrantIdentity`](../crates/apps/rugix-ctrl/schemas/grants.sidex) JSON on stdout:
+
+```json
+{"device": "device-001", "groups": ["canary"]}
+```
+
+For example, a helper can read an identity record maintained by provisioning:
+
+```sh
+#!/bin/sh
+exec cat /etc/rugix/grant-identity.json
+```
+
+A platform-specific helper can derive the stable ID from hardware or query a
+trusted identity service. Protect the helper, its inputs, configuration, and
+certificates from installation callers. Never derive identity from the submitted
+grant. A service-backed helper must authenticate its response and handle service
+unavailability; execution failure, invalid JSON, and empty identifiers reject the
+operation.
+
+Rugix runs the helper during explicit state initialization, at admission, before
+reservation, and before activation. The namespace and device ID must match the
+persisted replay state throughout installation. Changing device identity requires
+explicit reprovisioning; group membership can change without resetting history.
+
+Groups are exact identifiers within the configured namespace. A grant addressed
+to `{"Group":"canary"}` is accepted only if the helper currently lists `canary`.
+Omitting `groups` means no group memberships. Device-addressed grants use
+`{"Recipient":"device-001"}` and match the device ID independently of its groups.
+Membership never expands an issuer certificate's audience constraints. Changes
+in an external inventory take effect when the helper returns the updated memberships.
 
 Set `trusted-system-clock = true` only when the platform establishes trustworthy
 current time across power cycles, for example through a protected clock or an
 authenticated time service. The same time is used for grant and certificate
 validity. Grant timestamps and CMS signing-time are not time sources. A stored
 timestamp alone cannot account for time spent powered off. With this option false,
-Rugix refuses granted installations.
+Rugix refuses every granted installation. The flag does not synchronize or assess
+the clock. Platforms without trustworthy current time cannot use expiring grants;
+they must establish it before enabling this policy.
 
 Grant replay state uses `/run/rugix/mounts/data/.rugix/grants` when Rugix state
 management is active, detected by the presence of `/run/rugix/state`. This location
 survives a state-profile reset. Systems without state management use
-`/var/lib/rugix/grants`. An optional `state-directory` setting overrides the path.
+`/var/lib/rugix/grants`. The state location is not configurable.
 
 Initialize state after the device's storage and state management are set up. Keep
 the selected directory on persistent, protected storage outside the A/B system
@@ -47,8 +77,10 @@ slots and resettable profiles. When changing the storage layout, migrate the
 existing replay state. Rugix fails closed if the selected state file is missing,
 invalid, or belongs to another provisioned identity; it does not search other
 locations for a usable state file. Do not automatically initialize missing state
-at boot. A full data-partition wipe removes grant history and requires explicit
-reprovisioning.
+at boot. Missing state cannot distinguish first use from deletion of previously
+consumed sequences. Lazy initialization would accept old, still-valid grants again
+after such deletion. A full data-partition wipe removes grant history and requires
+explicit reprovisioning.
 
 Initialize state once during provisioning, as root:
 
@@ -79,7 +111,7 @@ roots = ["/etc/rugix/publisher-root.pem"]
 roots = ["/etc/rugix/grant-root.pem"]
 mode = { tag = "EmbeddedAndGrant" }
 namespace = "example-production"
-device = "device-001"
+identity-helper = "/usr/lib/rugix/grant-identity"
 trusted-system-clock = true
 ```
 
@@ -89,18 +121,24 @@ the daemon after changing its configuration.
 
 ## Issue and Install a Grant
 
-Issue a grant on a trusted signing machine. Validity timestamps are Unix seconds,
-with an inclusive start and exclusive end.
+Issue a grant on a trusted signing machine. `--not-before` accepts an RFC 3339
+timestamp and defaults to the current time. `--expires-at` accepts an RFC 3339
+timestamp or a Jiff duration such as `1h`, `30m`, or `PT1H`. Durations are offsets
+from the current issuing time, including when `--not-before` is supplied.
+For example, `--not-before 2026-10-08T12:00:00Z --expires-at 2026-10-08T13:00:00Z`
+defines a fixed window; timestamps with numeric UTC offsets are also supported.
+
+The signed format stores whole Unix seconds, with an inclusive start and exclusive
+end. Fractional seconds are truncated. Empty or reversed windows and timestamps
+outside the supported range are rejected.
 
 ```sh
-now=$(date +%s)
 rugix-bundler grants sign \
   --bundle update.rugixb \
   --id rollout-42-device-001 \
   --namespace example-production \
   --device device-001 \
-  --not-before "$now" \
-  --expires-at "$((now + 3600))" \
+  --expires-at 1h \
   --sequence 42 \
   --target system \
   --reboot set \
@@ -125,7 +163,12 @@ with an app grant. The bundle hash binds its payload destinations, including app
 names.
 
 The default maximum grant size is 1 MiB, including certificates. The default
-maximum validity window is one day; `max-lifetime` configures the device's limit.
+maximum validity window is one day; `max-lifetime` configures the device's limit
+in seconds. It bounds the entire signed interval, `expiresAt - notBefore`, rather
+than the time remaining when a grant arrives. A grant with a two-day window is
+rejected under a one-day limit even if it expires in a minute. This is a bound on
+permission lifetime, not an installation timeout; installation must still reach
+authorization of activation before expiry.
 The verifier also applies normal bundle integrity, destination, and compatibility
 checks.
 
@@ -151,7 +194,7 @@ Prepare the exact bytes that must be signed, using the same grant options as abo
 rugix-bundler grants prepare \
   --bundle update.rugixb --id rollout-42-device-001 \
   --namespace example-production --device device-001 \
-  --not-before "$now" --expires-at "$((now + 3600))" \
+  --expires-at 1h \
   --sequence 42 --target system --reboot set grant.raw
 
 openssl cms -sign -binary -nodetach \
@@ -186,11 +229,11 @@ fit its parent's permissions.
 Audience selectors use exact matching. `"Any"` permits any selector within the
 namespace. `{"Targets":[{"Group":"canary"}]}` permits grants addressed to that group;
 it does not permit device-addressed grants, even for devices in the group.
-Device membership still comes from trusted local provisioning.
+Device membership comes from the trusted identity helper.
 
-Permissions pair a verifier identifier with an operation permission identifier:
+Permissions pair a service identifier with an operation permission identifier:
 
-| Verifier | Permission | Authorized Operation |
+| Service | Permission | Authorized Operation |
 | --- | --- | --- |
 | `rugix-ctrl` | `rugix.install.apps.v1` | Application installation |
 | `rugix-ctrl` | `rugix.install.system.v1` | System installation |
@@ -228,7 +271,7 @@ Create `authority.json` on a trusted signing machine:
   "namespace": "example-production",
   "audiences": {"Targets": [{"Group": "canary"}]},
   "permissions": [
-    {"verifier": "rugix-ctrl", "operation": "rugix.install.apps.v1"}
+    {"service": "rugix-ctrl", "operation": "rugix.install.apps.v1"}
   ],
   "maxGrantLifetime": 1800
 }
@@ -263,11 +306,10 @@ openssl x509 -req -in grant-signer.csr \
   -CA authority.pem -CAkey authority.key -CAcreateserial \
   -days 1 -extfile signer.ext -out grant-signer.pem
 
-now=$(date +%s)
 rugix-bundler grants sign \
   --bundle app.rugixb --id canary-app-42 \
   --namespace example-production --group canary \
-  --not-before "$now" --expires-at "$((now + 600))" \
+  --expires-at 10m \
   --sequence 42 --target apps \
   --cert grant-signer.pem --key grant-signer.key \
   --intermediate-cert authority.pem app.cms
@@ -324,7 +366,7 @@ verifier, local policy, clock, and replay state as part of the device security b
 `crates/libs/rugix-grants` provides the reusable envelope, CMS signing, and
 verification for typed operations. It has no installer, filesystem, transport, or
 daemon dependency. `rugix-bundle` defines the `rugix.install.v1` operation and its
-`rugix-ctrl` verifier audience. The executor owns resource policy, replay state, and
+`rugix-ctrl` service audience. The executor owns resource policy, replay state, and
 operation recovery.
 
 The signed CMS content is the byte prefix `rugix.operation-grant.v1\0`, followed by
@@ -379,4 +421,5 @@ system installation to file slots, boot selection through a test controller,
 streaming expiry, interrupted transfer recovery, replay protection, daemon policy,
 independent signing authorities, external OpenSSL signing, constrained certificate
 issuance, delegation escalation rejection, and application-only authority rejection
-for system installations.
+for system installations. It also covers RFC 3339 and duration CLI inputs,
+identity-helper failures, and identity or membership changes before activation.

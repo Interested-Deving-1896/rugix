@@ -1,7 +1,7 @@
-//! Signed, constrained grants for typed device operations.
+//! Signed, constrained grants for typed operations.
 //!
 //! [`sign`] creates a CMS envelope containing a [`Grant`]. [`GrantVerifier`]
-//! verifies that envelope for a specific service, operation type, device identity,
+//! verifies that envelope for a specific service, operation type, recipient identity,
 //! and trusted time. Signatures cover the original bytes; JSON is never
 //! reserialized for verification.
 //!
@@ -71,15 +71,15 @@ pub trait Operation: sidex_serde::SidexType {
     }
 }
 
-/// Device facts supplied by the executor's trusted identity provider.
+/// Recipient facts supplied by the executor's trusted identity provider.
 ///
 /// These must not originate from the untrusted operation request or the grant.
 #[derive(Debug, Clone)]
-pub struct DeviceIdentity {
+pub struct RecipientIdentity {
     /// Provisioned namespace shared with the issuing authority.
     pub namespace: String,
-    /// Provisioned device identifier.
-    pub device_id: String,
+    /// Provisioned recipient identifier.
+    pub recipient_id: String,
     /// Provisioned or independently authenticated group membership.
     pub groups: Vec<String>,
 }
@@ -87,9 +87,9 @@ pub struct DeviceIdentity {
 /// Inputs supplied by the executor for this verification.
 pub struct VerificationContext<'a> {
     /// Exact service identifier expected by the executor.
-    pub verifier: &'a str,
-    /// Independently established device identity and membership.
-    pub identity: &'a DeviceIdentity,
+    pub service: &'a str,
+    /// Independently established recipient identity and membership.
+    pub identity: &'a RecipientIdentity,
     /// Trusted current time, used for both grants and certificate validity.
     ///
     /// The caller must refuse verification if trustworthy current time is
@@ -128,7 +128,7 @@ impl GrantVerifier {
         self
     }
 
-    /// Verify a signed grant for the expected typed operation and device context.
+    /// Verify a signed grant for the expected typed operation and recipient context.
     ///
     /// Unknown envelope and operation fields are rejected, including constraints
     /// added by a future issuer that this executor does not understand.
@@ -227,9 +227,9 @@ pub enum GrantError {
     #[error("grant operation type does not match")]
     OperationMismatch,
     /// The signed service differs from the executor.
-    #[error("grant verifier does not match")]
-    VerifierMismatch,
-    /// The device is not in the signed audience.
+    #[error("grant service does not match")]
+    ServiceMismatch,
+    /// The recipient is not in the signed audience.
     #[error("grant audience does not match")]
     AudienceMismatch,
     /// Trusted time is outside the signed validity window.
@@ -274,10 +274,10 @@ fn validate_structure<T: Operation>(grant: &Grant<T>) -> Result<(), GrantError> 
         return Err(GrantError::OperationMismatch);
     }
     let target = match &grant.audience.target {
-        AudienceTarget::Device(id) | AudienceTarget::Group(id) => id,
+        AudienceTarget::Recipient(id) | AudienceTarget::Group(id) => id,
     };
     if grant.id.is_empty()
-        || grant.verifier.is_empty()
+        || grant.service.is_empty()
         || grant.audience.namespace.is_empty()
         || target.is_empty()
         || grant.not_before >= grant.expires_at
@@ -292,13 +292,13 @@ fn validate_context<T>(
     grant: &Grant<T>,
     context: &VerificationContext<'_>,
 ) -> Result<(), GrantError> {
-    if grant.verifier != context.verifier {
-        return Err(GrantError::VerifierMismatch);
+    if grant.service != context.service {
+        return Err(GrantError::ServiceMismatch);
     }
     let identity = context.identity;
     let matches = grant.audience.namespace == identity.namespace
         && match &grant.audience.target {
-            AudienceTarget::Device(id) => id == &identity.device_id,
+            AudienceTarget::Recipient(id) => id == &identity.recipient_id,
             AudienceTarget::Group(id) => identity.groups.contains(id),
         };
     if !matches {
@@ -347,7 +347,7 @@ mod tests {
     struct Fixture {
         signer: CmsSigner,
         verifier: GrantVerifier,
-        identity: DeviceIdentity,
+        identity: RecipientIdentity,
     }
 
     impl Fixture {
@@ -370,9 +370,9 @@ mod tests {
                 )
                 .unwrap(),
                 verifier: GrantVerifier::new(ca.pem().as_bytes()).unwrap(),
-                identity: DeviceIdentity {
+                identity: RecipientIdentity {
                     namespace: "example".into(),
-                    device_id: "device-1".into(),
+                    recipient_id: "recipient-1".into(),
                     groups: vec!["canary".into()],
                 },
             }
@@ -381,10 +381,10 @@ mod tests {
             Grant {
                 version: 1,
                 id: "grant-1".into(),
-                verifier: "example-agent".into(),
+                service: "example-agent".into(),
                 audience: Audience {
                     namespace: "example".into(),
-                    target: AudienceTarget::Device("device-1".into()),
+                    target: AudienceTarget::Recipient("recipient-1".into()),
                 },
                 not_before: 1_800_000_000,
                 expires_at: 1_800_000_060,
@@ -396,7 +396,7 @@ mod tests {
         }
         fn context(&self, now: u64) -> VerificationContext<'_> {
             VerificationContext {
-                verifier: "example-agent",
+                service: "example-agent",
                 identity: &self.identity,
                 now: SystemTime::UNIX_EPOCH + Duration::from_secs(now),
             }
@@ -440,21 +440,21 @@ mod tests {
             fixture.verifier.verify::<Remove>(&signed, &context),
             Err(GrantError::OperationMismatch)
         ));
-        context.verifier = "other-agent";
+        context.service = "other-agent";
         assert!(matches!(
             fixture.verifier.verify::<Restart>(&signed, &context),
-            Err(GrantError::VerifierMismatch)
+            Err(GrantError::ServiceMismatch)
         ));
     }
 
-    /// Device and group matching uses independently supplied, namespaced identity.
+    /// Recipient and group matching uses independently supplied, namespaced identity.
     #[test]
     fn audience_is_checked_against_provisioned_identity() {
         let fixture = Fixture::new();
         let mut grant = fixture.grant();
         let context = fixture.context(grant.not_before);
         for target in [
-            AudienceTarget::Device("device-2".into()),
+            AudienceTarget::Recipient("recipient-2".into()),
             AudienceTarget::Group("production".into()),
         ] {
             grant.audience.target = target;

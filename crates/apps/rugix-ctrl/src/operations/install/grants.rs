@@ -9,6 +9,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
+use std::process::Stdio;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -20,8 +22,8 @@ use rugix_bundle::grants::InstallOperation;
 use rugix_bundle::grants::InstallTarget as GrantTarget;
 use rugix_bundle::grants::RebootMode;
 use rugix_bundle::grants::SystemInstallOptions;
-use rugix_grants::DeviceIdentity;
 use rugix_grants::GrantVerifier;
+use rugix_grants::RecipientIdentity;
 use rugix_grants::VerificationContext;
 use rugix_grants::VerifiedGrant;
 use si_crypto_hashes::HashAlgorithm;
@@ -33,6 +35,7 @@ use super::BundleInstallOptions;
 use super::InstallTarget;
 use super::SystemRebootMode;
 use crate::config::config::Config;
+use crate::config::grants::GrantIdentity;
 use crate::config::grants::GrantState;
 use crate::config::grants::GrantTransaction;
 use crate::config::grants::GrantsConfig;
@@ -63,61 +66,7 @@ impl GrantSession {
             }
             return Ok(None);
         };
-        if options.bundle_hash.is_some()
-            || options.root_cert.is_some()
-            || options.insecure_skip_bundle_verification
-            || options.insecure_allow_missing_block_index
-            || options.skip_compatibility_check
-        {
-            bail!("installation security overrides are disabled by grant policy");
-        }
-        let signed = options
-            .grant
-            .as_ref()
-            .ok_or_else(|| reportify::whatever!("a detached installation grant is required"))?;
-        let verified = verify(policy, signed)?;
-        if verified.grant().operation.target != grant_target(target) {
-            bail!("grant installation target or options do not match");
-        }
-        let content_hash = HashAlgorithm::Sha256
-            .hash::<Vec<u8>>(
-                &rugix_grants::prepare(verified.grant())
-                    .whatever("unable to encode verified grant")?,
-            )
-            .to_string();
-        let directory = state_directory(policy)?;
-        let lock_file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(directory.join("lock"))
-            .whatever("unable to open grant state lock; initialize grant state first")?;
-        let lock = Flock::lock(lock_file, FlockArg::LockExclusiveNonblock)
-            .map_err(|(_, error)| error)
-            .whatever("another granted installation is in progress")?;
-        let state: GrantState = serde_json::from_slice(
-            &fs::read(directory.join("state.json"))
-                .whatever("unable to read grant state; initialize it during provisioning")?,
-        )
-        .whatever("invalid grant replay state")?;
-        if state.version != 1
-            || state.namespace != policy.namespace
-            || state.device != policy.device
-        {
-            bail!("grant state version or provisioned identity does not match");
-        }
-        let session = Self {
-            config: policy.clone(),
-            signed: signed.clone(),
-            verified,
-            content_hash,
-            state,
-            directory,
-            _lock: lock,
-        };
-        session.check_replay()?;
-        Ok(Some(session))
+        Self::begin_in(policy, options, target, state_directory()?)
     }
 
     /// Authenticated bundle hash used by the streaming bundle reader.
@@ -146,8 +95,77 @@ impl GrantSession {
         Ok(())
     }
 
+    /// Admit a grant using the selected persistent state directory.
+    fn begin_in(
+        policy: &GrantsConfig,
+        options: &BundleInstallOptions,
+        target: &InstallTarget,
+        directory: PathBuf,
+    ) -> SystemResult<Option<Self>> {
+        if options.bundle_hash.is_some()
+            || options.root_cert.is_some()
+            || options.insecure_skip_bundle_verification
+            || options.insecure_allow_missing_block_index
+            || options.skip_compatibility_check
+        {
+            bail!("installation security overrides are disabled by grant policy");
+        }
+        let signed = options
+            .grant
+            .as_ref()
+            .ok_or_else(|| reportify::whatever!("a detached installation grant is required"))?;
+        let identity = load_identity(policy)?;
+        let verified = verify(policy, signed, &identity)?;
+        if verified.grant().operation.target != grant_target(target) {
+            bail!("grant installation target or options do not match");
+        }
+        let content_hash = HashAlgorithm::Sha256
+            .hash::<Vec<u8>>(
+                &rugix_grants::prepare(verified.grant())
+                    .whatever("unable to encode verified grant")?,
+            )
+            .to_string();
+        let lock_file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(directory.join("lock"))
+            .whatever("unable to open grant state lock; initialize grant state first")?;
+        let lock = Flock::lock(lock_file, FlockArg::LockExclusiveNonblock)
+            .map_err(|(_, error)| error)
+            .whatever("another granted installation is in progress")?;
+        let state: GrantState = serde_json::from_slice(
+            &fs::read(directory.join("state.json"))
+                .whatever("unable to read grant state; initialize it during provisioning")?,
+        )
+        .whatever("invalid grant replay state")?;
+        if state.version != 1
+            || state.namespace != identity.namespace
+            || state.device != identity.recipient_id
+        {
+            bail!("grant state version or provisioned identity does not match");
+        }
+        let session = Self {
+            config: policy.clone(),
+            signed: signed.clone(),
+            verified,
+            content_hash,
+            state,
+            directory,
+            _lock: lock,
+        };
+        session.check_replay()?;
+        Ok(Some(session))
+    }
+
     fn revalidate(&self) -> SystemResult<()> {
-        verify(&self.config, &self.signed)?;
+        let identity = load_identity(&self.config)?;
+        if identity.namespace != self.state.namespace || identity.recipient_id != self.state.device
+        {
+            bail!("grant identity changed during installation");
+        }
+        verify(&self.config, &self.signed, &identity)?;
         Ok(())
     }
 
@@ -199,12 +217,24 @@ impl GrantSession {
 
 /// Initialize replay state explicitly during provisioning; never replace existing state.
 pub(crate) fn initialize(config: &GrantsConfig) -> SystemResult<()> {
-    let directory = state_directory(config)?;
-    fs::create_dir_all(&directory).whatever("unable to create grant state directory")?;
+    initialize_in(&load_identity(config)?, &state_directory()?)
+}
+
+/// Reject manual activation of stored content under an installation grant policy.
+pub(crate) fn require_unconstrained_activation(config: &Config) -> SystemResult<()> {
+    if config.grants.is_some() {
+        bail!("manual activation requires a new installation with a valid grant");
+    }
+    Ok(())
+}
+
+/// Create the first replay record without overwriting any existing history.
+fn initialize_in(identity: &RecipientIdentity, directory: &Path) -> SystemResult<()> {
+    fs::create_dir_all(directory).whatever("unable to create grant state directory")?;
     let state = GrantState {
         version: 1,
-        namespace: config.namespace.clone(),
-        device: config.device.clone(),
+        namespace: identity.namespace.clone(),
+        device: identity.recipient_id.clone(),
         system: None,
         apps: None,
     };
@@ -221,14 +251,6 @@ pub(crate) fn initialize(config: &GrantsConfig) -> SystemResult<()> {
     File::open(directory)
         .and_then(|file| file.sync_all())
         .whatever("unable to synchronize grant state directory")?;
-    Ok(())
-}
-
-/// Reject manual activation of stored content under an installation grant policy.
-pub(crate) fn require_unconstrained_activation(config: &Config) -> SystemResult<()> {
-    if config.grants.is_some() {
-        bail!("manual activation requires a new installation with a valid grant");
-    }
     Ok(())
 }
 
@@ -254,18 +276,17 @@ fn grant_target(target: &InstallTarget) -> GrantTarget {
 }
 
 /// Verify against provisioned identity and locally authorized grant issuers.
-fn verify(config: &GrantsConfig, signed: &[u8]) -> SystemResult<VerifiedGrant<InstallOperation>> {
+fn verify(
+    config: &GrantsConfig,
+    signed: &[u8],
+    identity: &RecipientIdentity,
+) -> SystemResult<VerifiedGrant<InstallOperation>> {
     if !config.trusted_system_clock {
         bail!("grant verification requires a trusted system clock");
     }
-    let identity = DeviceIdentity {
-        namespace: config.namespace.clone(),
-        device_id: config.device.clone(),
-        groups: config.groups.clone().unwrap_or_default(),
-    };
     let context = VerificationContext {
-        verifier: rugix_bundle::grants::VERIFIER,
-        identity: &identity,
+        service: rugix_bundle::grants::SERVICE,
+        identity,
         now: SystemTime::now(),
     };
     for root in &config.roots {
@@ -293,27 +314,51 @@ fn verify(config: &GrantsConfig, signed: &[u8]) -> SystemResult<VerifiedGrant<In
     bail!("no configured grant root accepted the installation grant")
 }
 
+/// Resolve identity from a trusted executable, never from the installation request.
+fn load_identity(config: &GrantsConfig) -> SystemResult<RecipientIdentity> {
+    if !Path::new(&config.identity_helper).is_absolute() {
+        bail!("grant identity helper must be an absolute path");
+    }
+    let output = Command::new(&config.identity_helper)
+        .stdin(Stdio::null())
+        .output()
+        .whatever("unable to run grant identity helper")?;
+    if !output.status.success() {
+        bail!("grant identity helper failed with {}", output.status);
+    }
+    let identity: GrantIdentity =
+        serde_json::from_slice(&output.stdout).whatever("invalid grant identity helper output")?;
+    let groups = identity.groups.unwrap_or_default();
+    if config.namespace.is_empty()
+        || identity.device.is_empty()
+        || groups.iter().any(|group| group.is_empty())
+    {
+        bail!("grant identity identifiers must not be empty");
+    }
+    Ok(RecipientIdentity {
+        namespace: config.namespace.clone(),
+        recipient_id: identity.device,
+        groups,
+    })
+}
+
 /// Keep replay history outside resettable profiles, using the standard persistent
 /// application directory on systems without Rugix state management.
-fn state_directory(config: &GrantsConfig) -> SystemResult<PathBuf> {
-    let path = if let Some(path) = &config.state_directory {
-        PathBuf::from(path)
-    } else if crate::init::state_dir()
+fn state_directory() -> SystemResult<PathBuf> {
+    if crate::init::state_dir()
         .try_exists()
         .whatever("unable to inspect Rugix state directory")?
     {
-        Path::new(crate::system::paths::MOUNT_POINT_DATA).join(".rugix/grants")
+        Ok(Path::new(crate::system::paths::MOUNT_POINT_DATA).join(".rugix/grants"))
     } else {
-        PathBuf::from("/var/lib/rugix/grants")
-    };
-    if !path.is_absolute() {
-        bail!("grant state directory must be an absolute path");
+        Ok(PathBuf::from("/var/lib/rugix/grants"))
     }
-    Ok(path)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
     use super::*;
     use rcgen::BasicConstraints;
     use rcgen::CertificateParams;
@@ -327,7 +372,7 @@ mod tests {
     use rugix_pki::CmsSigner;
 
     struct Fixture {
-        _directory: tempfile::TempDir,
+        directory: tempfile::TempDir,
         config: Config,
         signer: CmsSigner,
         grant: Grant<InstallOperation>,
@@ -348,17 +393,26 @@ mod tests {
             let cert = params.signed_by(&key, &ca, &ca_key).unwrap();
             let root = directory.path().join("root.pem");
             fs::write(&root, ca.pem()).unwrap();
+            let helper = directory.path().join("identity");
+            fs::write(
+                &helper,
+                "#!/bin/sh\nprintf '%s\\n' '{\"device\":\"device-1\"}'\n",
+            )
+            .unwrap();
+            fs::set_permissions(&helper, fs::Permissions::from_mode(0o755)).unwrap();
             let policy = GrantsConfig {
                 roots: vec![root.to_str().unwrap().into()],
                 mode: crate::config::grants::GrantPolicy::GrantOnly,
                 namespace: "test".into(),
-                device: "device-1".into(),
-                groups: None,
-                state_directory: Some(directory.path().join("state").to_str().unwrap().into()),
+                identity_helper: helper.to_str().unwrap().into(),
                 trusted_system_clock: true,
                 max_lifetime: None,
             };
-            initialize(&policy).unwrap();
+            initialize_in(
+                &load_identity(&policy).unwrap(),
+                &directory.path().join("state"),
+            )
+            .unwrap();
             let config = Config::default().with_grants(Some(policy));
             let target = InstallTarget::System {
                 reboot: Some(SystemRebootMode::Set),
@@ -372,10 +426,10 @@ mod tests {
             let grant = Grant {
                 version: 1,
                 id: "install-1".into(),
-                verifier: rugix_bundle::grants::VERIFIER.into(),
+                service: rugix_bundle::grants::SERVICE.into(),
                 audience: Audience {
                     namespace: "test".into(),
-                    target: AudienceTarget::Device("device-1".into()),
+                    target: AudienceTarget::Recipient("device-1".into()),
                 },
                 not_before: now - 1,
                 expires_at: now + 300,
@@ -387,7 +441,7 @@ mod tests {
                 },
             };
             Self {
-                _directory: directory,
+                directory,
                 config,
                 signer: CmsSigner::new(cert.pem().as_bytes(), key.serialize_pem().as_bytes())
                     .unwrap(),
@@ -408,7 +462,20 @@ mod tests {
         }
 
         fn begin(&self) -> SystemResult<Option<GrantSession>> {
-            GrantSession::begin(&self.config, &self.options(), &self.target)
+            self.begin_with(&self.options(), &self.target)
+        }
+
+        fn begin_with(
+            &self,
+            options: &BundleInstallOptions,
+            target: &InstallTarget,
+        ) -> SystemResult<Option<GrantSession>> {
+            GrantSession::begin_in(
+                self.config.grants.as_ref().unwrap(),
+                options,
+                target,
+                self.directory.path().join("state"),
+            )
         }
     }
 
@@ -441,7 +508,7 @@ mod tests {
                 boot_group: Some("B".into()),
             },
         ] {
-            assert!(GrantSession::begin(&fixture.config, &fixture.options(), &target).is_err());
+            assert!(fixture.begin_with(&fixture.options(), &target).is_err());
         }
     }
 
@@ -471,7 +538,7 @@ mod tests {
             let mut options = fixture.options();
             options.grant = Some(fixture.signer.sign(altered.as_bytes()).unwrap());
             assert!(
-                GrantSession::begin(&fixture.config, &options, &fixture.target).is_err(),
+                fixture.begin_with(&options, &fixture.target).is_err(),
                 "accepted {replacement}"
             );
         }
@@ -513,17 +580,21 @@ mod tests {
     fn replay_state_fails_closed_and_initialization_never_resets_it() {
         let mut fixture = Fixture::new();
         let policy = fixture.config.grants.as_ref().unwrap();
-        let state = state_directory(policy).unwrap().join("state.json");
+        let state = fixture.directory.path().join("state/state.json");
         let saved = fs::read(&state).unwrap();
-        assert!(initialize(policy).is_err());
+        assert!(initialize_in(&load_identity(policy).unwrap(), state.parent().unwrap()).is_err());
         assert_eq!(fs::read(&state).unwrap(), saved);
         fs::remove_file(&state).unwrap();
         assert!(fixture.begin().is_err());
         fs::write(&state, b"invalid").unwrap();
         assert!(fixture.begin().is_err());
         fs::write(&state, saved).unwrap();
-        fixture.config.grants.as_mut().unwrap().device = "other-device".into();
-        fixture.grant.audience.target = AudienceTarget::Device("other-device".into());
+        fs::write(
+            &fixture.config.grants.as_ref().unwrap().identity_helper,
+            "#!/bin/sh\nprintf '%s\\n' '{\"device\":\"other-device\"}'\n",
+        )
+        .unwrap();
+        fixture.grant.audience.target = AudienceTarget::Recipient("other-device".into());
         assert!(fixture.begin().is_err());
     }
 
@@ -552,7 +623,7 @@ mod tests {
         compatibility.skip_compatibility_check = true;
         variants.push(compatibility);
         for options in variants {
-            assert!(GrantSession::begin(&fixture.config, &options, &fixture.target).is_err());
+            assert!(fixture.begin_with(&options, &fixture.target).is_err());
         }
         fixture.config.grants.as_mut().unwrap().trusted_system_clock = false;
         assert!(fixture.begin().is_err());

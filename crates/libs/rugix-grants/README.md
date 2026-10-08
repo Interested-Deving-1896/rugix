@@ -1,16 +1,16 @@
 # Rugix Grants
 
-A Rust library for signed, constrained grants authorizing typed device operations.
+A Rust library for signed, constrained grants authorizing typed operations.
 The library signs and verifies CMS envelopes using `rugix-pki`. Its public wire
 contracts are defined in Sidex: [grants](schemas/grant.sidex) and
 [authority constraints](schemas/authority.sidex).
 
 The library provides:
 
-- A versioned envelope binding an operation to a service, device or group, and
+- A versioned envelope binding an operation to a service, recipient or group, and
   validity window.
 - Typed operations identified by a namespaced, versioned `Operation::TYPE`.
-- Verification against a locally selected certificate authority, device identity,
+- Verification against a locally selected certificate authority, recipient identity,
   and explicit trusted time.
 - Configurable envelope size and validity limits.
 - Certificate-bound authority constraints for namespace, audience, service-operation
@@ -47,7 +47,7 @@ side effects, the executor must also:
 3. Enforce local policy and durable replay admission.
 4. Define retries, activation, recovery, and any later validity checks.
 
-The library deliberately owns no clock source, device identity source, persistent
+The library deliberately owns no clock source, recipient identity source, persistent
 state, network transport, or execution mechanism. A verified grant alone does not
 prove that it is unused or locally authorized.
 
