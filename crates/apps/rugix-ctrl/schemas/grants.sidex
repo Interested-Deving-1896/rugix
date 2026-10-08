@@ -2,26 +2,47 @@
 
 /// Required detached installation grants.
 ///
-/// Grant and certificate validity assume a trustworthy system clock supplied by the platform.
+/// With this section present, every system and app installation requires a grant.
 #[json(rename_all = "kebab-case")]
 record GrantsConfig {
-    /// Trusted grant-issuing roots. These authorize both system and app installation.
-    roots: [string],
-    /// Additional embedded publisher signature requirements.
-    mode: GrantPolicy,
+    /// Locally authorized grant issuers. An empty list authorizes nothing.
+    authorities: [GrantAuthorityConfig],
     /// Provisioned identity namespace, independent of the submitting caller.
     namespace: string,
     /// Absolute path to an executable that writes GrantIdentity JSON to stdout.
     /// Called during provisioning and before admission, reservation, and activation.
-    /// Failure or invalid output rejects the operation.
+    /// Failure, timeout, or invalid output rejects the operation.
     identity_helper: string,
-    /// Maximum total signed validity window (expiresAt - notBefore), in seconds.
-    /// Defaults to 86400. Longer grants are rejected, even near their expiry.
-    /// This limits permission lifetime, not installation duration.
+    /// Embedded publisher signature requirement. Defaults to `grant-only`.
+    mode?: GrantPolicy,
+}
+
+/// One locally authorized grant issuer and the authority delegated to it.
+///
+/// Local authority bounds every grant accepted from this issuer. A certificate
+/// cannot widen it, so a stolen signing key stays inside these limits.
+#[json(rename_all = "kebab-case")]
+record GrantAuthorityConfig {
+    /// Path to this issuer's trust root in PEM format.
+    root: string,
+    /// Operations this issuer may authorize. An empty list authorizes nothing.
+    permissions: [InstallPermission],
+    /// Longest signed validity window this issuer may use, in seconds.
+    /// Defaults to 86400. This bounds permission lifetime, not installation duration.
     max_lifetime?: u64,
 }
 
+/// Installation operations that a grant issuer may authorize.
+#[json(tagged = externally, rename_all = "kebab-case")]
+variant InstallPermission {
+    /// Application installation and activation.
+    Apps,
+    /// System installation and boot selection.
+    System,
+}
+
 /// Signature requirements in addition to the mandatory detached grant.
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant GrantPolicy {
     /// Require a detached grant; embedded publisher signatures are optional.
     GrantOnly,
@@ -35,7 +56,7 @@ record GrantIdentity {
     device: string,
     /// Current memberships within the configured namespace. Omission means no groups.
     /// A group-addressed grant matches if its exact group identifier appears here.
-    /// Membership does not authorize additional groups or change certificate constraints.
+    /// Membership does not authorize additional groups or widen certificate scope.
     groups?: [string],
 }
 
@@ -45,18 +66,23 @@ record GrantState {
     /// Provisioned identity bound to this state.
     namespace: string,
     device: string,
-    /// One sequence stream for system installations.
-    system?: GrantTransaction,
-    /// One sequence stream shared by application installations.
-    apps?: GrantTransaction,
+    /// Highest verification time ever used to admit an installation, in seconds
+    /// since the Unix epoch. Verification never uses a time below this value, so
+    /// a clock that moves backwards cannot revive an expired grant.
+    time_watermark: u64,
+    /// Admitted grants that have not yet expired. Expired entries are pruned on
+    /// every update, which bounds this list by the issuing rate within one window.
+    admitted: [AdmittedGrant],
 }
 
-/// An admitted installation transaction.
-record GrantTransaction {
+/// One admitted installation, retained until its grant expires.
+record AdmittedGrant {
+    /// Hash of the authenticated grant content, independent of CMS packaging.
+    hash: string,
+    /// Grant identifier. Recorded for diagnostics, never for matching.
     id: string,
-    sequence: u64,
-    /// Hash of authenticated grant fields, independent of JSON and certificate packaging.
-    content_hash: string,
-    /// Consumed before final activation, including interrupted activation attempts.
+    /// Exclusive end of the grant's validity window, in seconds since the Unix epoch.
+    expires_at: u64,
+    /// Set before activation is authorized. A consumed grant is never admitted again.
     consumed: bool,
 }

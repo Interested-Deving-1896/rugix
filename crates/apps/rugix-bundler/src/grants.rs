@@ -9,18 +9,15 @@ use std::time::SystemTime;
 use clap::Args;
 use clap::Subcommand;
 use clap::ValueEnum;
+use const_oid::ObjectIdentifier;
 use jiff::SignedDuration;
 use jiff::Timestamp;
 use reportify::bail;
 use reportify::ResultExt;
-use rugix_bundle::grants::InstallOperation;
-use rugix_bundle::grants::InstallTarget;
-use rugix_bundle::grants::RebootMode;
-use rugix_bundle::grants::SystemInstallOptions;
 use rugix_bundle::BundleResult;
-use rugix_grants::authority::AuthorityConstraints;
-use rugix_grants::authority::AUTHORITY_CONSTRAINTS_OID;
-use rugix_grants::authority::GRANT_AUTHORITY_EKU;
+use rugix_grants::authority::AuthorityScope;
+use rugix_grants::authority::ScopeTarget;
+use rugix_grants::authority::AUTHORITY_SCOPE_OID;
 use rugix_grants::Audience;
 use rugix_grants::AudienceTarget;
 use rugix_grants::Grant;
@@ -28,19 +25,25 @@ use rugix_grants::GrantVerifier;
 use rugix_grants::Operation;
 use rugix_grants::RecipientIdentity;
 use rugix_grants::VerificationContext;
+use rugix_install_grants::BootGroupConstraint;
+use rugix_install_grants::InstallOperation;
+use rugix_install_grants::InstallTarget;
+use rugix_install_grants::RebootConstraint;
+use rugix_install_grants::SystemInstallConstraints;
 use rugix_pki::CmsSignerBuilder;
 
 #[derive(Debug, Subcommand)]
 pub enum GrantsCommand {
-    /// Prepare OpenSSL certificate extensions for a constrained grant authority.
+    /// Prepare OpenSSL certificate extensions for a grant authority.
     AuthorityExtensions {
-        /// Sidex authority constraints in JSON format.
-        policy: PathBuf,
+        #[clap(flatten)]
+        scope: ScopeArgs,
+        /// Issue a certificate authority that may delegate this many further
+        /// authority levels. Omit to prepare a grant-signing certificate.
+        #[clap(long)]
+        intermediate: Option<u8>,
         /// Output OpenSSL extension configuration file.
         output: PathBuf,
-        /// Authorize signing subordinate certificates instead of signing grants directly.
-        #[clap(long)]
-        intermediate: bool,
     },
     /// Create and sign an installation grant.
     Sign {
@@ -87,7 +90,27 @@ pub enum GrantsCommand {
     },
 }
 
-/// Complete installation request and authorization window.
+/// Namespace, audiences, and operations delegated to an authority certificate.
+#[derive(Debug, Args)]
+pub struct ScopeArgs {
+    /// Identity namespace provisioned on the devices.
+    #[clap(long)]
+    namespace: String,
+    /// Permit any audience within the namespace.
+    #[clap(long, conflicts_with_all = ["devices", "groups"])]
+    any_audience: bool,
+    /// Permit exactly this device; repeat as needed.
+    #[clap(long = "device")]
+    devices: Vec<String>,
+    /// Permit exactly this group; repeat as needed.
+    #[clap(long = "group")]
+    groups: Vec<String>,
+    /// Operation this certificate may authorize; repeat as needed.
+    #[clap(long = "permission", required = true, value_enum)]
+    permissions: Vec<Permission>,
+}
+
+/// Installation request and authorization window of one grant.
 #[derive(Debug, Args)]
 pub struct GrantArgs {
     /// Trusted local bundle to authorize.
@@ -111,29 +134,41 @@ pub struct GrantArgs {
     /// Exclusive validity end as an RFC 3339 timestamp or duration from now (e.g. 1h).
     #[clap(long, allow_hyphen_values = true)]
     expires_at: GrantExpiry,
-    /// Increasing authorization sequence within the system or apps scope.
-    #[clap(long)]
-    sequence: u64,
     /// Installation scope.
     #[clap(long, value_enum)]
     target: Target,
-    /// System target boot group. Omit to authorize local inactive-group selection.
-    #[clap(long)]
+    /// Permit only this boot group. Omit to permit any boot group.
+    #[clap(long, conflicts_with = "local_boot_group")]
     boot_group: Option<String>,
-    /// Authorize retaining the system target's overlay.
+    /// Permit only local selection of an inactive boot group.
     #[clap(long)]
-    keep_overlay: bool,
-    /// Authorize explicit system reboot behavior. Omit to use the bundle default.
-    #[clap(long, value_enum)]
+    local_boot_group: bool,
+    /// Permit only this overlay handling. Omit to permit either.
+    #[clap(long)]
+    keep_overlay: Option<bool>,
+    /// Permit only this reboot behavior. Omit to permit any behavior.
+    #[clap(long, value_enum, conflicts_with = "bundle_default_reboot")]
     reboot: Option<Reboot>,
+    /// Permit only the bundle's default reboot behavior.
+    #[clap(long)]
+    bundle_default_reboot: bool,
 }
 
+/// Installation scope of a grant.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Target {
     System,
     Apps,
 }
 
+/// Operation an authority certificate may authorize.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum Permission {
+    Apps,
+    System,
+}
+
+/// Post-installation system behavior.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Reboot {
     Yes,
@@ -145,30 +180,11 @@ pub enum Reboot {
 pub fn run(command: GrantsCommand) -> BundleResult<()> {
     match command {
         GrantsCommand::AuthorityExtensions {
-            policy,
-            output,
+            scope,
             intermediate,
+            output,
         } => {
-            let constraints = AuthorityConstraints::from_json(
-                &fs::read(policy).whatever("unable to read authority policy")?,
-            )
-            .whatever("invalid authority policy")?;
-            let depth = constraints.max_delegation_depth.unwrap_or(0);
-            if !intermediate && depth != 0 {
-                bail!("a grant signer cannot delegate authority");
-            }
-            let (basic, usage) = if intermediate {
-                (format!("CA:TRUE,pathlen:{depth}"), "keyCertSign")
-            } else {
-                ("CA:FALSE".into(), "digitalSignature")
-            };
-            let der = constraints
-                .to_extension_der()
-                .whatever("unable to encode authority policy")?;
-            let encoded = hex::encode(der);
-            let extensions = format!(
-                "basicConstraints=critical,{basic}\nkeyUsage=critical,{usage}\nextendedKeyUsage=critical,{GRANT_AUTHORITY_EKU}\n{AUTHORITY_CONSTRAINTS_OID}=DER:{encoded}\n"
-            );
+            let extensions = scope.extensions(intermediate)?;
             fs::write(output, extensions).whatever("unable to write authority extensions")?;
         }
         GrantsCommand::Sign {
@@ -215,7 +231,7 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
                 groups: group,
             };
             let context = VerificationContext {
-                service: rugix_bundle::grants::SERVICE,
+                service: rugix_install_grants::SERVICE,
                 identity: &identity,
                 now: SystemTime::now(),
             };
@@ -225,11 +241,18 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
                 .take(rugix_grants::DEFAULT_MAX_GRANT_SIZE as u64 + 1)
                 .read_to_end(&mut signed)
                 .whatever("unable to read grant")?;
-            let verified =
-                GrantVerifier::new(&fs::read(root_cert).whatever("unable to read grant root")?)
-                    .whatever("unable to create grant verifier")?
-                    .verify::<InstallOperation>(&signed, &context)
-                    .whatever("unable to verify installation grant")?;
+            // Inspection applies no device policy, so both permissions are accepted.
+            let verifier = GrantVerifier::new(
+                &fs::read(root_cert).whatever("unable to read grant root")?,
+                vec![
+                    rugix_install_grants::PERMISSION_APPS,
+                    rugix_install_grants::PERMISSION_SYSTEM,
+                ],
+            )
+            .whatever("unable to create grant verifier")?;
+            let verified = verifier
+                .verify::<InstallOperation>(&signed, &context)
+                .whatever("unable to verify installation grant")?;
             let expected = rugix_bundle::bundle_hash(&bundle)?;
             if verified.grant().operation.bundle_hash != expected {
                 bail!("grant bundle hash does not match");
@@ -244,6 +267,49 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
     Ok(())
 }
 
+impl ScopeArgs {
+    /// Render the OpenSSL extensions an authority certificate must carry.
+    fn extensions(self, intermediate: Option<u8>) -> BundleResult<String> {
+        let targets = if self.any_audience {
+            vec![ScopeTarget::any()]
+        } else {
+            self.devices
+                .into_iter()
+                .map(ScopeTarget::Recipient)
+                .chain(self.groups.into_iter().map(ScopeTarget::Group))
+                .collect()
+        };
+        if targets.is_empty() {
+            bail!("specify --any-audience, --device, or --group");
+        }
+        let scope = AuthorityScope::new(self.namespace, targets);
+        let der = scope
+            .to_extension_der()
+            .whatever("unable to encode authority scope")?;
+        let permissions = self
+            .permissions
+            .into_iter()
+            .map(permission_oid)
+            .collect::<Vec<_>>();
+        let purposes = rugix_grants::authority::purposes(&permissions)
+            .iter()
+            .map(ObjectIdentifier::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let (basic, usage) = match intermediate {
+            Some(depth) => (format!("CA:TRUE,pathlen:{depth}"), "keyCertSign"),
+            None => ("CA:FALSE".to_owned(), "digitalSignature"),
+        };
+        Ok(format!(
+            "basicConstraints=critical,{basic}\n\
+             keyUsage=critical,{usage}\n\
+             extendedKeyUsage=critical,{purposes}\n\
+             {AUTHORITY_SCOPE_OID}=DER:{}\n",
+            hex::encode(der)
+        ))
+    }
+}
+
 impl GrantArgs {
     fn build(self) -> BundleResult<Grant<InstallOperation>> {
         let audience = match (self.device, self.group) {
@@ -251,22 +317,30 @@ impl GrantArgs {
             (None, Some(group)) => AudienceTarget::Group(group),
             _ => bail!("specify exactly one device or group"),
         };
+        let system_options = self.boot_group.is_some()
+            || self.local_boot_group
+            || self.keep_overlay.is_some()
+            || self.reboot.is_some()
+            || self.bundle_default_reboot;
         let target = match self.target {
             Target::Apps => {
-                if self.boot_group.is_some() || self.reboot.is_some() || self.keep_overlay {
+                if system_options {
                     bail!("system installation options cannot be used for app grants");
                 }
                 InstallTarget::Apps
             }
-            Target::System => InstallTarget::System(SystemInstallOptions {
-                boot_group: self.boot_group,
+            Target::System => InstallTarget::System(SystemInstallConstraints {
+                boot_group: match (self.boot_group, self.local_boot_group) {
+                    (Some(name), false) => Some(BootGroupConstraint::Named(name)),
+                    (None, true) => Some(BootGroupConstraint::Local),
+                    _ => None,
+                },
                 keep_overlay: self.keep_overlay,
-                reboot: self.reboot.map(|value| match value {
-                    Reboot::Yes => RebootMode::Yes,
-                    Reboot::No => RebootMode::No,
-                    Reboot::Set => RebootMode::Set,
-                    Reboot::Deferred => RebootMode::Deferred,
-                }),
+                reboot: match (self.reboot, self.bundle_default_reboot) {
+                    (Some(mode), false) => Some(RebootConstraint::Mode(reboot_mode(mode))),
+                    (None, true) => Some(RebootConstraint::BundleDefault),
+                    _ => None,
+                },
             }),
         };
         let now = Timestamp::now();
@@ -280,7 +354,7 @@ impl GrantArgs {
         Ok(Grant {
             version: 1,
             id: self.id,
-            service: rugix_bundle::grants::SERVICE.into(),
+            service: rugix_install_grants::SERVICE.into(),
             audience: Audience {
                 namespace: self.namespace,
                 target: audience,
@@ -292,10 +366,26 @@ impl GrantArgs {
             operation_type: InstallOperation::TYPE.into(),
             operation: InstallOperation {
                 bundle_hash: rugix_bundle::bundle_hash(&self.bundle)?,
-                sequence: self.sequence,
                 target,
             },
         })
+    }
+}
+
+/// Key purpose authorizing one installation operation.
+fn permission_oid(permission: Permission) -> ObjectIdentifier {
+    match permission {
+        Permission::Apps => rugix_install_grants::PERMISSION_APPS,
+        Permission::System => rugix_install_grants::PERMISSION_SYSTEM,
+    }
+}
+
+fn reboot_mode(reboot: Reboot) -> rugix_install_grants::RebootMode {
+    match reboot {
+        Reboot::Yes => rugix_install_grants::RebootMode::Yes,
+        Reboot::No => rugix_install_grants::RebootMode::No,
+        Reboot::Set => rugix_install_grants::RebootMode::Set,
+        Reboot::Deferred => rugix_install_grants::RebootMode::Deferred,
     }
 }
 

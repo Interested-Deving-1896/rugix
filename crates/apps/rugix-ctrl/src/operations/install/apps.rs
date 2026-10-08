@@ -71,7 +71,7 @@ pub(crate) fn install_payloads<S: BundleSource>(
     })?;
 
     if let Some(grant) = grant.as_deref_mut() {
-        grant.reserve()?;
+        grant.admit()?;
     }
     let mut app_generations = HashMap::new();
     let mut payload_states: HashMap<String, HashMap<String, payload_db::PayloadState>> =

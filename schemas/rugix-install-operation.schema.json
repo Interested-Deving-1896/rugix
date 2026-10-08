@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rugix_install_grants.install.InstallOperation",
+  "type": "object",
+  "description": "Authorized installation. The bundle hash binds all payload destinations.",
+  "properties": {
+    "bundleHash": {
+      "$ref": "#/$defs/rugix_install_grants.install.HashDigest"
+    },
+    "target": {
+      "$ref": "#/$defs/rugix_install_grants.install.InstallTarget"
+    }
+  },
+  "required": [
+    "bundleHash",
+    "target"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "rugix_install_grants.install.BootGroupConstraint": {
+      "$id": "rugix_install_grants.install.BootGroupConstraint",
+      "description": "Permitted boot group selection.",
+      "oneOf": [
+        {
+          "const": "Local"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Named": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "rugix_install_grants.install.HashDigest": {
+      "$id": "rugix_install_grants.install.HashDigest",
+      "type": [
+        "string"
+      ]
+    },
+    "rugix_install_grants.install.InstallTarget": {
+      "$id": "rugix_install_grants.install.InstallTarget",
+      "description": "Supported installation targets.",
+      "oneOf": [
+        {
+          "const": "Apps"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "System": {
+              "$ref": "#/$defs/rugix_install_grants.install.SystemInstallConstraints"
+            }
+          }
+        }
+      ]
+    },
+    "rugix_install_grants.install.RebootConstraint": {
+      "$id": "rugix_install_grants.install.RebootConstraint",
+      "description": "Permitted reboot behavior.",
+      "oneOf": [
+        {
+          "const": "BundleDefault"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "Mode": {
+              "$ref": "#/$defs/rugix_install_grants.install.RebootMode"
+            }
+          }
+        }
+      ]
+    },
+    "rugix_install_grants.install.RebootMode": {
+      "$id": "rugix_install_grants.install.RebootMode",
+      "enum": [
+        "Yes",
+        "No",
+        "Set",
+        "Deferred"
+      ],
+      "description": "Post-installation system behavior."
+    },
+    "rugix_install_grants.install.SystemInstallConstraints": {
+      "$id": "rugix_install_grants.install.SystemInstallConstraints",
+      "type": "object",
+      "description": "System installation options this grant permits.\n\nEvery field is optional. An absent field permits any requested value and a\npresent field requires exactly the described request.",
+      "properties": {
+        "bootGroup": {
+          "$ref": "#/$defs/rugix_install_grants.install.BootGroupConstraint"
+        },
+        "keepOverlay": {
+          "type": "boolean"
+        },
+        "reboot": {
+          "$ref": "#/$defs/rugix_install_grants.install.RebootConstraint"
+        }
+      },
+      "required": [],
+      "unevaluatedProperties": false
+    }
+  }
+}

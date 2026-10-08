@@ -6,8 +6,9 @@ intended for operators designing update, shutdown, and incident-response procedu
 ## System Update Lifecycle
 
 When [installation grants](installation-grants.md) are configured, Rugix also authenticates the
-device audience, validity window, installation options, and durable authorization sequence.
-It reserves the grant before installation side effects and consumes it before activation.
+device audience, validity window, and permitted installation options. It records the grant as
+admitted before installation side effects and as consumed before activation, so an interrupted
+transfer can retry while a consumed grant cannot authorize activation twice.
 
 Before changing an inactive target, Rugix verifies the bundle signature or granted hash and component policy,
 resolves every payload destination, rejects active or unavailable slots, and runs update

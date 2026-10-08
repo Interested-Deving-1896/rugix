@@ -38,43 +38,608 @@ def timestamp(seconds):
     return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
 
 
-def certificate(directory, name):
-    """Create an independent CA and a leaf signing certificate for the test."""
-    root = directory / f"{name}-root.pem"
-    root_key = directory / f"{name}-root.key"
-    cert = directory / f"{name}.pem"
-    key = directory / f"{name}.key"
-    csr = directory / f"{name}.csr"
-    extensions = directory / f"{name}.ext"
-    extensions.write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=codeSigning\n")
-    run("openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-        "-nodes", "-subj", f"/CN={name} root", "-days", "2",
-        "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign",
-        "-keyout", root_key, "-out", root)
-    run("openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-        "-nodes", "-subj", f"/CN={name}", "-keyout", key, "-out", csr)
-    run("openssl", "x509", "-req", "-in", csr, "-CA", root, "-CAkey", root_key,
-        "-CAcreateserial", "-days", "2", "-extfile", extensions, "-out", cert)
-    return root, cert, key
+class Device:
+    """One isolated device with its certificates, configuration, and bundles."""
+
+    def __init__(self, directory):
+        self.directory = directory
+        self.state_dir = Path("/var/lib/rugix/grants")
+        self.config_path = Path("/etc/rugix/ctrl.toml")
+        self.identity_file = directory / "identity.json"
+        self.identity = {"device": "device-1", "groups": ["canary"]}
+        self.identity_file.write_text(json.dumps(self.identity))
+        self.identity_helper = Path("/etc/rugix/grant-identity")
+        self.helper_script = f"#!/bin/sh\ncat '{self.identity_file}'\n"
+        self.identity_helper.write_text(self.helper_script)
+        self.identity_helper.chmod(0o755)
+        self.grant_root, self.grant_root_key = self.root("grant")
+        self.publisher_root, self.publisher_root_key = self.root("publisher")
+        self.publisher_cert, self.publisher_key = self.code_signing_cert(
+            "publisher-signer", self.publisher_root, self.publisher_root_key
+        )
+        self.signer, self.signer_key = self.authority_cert(
+            "deployment-signer", self.grant_root, self.grant_root_key,
+            ["--any-audience", "--permission", "apps", "--permission", "system"],
+        )
+        self.bundle = self.app_bundle("grant-test", "app")
+        self.other_bundle = self.app_bundle("other-app", "other")
+
+    def root(self, name):
+        """Create a self-signed certificate authority."""
+        cert, key = self.directory / f"{name}-root.pem", self.directory / f"{name}-root.key"
+        run("openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
+            "-nodes", "-subj", f"/CN={name} root", "-days", "2",
+            "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign",
+            "-keyout", key, "-out", cert)
+        return cert, key
+
+    def code_signing_cert(self, name, parent, parent_key):
+        """Issue an ordinary code-signing certificate, which cannot sign grants."""
+        extensions = self.directory / f"{name}.ext"
+        extensions.write_text(
+            "basicConstraints=critical,CA:FALSE\n"
+            "keyUsage=critical,digitalSignature\n"
+            "extendedKeyUsage=codeSigning\n"
+        )
+        return self.issue(name, parent, parent_key, extensions, days="2")
+
+    def authority_cert(self, name, parent, parent_key, scope, intermediate=None,
+                       alter_extensions=None, days="1"):
+        """Issue a grant authority certificate using Bundler's extension generator."""
+        extensions = self.directory / f"{name}.ext"
+        run(BUNDLER, "grants", "authority-extensions", "--namespace", "test", *scope,
+            *(["--intermediate", str(intermediate)] if intermediate is not None else []),
+            extensions)
+        if alter_extensions:
+            extensions.write_text(alter_extensions(extensions.read_text()))
+        return self.issue(name, parent, parent_key, extensions, days=days)
+
+    def issue(self, name, parent, parent_key, extensions, days):
+        """Issue one certificate with the prepared extension file."""
+        cert, key = self.directory / f"{name}.pem", self.directory / f"{name}.key"
+        csr = self.directory / f"{name}.csr"
+        run("openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
+            "-nodes", "-subj", f"/CN={name}", "-keyout", key, "-out", csr)
+        run("openssl", "x509", "-req", "-in", csr, "-CA", parent, "-CAkey", parent_key,
+            "-CAcreateserial", "-days", days, "-extfile", extensions, "-out", cert)
+        return cert, key
+
+    def app_bundle(self, app, name):
+        """Pack an app bundle whose orchestrator records its activations."""
+        script = self.directory / f"{name}-orchestrator"
+        script.write_text(
+            '#!/bin/sh\nif [ "$1" = "activate" ]; then\n'
+            '    echo activated >> "$RUGIX_APP_DATA_DIR/activations"\nfi\nexit 0\n'
+        )
+        script.chmod(0o755)
+        bundle = self.directory / f"{name}.rugixb"
+        run(BUNDLER, "apps", "pack", "generic", "--app", app, script, bundle)
+        return bundle
+
+    def configure(self, authorities=None, mode=None, max_lifetime=86400, signatures=True):
+        """Write a complete Ctrl configuration with the requested grant policy."""
+        if authorities is None:
+            authorities = [(self.grant_root, ["apps", "system"])]
+        sections = []
+        if signatures:
+            sections.append(f'[signatures]\nroots = ["{self.publisher_root}"]\n')
+        policy = [
+            "[grants]",
+            'namespace = "test"',
+            f'identity-helper = "{self.identity_helper}"',
+        ]
+        if mode:
+            policy.append(f'mode = "{mode}"')
+        if not authorities:
+            policy.append("authorities = []")
+        sections.append("\n".join(policy) + "\n")
+        for root, permissions in authorities:
+            entry = [
+                "[[grants.authorities]]",
+                f'root = "{root}"',
+                "permissions = [" + ", ".join(f'"{name}"' for name in permissions) + "]",
+            ]
+            if max_lifetime is not None:
+                entry.append(f"max-lifetime = {max_lifetime}")
+            sections.append("\n".join(entry) + "\n")
+        self.config_path.write_text("\n".join(sections))
+
+    def set_identity(self, **changes):
+        """Replace the identity the helper reports."""
+        self.identity_file.write_text(json.dumps(dict(self.identity, **changes)))
+
+    def grant(self, name, target="apps", device="device-1", group=None, bundle=None,
+              start=None, end=None, options=(), signer=None, intermediates=(),
+              success=True):
+        """Issue a grant with Bundler and return its CMS file."""
+        output = self.directory / f"{name}.cms"
+        cert, key = signer or (self.signer, self.signer_key)
+        audience = ["--group", group] if group else ["--device", device]
+        run(BUNDLER, "grants", "sign", "--bundle", bundle or self.bundle, "--id", name,
+            "--namespace", "test", *audience,
+            *(["--not-before", timestamp(start)] if start is not None else []),
+            "--expires-at", timestamp(end) if end is not None else "5m",
+            "--target", target, *options,
+            "--cert", cert, "--key", key,
+            *[arg for path in intermediates for arg in ("--intermediate-cert", path)],
+            output, success=success)
+        return output
+
+    def install(self, signature, bundle=None, success=True, extra=()):
+        """Install an app bundle through the CLI."""
+        args = [CTRL, "apps", "install", bundle or self.bundle]
+        if signature:
+            args += ["--grant", signature]
+        return run(*args, *extra, success=success)
+
+    def state(self):
+        """Current durable replay state."""
+        return json.loads((self.state_dir / "state.json").read_text())
+
+    def record(self, grant_id):
+        """Admitted record belonging to one grant identifier, if any."""
+        return next(
+            (record for record in self.state()["admitted"] if record["id"] == grant_id),
+            None,
+        )
+
+    def activations(self, app="grant-test"):
+        """Recorded activations of an installed app."""
+        path = Path(f"/var/lib/rugix/apps/{app}/data/activations")
+        return path.read_text().splitlines() if path.exists() else []
 
 
-def authority_certificate(directory, name, parent, parent_key, policy, intermediate=False,
-                          alter_extensions=None):
-    """Issue real constrained certificates using Bundler's policy encoder and OpenSSL."""
-    cert, key = directory / f"{name}.pem", directory / f"{name}.key"
-    csr, extensions = directory / f"{name}.csr", directory / f"{name}.ext"
-    policy_file = directory / f"{name}.json"
-    policy_file.write_text(json.dumps(policy))
-    run(BUNDLER, "grants", "authority-extensions", policy_file, extensions,
-        *(["--intermediate"] if intermediate else []))
-    if alter_extensions:
-        extensions.write_text(alter_extensions(extensions.read_text()))
-    run("openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-        "-nodes", "-subj", f"/CN={name}", "-keyout", key, "-out", csr)
-    run("openssl", "x509", "-req", "-in", csr, "-CA", parent, "-CAkey", parent_key,
-        "-CAcreateserial", "-days", "2" if intermediate else "1",
-        "-extfile", extensions, "-out", cert)
-    return cert, key
+def test_configuration_errors(device):
+    """A policy that could never authorize an installation is rejected at load time."""
+    def rejected(expected):
+        result = run(CTRL, "initialize-grant-state", success=False)
+        assert expected in result.stderr, result.stderr
+        assert not (device.state_dir / "state.json").exists()
+
+    device.configure(mode="embedded-and-grant", signatures=False)
+    rejected("signatures.roots")
+    device.configure(authorities=[])
+    rejected("grants.authorities")
+    device.config_path.write_text(
+        '[grants]\nnamespace = "test"\nidentity-helper = "relative/path"\n'
+        '[[grants.authorities]]\nroot = "/x.pem"\npermissions = ["apps"]\n'
+    )
+    rejected("identity-helper")
+    device.configure()
+    print("PASS: unenforceable grant policies are rejected when the configuration loads",
+          flush=True)
+
+
+def test_state_initialization(device):
+    """State initialization needs a working helper and never replaces history."""
+    device.identity_file.write_text("invalid")
+    run(CTRL, "initialize-grant-state", success=False)
+    assert not (device.state_dir / "state.json").exists()
+    device.set_identity()
+    run(CTRL, "initialize-grant-state")
+    initial = (device.state_dir / "state.json").read_bytes()
+    run(CTRL, "initialize-grant-state", success=False)
+    assert (device.state_dir / "state.json").read_bytes() == initial
+    assert oct(device.state_dir.stat().st_mode & 0o777) == "0o700"
+    print("PASS: explicit state initialization is required and never resets history",
+          flush=True)
+
+
+def test_window_parsing(device):
+    """Validity windows accept RFC 3339 and durations, and reject empty ranges."""
+    def prepare(end, start=None, success=True):
+        output = device.directory / "window.raw"
+        output.unlink(missing_ok=True)
+        run(BUNDLER, "grants", "prepare", "--bundle", device.bundle, "--id", "window",
+            "--namespace", "test", "--device", "device-1",
+            *(["--not-before", start] if start is not None else []),
+            "--expires-at", end, "--target", "apps", output, success=success)
+        if not success:
+            assert not output.exists()
+            return None
+        prefix, payload = output.read_bytes().split(b"\0", 1)
+        assert prefix == b"rugix.operation-grant.v1"
+        content = json.loads(payload)
+        assert content["service"] == "rugix-ctrl"
+        assert content["audience"]["target"] == {"Recipient": "device-1"}
+        return content
+
+    for duration in ["5m", "PT5M"]:
+        before = int(time.time())
+        window = prepare(duration)
+        assert before <= int(window["notBefore"]) <= int(time.time())
+        assert int(window["expiresAt"]) - int(window["notBefore"]) == 300
+    now = int(time.time())
+    offset_start = datetime.fromtimestamp(now, timezone(timedelta(hours=5, minutes=30)))
+    window = prepare(timestamp(now + 60), offset_start.isoformat())
+    assert int(window["notBefore"]) == now
+    assert int(window["expiresAt"]) == now + 60
+    window = prepare(timestamp(now + 60).replace("+00:00", ".875Z"),
+                     timestamp(now).replace("+00:00", ".125Z"))
+    assert int(window["notBefore"]) == now
+    assert int(window["expiresAt"]) == now + 60
+    prepare(timestamp(now).replace("+00:00", ".875Z"),
+            timestamp(now).replace("+00:00", ".125Z"), success=False)
+    # Relative expiry is measured from now, even when the start is explicitly later.
+    before = int(time.time())
+    window = prepare("2m", timestamp(before + 60))
+    assert before + 120 <= int(window["expiresAt"]) <= int(time.time()) + 120
+    for end in ["not a time", "1700000000", "0s", "-1h", "999999999999999h"]:
+        prepare(end, success=False)
+    prepare("1h", "1969-12-31T23:59:59Z", success=False)
+    prepare(timestamp(now), timestamp(now + 1), success=False)
+    print("PASS: RFC 3339 offsets, relative expiry, default start, and invalid windows",
+          flush=True)
+
+
+def test_grant_bindings(device):
+    """A grant binds the bundle, the device audience, and its validity window."""
+    good = device.grant("first")
+    run(BUNDLER, "grants", "verify", good, "--root-cert", device.grant_root,
+        "--namespace", "test", "--device", "device-1", "--bundle", device.bundle)
+    device.install(None, success=False)
+    device.install(device.grant("wrong-device", device="device-2"), success=False)
+    device.install(device.grant("wrong-group", group="production"), success=False)
+    device.install(good, device.other_bundle, success=False)
+    now = int(time.time())
+    device.install(device.grant("expired", start=now - 100, end=now - 1), success=False)
+    device.install(device.grant("future", start=now + 100, end=now + 200), success=False)
+    for flags in [
+        ["--bundle-hash", run(BUNDLER, "hash", device.bundle).stdout.strip()],
+        ["--root-cert", device.grant_root],
+        ["--insecure-skip-bundle-verification"],
+        ["--insecure-allow-missing-block-index"],
+        ["--skip-compatibility-check"],
+    ]:
+        device.install(good, success=False, extra=flags)
+    assert device.state()["admitted"] == []
+    print("PASS: bundle, audience, window, and override bindings are enforced", flush=True)
+
+
+def test_unprepared_certificates(device):
+    """Only certificates prepared as grant authorities can sign grants."""
+    unprepared = [
+        ("code-signing", device.code_signing_cert(
+            "unprepared-signer", device.grant_root, device.grant_root_key)),
+        ("missing scope", device.authority_cert(
+            "no-scope", device.grant_root, device.grant_root_key,
+            ["--any-audience", "--permission", "apps"],
+            alter_extensions=lambda text: "\n".join(
+                line for line in text.splitlines() if "=DER:" not in line) + "\n")),
+        ("missing purpose", device.authority_cert(
+            "no-purpose", device.grant_root, device.grant_root_key,
+            ["--any-audience", "--permission", "apps"],
+            alter_extensions=lambda text: "\n".join(
+                line for line in text.splitlines()
+                if not line.startswith("extendedKeyUsage")) + "\n")),
+        ("truncated scope", device.authority_cert(
+            "bad-scope", device.grant_root, device.grant_root_key,
+            ["--any-audience", "--permission", "apps"],
+            alter_extensions=lambda text: text.replace("=DER:30", "=DER:31"))),
+    ]
+    for reason, signer in unprepared:
+        signature = device.grant(f"unprepared-{reason.replace(' ', '-')}", signer=signer)
+        device.install(signature, success=False)
+    assert device.state()["admitted"] == []
+    print("PASS: unprepared and malformed authority certificates cannot sign grants",
+          flush=True)
+
+
+def test_authority_scope(device):
+    """Certificate scope and local policy both bound what an authority may authorize."""
+    canary = device.authority_cert(
+        "canary-signer", device.grant_root, device.grant_root_key,
+        ["--group", "canary", "--permission", "apps"])
+    device.install(device.grant("canary-ok", group="canary", signer=canary))
+    device.install(device.grant("canary-device", signer=canary), success=False)
+    apps_only = device.authority_cert(
+        "apps-signer", device.grant_root, device.grant_root_key,
+        ["--any-audience", "--permission", "apps"])
+    system_grant = device.grant("apps-only-system", target="system", signer=apps_only)
+    run(CTRL, "update", "install", device.bundle, "--grant", system_grant, success=False)
+    device.configure(authorities=[(device.grant_root, ["apps"])])
+    run(CTRL, "update", "install", device.bundle,
+        "--grant", device.grant("local-policy-system", target="system"), success=False)
+    device.configure()
+    print("PASS: certificate scope and local permissions each bound an authority",
+          flush=True)
+
+
+def test_delegation(device):
+    """Delegated authorities may narrow but never widen, and depth is bounded."""
+    intermediate, intermediate_key = device.authority_cert(
+        "delegation-authority", device.grant_root, device.grant_root_key,
+        ["--group", "canary", "--permission", "apps"], intermediate=0, days="2")
+    delegated = device.authority_cert(
+        "delegated-signer", intermediate, intermediate_key,
+        ["--group", "canary", "--permission", "apps"])
+    device.install(device.grant("delegated", group="canary", signer=delegated,
+                                intermediates=[intermediate]))
+    wider = device.authority_cert(
+        "escalated-signer", intermediate, intermediate_key,
+        ["--any-audience", "--permission", "apps"])
+    device.install(device.grant("escalated", group="canary", signer=wider,
+                                intermediates=[intermediate]), success=False)
+    sub_authority, sub_key = device.authority_cert(
+        "sub-authority", intermediate, intermediate_key,
+        ["--group", "canary", "--permission", "apps"], intermediate=0, days="2")
+    too_deep = device.authority_cert(
+        "too-deep-signer", sub_authority, sub_key,
+        ["--group", "canary", "--permission", "apps"])
+    device.install(device.grant("too-deep", group="canary", signer=too_deep,
+                                intermediates=[intermediate, sub_authority]), success=False)
+    print("PASS: delegation narrows scope and stops at the authorized depth", flush=True)
+
+
+def test_replay(device):
+    """An interrupted transfer retries, a consumed grant is final, and order is free."""
+    truncated = device.directory / "truncated.rugixb"
+    truncated.write_bytes(device.bundle.read_bytes()[:-50])
+    first = device.grant("retry")
+    device.install(first, truncated, success=False)
+    assert device.record("retry")["consumed"] is False
+    device.install(first)
+    assert device.record("retry")["consumed"] is True
+    device.install(first, success=False)
+    before = len(device.activations())
+    second = device.grant("second")
+    third = device.grant("third")
+    device.install(third)
+    device.install(second)
+    assert len(device.activations()) == before + 2
+    device.install(second, success=False)
+    run(CTRL, "apps", "activate", "grant-test", success=False)
+    run(CTRL, "apps", "rollback", "grant-test", success=False)
+    print("PASS: admitted grants retry, consumed grants are final, and order is free",
+          flush=True)
+
+
+def test_time_watermark(device):
+    """Verification never uses a time below the recorded watermark."""
+    device.install(device.grant("watermark"))
+    state = device.state()
+    assert state["timeWatermark"] >= int(time.time()) - 60
+    future = int(time.time()) + 3600
+    state["timeWatermark"] = future
+    (device.state_dir / "state.json").write_text(json.dumps(state))
+    device.install(device.grant("behind-watermark"), success=False)
+    state["timeWatermark"] = 0
+    (device.state_dir / "state.json").write_text(json.dumps(state))
+    device.install(device.grant("after-reset", end=future + 600))
+    print("PASS: the durable watermark floors verification time", flush=True)
+
+
+def test_expiry_during_transfer(device):
+    """A stream that outlives its grant cannot reach activation."""
+    expires = int(time.time()) + 3
+    expiring = device.grant("expiring", end=expires)
+    before = len(device.activations())
+    process = subprocess.Popen([CTRL, "apps", "install", "-", "--grant", expiring],
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+    payload = device.bundle.read_bytes()
+    process.stdin.write(payload[:-50])
+    process.stdin.flush()
+    time.sleep(max(0, expires - time.time() + 0.1))
+    stdout, stderr = process.communicate(payload[-50:], timeout=15)
+    assert process.returncode != 0, (stdout, stderr)
+    assert len(device.activations()) == before
+    device.install(device.grant("renewed"))
+    print("PASS: expiry during streaming prevents activation; a new grant recovers",
+          flush=True)
+
+
+def test_identity_revalidation(device):
+    """Identity, membership, and helper health are rechecked before activation."""
+    updated = device.app_bundle("grant-test", "identity-update")
+    for name, change in [
+        ("membership", lambda: device.set_identity(groups=[])),
+        ("identity", lambda: device.set_identity(device="device-2")),
+        ("helper", lambda: device.identity_helper.write_text(
+            device.helper_script + "exit 1\n")),
+    ]:
+        signature = device.grant(f"changed-{name}", group="canary", bundle=updated)
+        before = len(device.activations())
+        process = subprocess.Popen([CTRL, "apps", "install", "-", "--grant", signature],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+        try:
+            process.stdin.write(updated.read_bytes()[:-50])
+            process.stdin.flush()
+            deadline = time.monotonic() + 10
+            while not any(record["id"] == f"changed-{name}"
+                          for record in device.state()["admitted"]):
+                assert time.monotonic() < deadline, "installation did not admit the grant"
+                assert process.poll() is None, "installation exited before admission"
+                time.sleep(0.02)
+            change()
+            stdout, stderr = process.communicate(updated.read_bytes()[-50:], timeout=15)
+            assert process.returncode != 0, (stdout, stderr)
+            assert not any(record["consumed"] for record in device.state()["admitted"]
+                           if record["id"] == f"changed-{name}")
+            assert len(device.activations()) == before
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            device.set_identity()
+            device.identity_helper.write_text(device.helper_script)
+    print("PASS: identity, membership, and helper failures are caught before activation",
+          flush=True)
+
+
+def test_daemon(device):
+    """The daemon enforces grant policy even with its override switch enabled."""
+    Path("/etc/rugix/daemon.toml").write_text("dangerously-insecure = true\n")
+    log = device.directory / "daemon.log"
+    with log.open("w") as handle:
+        daemon = subprocess.Popen([CTRL, "daemon"], stdout=handle, stderr=handle)
+        try:
+            deadline = time.monotonic() + 10
+            while not Path("/run/rugix/ctrl.sock").exists():
+                assert daemon.poll() is None, log.read_text()
+                assert time.monotonic() < deadline
+                time.sleep(0.02)
+            signature = device.grant("daemon", group="canary")
+            daemon_install(device.bundle, None, success=False)
+            daemon_install(device.bundle, signature,
+                           {"insecure_skip_bundle_verification": True}, success=False)
+            device.set_identity(groups=[])
+            daemon_install(device.bundle, signature, success=False)
+            device.set_identity()
+            daemon_install(device.bundle, signature)
+            daemon_install(device.bundle, signature, success=False)
+        finally:
+            # SIGKILL makes cleanup independent of inherited signal masks.
+            daemon.kill()
+            daemon.wait(timeout=10)
+    print("PASS: daemon transport, group grant, and override rejection", flush=True)
+
+
+def test_independent_publisher(device):
+    """Publisher and deployment authorities can be required independently."""
+    device.configure(mode="embedded-and-grant")
+    signed_bundle = device.directory / "signed.rugixb"
+    run(BUNDLER, "signatures", "sign", device.bundle, device.publisher_cert,
+        device.publisher_key, signed_bundle)
+    dual = device.grant("dual")
+    device.install(dual, success=False)
+    device.install(None, signed_bundle, success=False)
+    device.install(dual, signed_bundle)
+    saved = (device.state_dir / "state.json").read_bytes()
+    (device.state_dir / "state.json").unlink()
+    device.install(device.grant("missing-state"), signed_bundle, success=False)
+    (device.state_dir / "state.json").write_text("invalid")
+    device.install(device.grant("corrupt-state"), signed_bundle, success=False)
+    (device.state_dir / "state.json").write_bytes(saved)
+    device.configure()
+    print("PASS: independent publisher approval and fail-closed replay state", flush=True)
+
+
+def test_external_signing(device):
+    """External CMS signing uses the exact prepared bytes."""
+    prepared = device.directory / "prepared.raw"
+    external = device.directory / "external.cms"
+    now = int(time.time())
+    run(BUNDLER, "grants", "prepare", "--bundle", device.bundle, "--id", "external",
+        "--namespace", "test", "--device", "device-1", "--not-before", timestamp(now - 1),
+        "--expires-at", timestamp(now + 300), "--target", "apps", prepared)
+    run("openssl", "cms", "-sign", "-binary", "-nodetach", "-in", prepared,
+        "-signer", device.signer, "-inkey", device.signer_key,
+        "-outform", "DER", "-out", external)
+    device.install(external)
+    print("PASS: external OpenSSL signing is accepted", flush=True)
+
+
+def test_system_installation(device):
+    """System installation binds its options and consumes before boot selection."""
+    slot_a, slot_b = device.directory / "slot-a", device.directory / "slot-b"
+    slot_a.write_bytes(b"active system")
+    slot_b.write_bytes(b"old inactive system")
+    boot_log = device.directory / "boot.log"
+    controller = device.directory / "boot-controller"
+    controller.write_text(f"""#!{sys.executable}
+import json
+from pathlib import Path
+import sys
+
+operation = sys.argv[1]
+if operation in ["get_active", "get_default"]:
+    print(json.dumps({{"group": "A"}}))
+else:
+    state = json.loads(Path({str(device.state_dir / "state.json")!r}).read_text())
+    consumed = sum(1 for record in state["admitted"] if record["consumed"])
+    with Path({str(boot_log)!r}).open("a") as log:
+        log.write(" ".join(sys.argv[1:]) + f" consumed={{consumed}}\\n")
+    print("{{}}")
+""")
+    controller.chmod(0o755)
+    Path("/etc/rugix/system.toml").write_text(f"""
+[config-partition]
+disabled = true
+[boot-flow]
+type = "custom"
+controller = "{controller}"
+[slots.a]
+type = "file"
+path = "{slot_a}"
+[slots.b]
+type = "file"
+path = "{slot_b}"
+[boot-groups.A.slots]
+system = "a"
+[boot-groups.B.slots]
+system = "b"
+""")
+    bundle_dir = device.directory / "system-bundle"
+    (bundle_dir / "payloads").mkdir(parents=True)
+    payload = b"replacement system" * 4096
+    (bundle_dir / "payloads/system").write_bytes(payload)
+    (bundle_dir / "rugix-bundle.toml").write_text("""
+update-type = "full"
+[[payloads]]
+filename = "system"
+delivery = { type = "slot", slot = "system" }
+[payloads.block-encoding]
+chunker = "casync-64"
+hash-algorithm = "sha256"
+""")
+    system_bundle = device.directory / "system.rugixb"
+    run(BUNDLER, "bundle", bundle_dir, system_bundle)
+    exact = device.grant("system-exact", target="system", bundle=system_bundle,
+                         options=["--boot-group", "B", "--keep-overlay", "false",
+                                  "--reboot", "set"])
+    base = [CTRL, "update", "install", system_bundle, "--grant", exact]
+    for flags in [
+        ["--boot-group", "A", "--reboot", "set"],
+        ["--boot-group", "B", "--reboot", "no"],
+        ["--boot-group", "B", "--reboot", "set", "--keep-overlay"],
+    ]:
+        run(*base, *flags, success=False)
+    assert slot_b.read_bytes() == b"old inactive system"
+    assert not boot_log.exists()
+    before = sum(1 for record in device.state()["admitted"] if record["consumed"])
+    run(*base, "--boot-group", "B", "--reboot", "set")
+    assert slot_a.read_bytes() == b"active system"
+    assert slot_b.read_bytes() == payload
+    # The grant is consumed after installation and before boot selection.
+    assert boot_log.read_text().splitlines() == [
+        f"pre_install B consumed={before}",
+        f"post_install B consumed={before}",
+        f"set_try_next B consumed={before + 1}",
+    ]
+    run(*base, "--boot-group", "B", "--reboot", "set", success=False)
+    run(CTRL, "system", "reboot", "--spare", success=False)
+    permissive = device.grant("system-permissive", target="system", bundle=system_bundle)
+    run(CTRL, "update", "install", system_bundle, "--grant", permissive,
+        "--boot-group", "B", "--reboot", "no")
+    print("PASS: system installation binds options and consumes before boot selection",
+          flush=True)
+
+
+def test_managed_state_location(device):
+    """Replay history lives outside resettable state profiles."""
+    standalone = (device.state_dir / "state.json").read_bytes()
+    profile = Path("/run/rugix/mounts/data/state/default")
+    profile.mkdir(parents=True)
+    state_mount = Path("/run/rugix/state")
+    state_mount.mkdir()
+    run("mount", "--bind", profile, state_mount)
+    managed = device.grant("managed", group="canary")
+    device.install(managed, success=False)
+    device.state_dir = Path("/run/rugix/mounts/data/.rugix/grants")
+    run(CTRL, "initialize-grant-state")
+    device.install(managed)
+    after_install = (device.state_dir / "state.json").read_bytes()
+    run("umount", state_mount)
+    shutil.rmtree(profile)
+    profile.mkdir()
+    run("mount", "--bind", profile, state_mount)
+    device.install(managed, success=False)
+    assert (device.state_dir / "state.json").read_bytes() == after_install
+    assert Path("/var/lib/rugix/grants/state.json").read_bytes() == standalone
+    print("PASS: managed and standalone state locations both resist resets", flush=True)
 
 
 def recv_exact(stream, size):
@@ -119,6 +684,26 @@ def daemon_install(bundle, grant, overrides=None, success=True):
             return payload
 
 
+SECTIONS = [
+    test_configuration_errors,
+    test_state_initialization,
+    test_window_parsing,
+    test_grant_bindings,
+    test_unprepared_certificates,
+    test_authority_scope,
+    test_delegation,
+    test_replay,
+    test_time_watermark,
+    test_expiry_during_transfer,
+    test_identity_revalidation,
+    test_daemon,
+    test_independent_publisher,
+    test_external_signing,
+    test_system_installation,
+    test_managed_state_location,
+]
+
+
 def suite(directory):
     """Test the public commands and installed app behavior on an isolated device."""
     assert os.geteuid() == 0
@@ -131,446 +716,10 @@ def suite(directory):
     Path("/etc/rugix").mkdir()
     Path("/var/lib").mkdir()
     os.environ["OPENSSL_CONF"] = "/dev/null"
-    root, cert, key = certificate(directory, "grant")
-    publisher_root, publisher_cert, publisher_key = certificate(directory, "publisher")
-    state_dir = Path("/var/lib/rugix/grants")
-    config = Path("/etc/rugix/ctrl.toml")
     Path("/etc/rugix/apps.toml").write_text('service-manager = "none"\n')
-
-    identity_file = directory / "identity.json"
-    identity = {"device": "device-1", "groups": ["canary"]}
-    identity_file.write_text(json.dumps(identity))
-    identity_helper = Path("/etc/rugix/grant-identity")
-    helper_script = f"#!/bin/sh\ncat '{identity_file}'\n"
-    identity_helper.write_text(helper_script)
-    identity_helper.chmod(0o755)
-
-    def configure(mode="GrantOnly", max_lifetime=86400):
-        config.write_text(f"""
-[signatures]
-roots = ["{publisher_root}"]
-[grants]
-roots = ["{publisher_root}", "{root}"]
-namespace = "test"
-identity-helper = "{identity_helper}"
-max-lifetime = {max_lifetime}
-mode = {{ tag = "{mode}" }}
-""")
-
-    configure()
-    identity_file.write_text("invalid")
-    run(CTRL, "initialize-grant-state", success=False)
-    assert not (state_dir / "state.json").exists()
-    identity_file.write_text(json.dumps(identity))
-    run(CTRL, "initialize-grant-state")
-    initial_state = (state_dir / "state.json").read_bytes()
-    run(CTRL, "initialize-grant-state", success=False)
-    assert (state_dir / "state.json").read_bytes() == initial_state
-
-    script = directory / "orchestrator"
-    script.write_text("""#!/bin/sh
-if [ "$1" = "activate" ]; then
-    echo activated >> "$RUGIX_APP_DATA_DIR/activations"
-fi
-exit 0
-""")
-    script.chmod(0o755)
-    bundle = directory / "app.rugixb"
-    run(BUNDLER, "apps", "pack", "generic", "--app", "grant-test", script, bundle)
-    other_bundle = directory / "other.rugixb"
-    run(BUNDLER, "apps", "pack", "generic", "--app", "other-app", script, other_bundle)
-    bundle_hash = run(BUNDLER, "hash", bundle).stdout.strip()
-
-    def grant(name, sequence, device="device-1", group=None, start=None, end=None, target="apps",
-              payload=bundle, extra=(), signer=None):
-        now = int(time.time())
-        signing_cert, signing_key = signer or (cert, key)
-        output = directory / f"{name}.cms"
-        audience = ["--group", group] if group else ["--device", device]
-        start_args = ["--not-before", timestamp(start)] if start is not None else []
-        run(BUNDLER, "grants", "sign", "--bundle", payload, "--id", name,
-            "--namespace", "test", *audience, *start_args,
-            "--expires-at", timestamp(end) if end is not None else "5m", "--sequence", sequence,
-            "--target", target, "--cert", signing_cert, "--key", signing_key, *extra, output)
-        return output
-
-    def install(signature, payload=bundle, success=True, extra=()):
-        args = [CTRL, "apps", "install", payload]
-        if signature:
-            args += ["--grant", signature]
-        return run(*args, *extra, success=success)
-
-    def state():
-        return json.loads((state_dir / "state.json").read_text())
-
-    def prepare_window(end, start=None, success=True):
-        """Exercise CLI parsing and inspect the exact unsigned grant envelope."""
-        output = directory / "window.raw"
-        output.unlink(missing_ok=True)
-        args = ["--not-before", start] if start is not None else []
-        run(BUNDLER, "grants", "prepare", "--bundle", bundle, "--id", "window",
-            "--namespace", "test", "--device", "device-1", *args,
-            "--expires-at", end, "--sequence", 1, "--target", "apps", output,
-            success=success)
-        if not success:
-            assert not output.exists()
-            return None
-        prefix, payload = output.read_bytes().split(b"\0", 1)
-        assert prefix == b"rugix.operation-grant.v1"
-        result = json.loads(payload)
-        assert result["service"] == "rugix-ctrl"
-        assert result["audience"]["target"] == {"Recipient": "device-1"}
-        return result
-
-    for duration in ["5m", "PT5M"]:
-        before = int(time.time())
-        window = prepare_window(duration)
-        assert before <= int(window["notBefore"]) <= int(time.time())
-        assert int(window["expiresAt"]) - int(window["notBefore"]) == 300
-    now = int(time.time())
-    offset_start = datetime.fromtimestamp(now, timezone(timedelta(hours=5, minutes=30)))
-    window = prepare_window(timestamp(now + 60), offset_start.isoformat())
-    assert int(window["notBefore"]) == now
-    assert int(window["expiresAt"]) == now + 60
-    window = prepare_window(timestamp(now + 60).replace("+00:00", ".875Z"),
-                            timestamp(now).replace("+00:00", ".125Z"))
-    assert int(window["notBefore"]) == now
-    assert int(window["expiresAt"]) == now + 60
-    prepare_window(timestamp(now).replace("+00:00", ".875Z"),
-                   timestamp(now).replace("+00:00", ".125Z"), success=False)
-    # Relative expiry is measured from now, even when the start is explicitly in the future.
-    before = int(time.time())
-    window = prepare_window("2m", timestamp(before + 60))
-    assert before + 120 <= int(window["expiresAt"]) <= int(time.time()) + 120
-    for end in ["not a time", "1700000000", "0s", "-1h", "999999999999999h"]:
-        prepare_window(end, success=False)
-    prepare_window("1h", "1969-12-31T23:59:59Z", success=False)
-    prepare_window(timestamp(now), timestamp(now + 1), success=False)
-    print("PASS: RFC 3339 offsets, relative expiry, default start, and invalid windows", flush=True)
-
-    good = grant("first", 10)
-    run(BUNDLER, "grants", "verify", good, "--root-cert", root,
-        "--namespace", "test", "--device", "device-1", "--bundle", bundle)
-    install(None, success=False)
-    install(grant("wrong-device", 10, device="device-2"), success=False)
-    install(grant("wrong-group", 10, group="production"), success=False)
-    install(grant("wrong-operation", 10, target="system"), success=False)
-    now = int(time.time())
-    install(grant("expired", 10, start=now-100, end=now-1), success=False)
-    install(grant("future", 10, start=now+100, end=now+200), success=False)
-    install(good, other_bundle, success=False)
-    for flags in [
-        ["--bundle-hash", bundle_hash], ["--root-cert", root],
-        ["--insecure-skip-bundle-verification"], ["--insecure-allow-missing-block-index"],
-        ["--skip-compatibility-check"],
-    ]:
-        install(good, success=False, extra=flags)
-    assert state().get("apps") is None
-
-    # Helper failures, invalid output, and changed identity must not reserve a grant.
-    for output in ["invalid", "{}", '{"device":""}', '{"device":"device-2"}',
-                   '{"device":"device-1","groups":[""]}']:
-        identity_file.write_text(output)
-        install(good, success=False)
-        assert state().get("apps") is None
-    identity_file.write_text(json.dumps(identity))
-    identity_helper.write_text(helper_script + "exit 1\n")
-    install(good, success=False)
-    identity_helper.write_text(helper_script)
-    identity_helper.rename(identity_helper.with_suffix(".disabled"))
-    install(good, success=False)
-    identity_helper.with_suffix(".disabled").rename(identity_helper)
-    configure(max_lifetime=60)
-    now = int(time.time())
-    install(grant("long-window", 10, start=now-3600, end=now+30), success=False)
-    configure()
-    assert state().get("apps") is None
-    print("PASS: helper identity failures and total grant lifetime limit", flush=True)
-
-    # A truncated transfer reserves a transaction; a fresh process can retry it.
-    truncated = directory / "truncated.rugixb"
-    truncated.write_bytes(bundle.read_bytes()[:-50])
-    install(good, truncated, success=False)
-    assert state()["apps"]["consumed"] is False
-    install(good)
-    assert state()["apps"]["consumed"] is True
-    assert Path("/var/lib/rugix/apps/grant-test/data/activations").read_text() == "activated\n"
-    install(good, success=False)
-    install(grant("older", 9), success=False)
-    install(grant("same-sequence", 10), success=False)
-    run(CTRL, "apps", "activate", "grant-test", success=False)
-    run(CTRL, "apps", "rollback", "grant-test", success=False)
-    print("PASS: CLI grant constraints, interrupted transfer retry, activation, and replay", flush=True)
-
-
-    # Certificate authority policy must hold before any reservation or installation.
-    authority_policy = {
-        "version": 1, "namespace": "test", "audiences": "Any",
-        "permissions": [{"service": "rugix-ctrl", "operation": "rugix.install.apps.v1"}],
-        "maxGrantLifetime": 600,
-    }
-    intermediate_cert, intermediate_key = authority_certificate(
-        directory, "deployment-authority", root, root.with_suffix(".key"),
-        authority_policy, intermediate=True)
-    signer_policy = dict(authority_policy, audiences={"Targets": [{"Group": "canary"}]},
-                         maxGrantLifetime=300)
-    scoped_signer = authority_certificate(
-        directory, "scoped-signer", intermediate_cert, intermediate_key, signer_policy)
-    chain_args = ["--intermediate-cert", intermediate_cert]
-    scoped_args = {"signer": scoped_signer, "extra": chain_args}
-    install(grant("authority-wrong-audience", 11, **scoped_args), success=False)
-    install(grant("authority-long-grant", 11, group="canary",
-                  end=int(time.time()) + 500, **scoped_args), success=False)
-
-    wider_policy = dict(signer_policy, audiences="Any")
-    # This broadens the child relative to a narrower parent, even for an allowed request.
-    narrow_ca_policy = dict(authority_policy, audiences={"Targets": [{"Group": "canary"}]})
-    narrow_ca, narrow_key = authority_certificate(
-        directory, "narrow-authority", root, root.with_suffix(".key"), narrow_ca_policy,
-        intermediate=True)
-    wider_signer = authority_certificate(
-        directory, "escalated-signer", narrow_ca, narrow_key, wider_policy)
-    install(grant("authority-escalation", 11, group="canary", signer=wider_signer,
-                  extra=["--intermediate-cert", narrow_ca]), success=False)
-
-    missing_policy_signer = authority_certificate(
-        directory, "missing-policy", intermediate_cert, intermediate_key, signer_policy,
-        alter_extensions=lambda text: "\n".join(line for line in text.splitlines()
-                                                if "=DER:" not in line) + "\n")
-    install(grant("authority-missing-policy", 11, group="canary", signer=missing_policy_signer,
-                  extra=chain_args), success=False)
-    mixed_purpose_signer = authority_certificate(
-        directory, "mixed-purpose", intermediate_cert, intermediate_key, signer_policy,
-        alter_extensions=lambda text: text.replace("extendedKeyUsage=critical,",
-                                                   "extendedKeyUsage=critical,codeSigning,"))
-    install(grant("authority-mixed-purpose", 11, group="canary", signer=mixed_purpose_signer,
-                  extra=chain_args), success=False)
-    assert int(state()["apps"]["sequence"]) == 10
-    print("PASS: constrained certificate issuance, scope, lifetime, escalation, and required policy", flush=True)
-
-    # The daemon must enforce grants even when its legacy override switch is enabled.
-    Path("/etc/rugix/daemon.toml").write_text("dangerously-insecure = true\n")
-    daemon_log = directory / "daemon.log"
-    with daemon_log.open("w") as log:
-        daemon = subprocess.Popen([CTRL, "daemon"], stdout=log, stderr=log)
-        try:
-            deadline = time.monotonic() + 10
-            while not Path("/run/rugix/ctrl.sock").exists():
-                assert daemon.poll() is None, daemon_log.read_text()
-                assert time.monotonic() < deadline
-                time.sleep(0.02)
-            daemon_install(bundle, None, success=False)
-            daemon_install(bundle, good, success=False)
-            group_grant = grant("group", 11, group="canary", **scoped_args)
-            daemon_install(bundle, group_grant, {"insecure_skip_bundle_verification": True}, success=False)
-            identity_file.write_text(json.dumps(dict(identity, groups=[])))
-            daemon_install(bundle, group_grant, success=False)
-            identity_file.write_text(json.dumps(identity))
-            daemon_install(bundle, group_grant)
-            daemon_install(bundle, group_grant, success=False)
-        finally:
-            # SIGKILL makes cleanup independent of inherited signal masks.
-            daemon.kill()
-            daemon.wait(timeout=10)
-    print("PASS: daemon transport, group grant, and override rejection", flush=True)
-
-    # Admission must be checked again after a stream outlives its grant.
-    expires = int(time.time()) + 3
-    expiring = grant("expiring", 12, end=expires)
-    proc = subprocess.Popen([CTRL, "apps", "install", "-", "--grant", expiring],
-                            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    payload = bundle.read_bytes()
-    proc.stdin.write(payload[:-50])
-    proc.stdin.flush()
-    time.sleep(max(0, expires - time.time() + 0.1))
-    stdout, stderr = proc.communicate(payload[-50:], timeout=15)
-    assert proc.returncode != 0, (stdout, stderr)
-    assert state()["apps"]["consumed"] is False
-    assert len(Path("/var/lib/rugix/apps/grant-test/data/activations").read_text().splitlines()) == 2
-    install(grant("renewed", 13))
-    print("PASS: expiry during streaming prevents activation; a new grant permits recovery", flush=True)
-
-    configure(mode="EmbeddedAndGrant")
-    signed_bundle = directory / "signed.rugixb"
-    run(BUNDLER, "signatures", "sign", bundle, publisher_cert, publisher_key, signed_bundle)
-    dual = grant("dual", 14)
-    install(dual, success=False)
-    install(None, signed_bundle, success=False)
-    install(dual, signed_bundle)
-    assert int(state()["apps"]["sequence"]) == 14
-
-    saved = (state_dir / "state.json").read_bytes()
-    (state_dir / "state.json").unlink()
-    install(grant("missing-state", 15), signed_bundle, success=False)
-    (state_dir / "state.json").write_text("invalid")
-    install(grant("corrupt-state", 15), signed_bundle, success=False)
-    (state_dir / "state.json").write_bytes(saved)
-    assert int(state()["apps"]["sequence"]) == 14
-    print("PASS: independent publisher and deployment signatures; missing/corrupt state fails closed", flush=True)
-
-    # External CMS signing uses the exact prepared bytes and preserves the grant.
-    prepared = directory / "prepared.raw"
-    external = directory / "external.cms"
-    now = int(time.time())
-    run(BUNDLER, "grants", "prepare", "--bundle", bundle, "--id", "external",
-        "--namespace", "test", "--device", "device-1", "--not-before", timestamp(now-1),
-        "--expires-at", timestamp(now+300), "--sequence", 15, "--target", "apps", prepared)
-    run("openssl", "cms", "-sign", "-binary", "-nodetach", "-in", prepared,
-        "-signer", cert, "-inkey", key, "-outform", "DER", "-out", external)
-    install(external, signed_bundle)
-    print("PASS: external OpenSSL signing and unchanged bundle identity", flush=True)
-
-    # File slots and a recording boot controller exercise the system installer
-    # without block devices or a real reboot.
-    configure()
-    slot_a, slot_b = directory / "slot-a", directory / "slot-b"
-    slot_a.write_bytes(b"active system")
-    slot_b.write_bytes(b"old inactive system")
-    boot_log = directory / "boot.log"
-    controller = directory / "boot-controller"
-    controller.write_text(f"""#!{sys.executable}
-import json
-from pathlib import Path
-import sys
-
-operation = sys.argv[1]
-if operation in ["get_active", "get_default"]:
-    print(json.dumps({{"group": "A"}}))
-else:
-    if operation in ["pre_install", "set_try_next"]:
-        state = json.loads(Path({str(state_dir / "state.json")!r}).read_text())
-        assert state["system"]["consumed"] == (operation == "set_try_next")
-    with Path({str(boot_log)!r}).open("a") as log:
-        log.write(" ".join(sys.argv[1:]) + "\\n")
-    print("{{}}")
-""")
-    controller.chmod(0o755)
-    Path("/etc/rugix/system.toml").write_text(f"""
-[config-partition]
-disabled = true
-[boot-flow]
-type = "custom"
-controller = "{controller}"
-[slots.a]
-type = "file"
-path = "{slot_a}"
-[slots.b]
-type = "file"
-path = "{slot_b}"
-[boot-groups.A.slots]
-system = "a"
-[boot-groups.B.slots]
-system = "b"
-""")
-    bundle_dir = directory / "system-bundle"
-    (bundle_dir / "payloads").mkdir(parents=True)
-    system_payload = b"replacement system" * 4096
-    (bundle_dir / "payloads/system").write_bytes(system_payload)
-    (bundle_dir / "rugix-bundle.toml").write_text("""
-update-type = "full"
-[[payloads]]
-filename = "system"
-delivery = { type = "slot", slot = "system" }
-[payloads.block-encoding]
-chunker = "casync-64"
-hash-algorithm = "sha256"
-""")
-    system_bundle = directory / "system.rugixb"
-    run(BUNDLER, "bundle", bundle_dir, system_bundle)
-    scoped_system = grant("authority-system-denied", 1, target="system", payload=system_bundle,
-                          group="canary", signer=scoped_signer,
-                          extra=[*chain_args, "--boot-group", "B", "--reboot", "set"])
-    run(CTRL, "update", "install", system_bundle, "--grant", scoped_system,
-        "--boot-group", "B", "--reboot", "set", success=False)
-    assert slot_b.read_bytes() == b"old inactive system"
-    assert state().get("system") is None
-    system_policy = dict(authority_policy, audiences={"Targets": [{"Recipient": "device-1"}]},
-                         permissions=[{"service": "rugix-ctrl", "operation": "rugix.install.system.v1"}])
-    system_signer = authority_certificate(
-        directory, "system-authority", root, root.with_suffix(".key"), system_policy)
-    system_grant = grant("system", 1, target="system", payload=system_bundle,
-                         signer=system_signer,
-                         extra=["--boot-group", "B", "--reboot", "set"])
-    base = [CTRL, "update", "install", system_bundle, "--grant", system_grant]
-    for flags in [
-        ["--boot-group", "A", "--reboot", "set"],
-        ["--boot-group", "B", "--reboot", "no"],
-        ["--boot-group", "B", "--reboot", "set", "--keep-overlay"],
-    ]:
-        run(*base, *flags, success=False)
-    assert slot_b.read_bytes() == b"old inactive system"
-    assert not boot_log.exists()
-    run(*base, "--boot-group", "B", "--reboot", "set")
-    assert slot_a.read_bytes() == b"active system"
-    assert slot_b.read_bytes() == system_payload
-    assert boot_log.read_text().splitlines() == ["pre_install B", "post_install B", "set_try_next B"]
-    assert state()["system"]["consumed"] is True
-    assert int(state()["apps"]["sequence"]) == 15
-    run(*base, "--boot-group", "B", "--reboot", "set", success=False)
-    run(CTRL, "system", "reboot", "--spare", success=False)
-    assert boot_log.read_text().splitlines() == ["pre_install B", "post_install B", "set_try_next B"]
-    print("PASS: system slot installation, option binding, consumption before boot selection, and replay", flush=True)
-
-    # A reset replaces the managed profile but must preserve authorization history.
-    standalone_state = (state_dir / "state.json").read_bytes()
-    profile = Path("/run/rugix/mounts/data/state/default")
-    profile.mkdir(parents=True)
-    state_mount = Path("/run/rugix/state")
-    state_mount.mkdir()
-    run("mount", "--bind", profile, state_mount)
-    managed_grant = grant("managed", 16, group="canary", **scoped_args)
-    install(managed_grant, success=False)
-    state_dir = Path("/run/rugix/mounts/data/.rugix/grants")
-    run(CTRL, "initialize-grant-state")
-    install(managed_grant)
-    managed_state = (state_dir / "state.json").read_bytes()
-    run("umount", state_mount)
-    shutil.rmtree(profile)
-    profile.mkdir()
-    run("mount", "--bind", profile, state_mount)
-    install(managed_grant, success=False)
-    assert (state_dir / "state.json").read_bytes() == managed_state
-    assert Path("/var/lib/rugix/grants/state.json").read_bytes() == standalone_state
-
-    print("PASS: standard state paths and reset-resistant replay history", flush=True)
-
-    # Helper output is refreshed before activation while a stream is still in progress.
-    activation_file = state_mount / "apps/grant-test/data/activations"
-    assert not activation_file.exists()
-    script.write_text(script.read_text() + "\n# New payload for identity revalidation.\n")
-    identity_bundle = directory / "identity-update.rugixb"
-    run(BUNDLER, "apps", "pack", "generic", "--app", "grant-test", script, identity_bundle)
-    for sequence, change in [(17, "membership"), (18, "identity"), (19, "helper-failure")]:
-        signature = grant(f"changed-{change}", sequence, group="canary", payload=identity_bundle, **scoped_args)
-        proc = subprocess.Popen([CTRL, "apps", "install", "-", "--grant", signature],
-                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        try:
-            proc.stdin.write(identity_bundle.read_bytes()[:-50])
-            proc.stdin.flush()
-            deadline = time.monotonic() + 10
-            while int(state()["apps"]["sequence"]) != sequence:
-                assert time.monotonic() < deadline, "installation did not reserve the grant"
-                assert proc.poll() is None, "installation exited before reserving the grant"
-                time.sleep(0.02)
-            if change == "membership":
-                identity_file.write_text(json.dumps(dict(identity, groups=[])))
-            elif change == "identity":
-                identity_file.write_text(json.dumps(dict(identity, device="device-2")))
-            else:
-                identity_helper.write_text(helper_script + "exit 1\n")
-            stdout, stderr = proc.communicate(identity_bundle.read_bytes()[-50:], timeout=15)
-            assert proc.returncode != 0, (stdout, stderr)
-            assert state()["apps"]["consumed"] is False
-            assert not activation_file.exists()
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-                proc.wait(timeout=10)
-            identity_file.write_text(json.dumps(identity))
-            identity_helper.write_text(helper_script)
-    install(grant("identity-restored", 20, group="canary", payload=identity_bundle, **scoped_args), identity_bundle)
-    assert activation_file.read_text().splitlines() == ["activated"]
-    print("PASS: identity, membership, and helper failure revalidation before activation", flush=True)
+    device = Device(directory)
+    for section in SECTIONS:
+        section(device)
 
 
 def main():

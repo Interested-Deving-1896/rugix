@@ -50,6 +50,8 @@ Works with Yocto, Buildroot, and other Linux build systems.
 
 For the precise update durability boundaries, interruption behavior, and operator recovery
 expectations implemented by this repository, see [Update Reliability and Recovery](docs/update-reliability.md).
+For the wire format and certificate profile behind device-targeted installation authorization,
+see [Detached Installation Grants](docs/installation-grants.md).
 
 ## Rugix Admin
 
@@ -75,9 +77,6 @@ management solutions, so **you stay in control without vendor lock-in**.
 
 Rugix empowers teams to **ship robust products fast and without compromising on best practices** like read-only root filesystems, atomic OTA updates, reliable application deployment, and reproducible builds.
 
-
-See [Detached Installation Grants](docs/installation-grants.md) for device-targeted,
-time-limited installation authorization.
 
 ## Development
 

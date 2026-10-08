@@ -1,19 +1,25 @@
 //! Signed, constrained grants for typed operations.
 //!
 //! [`sign`] creates a CMS envelope containing a [`Grant`]. [`GrantVerifier`]
-//! verifies that envelope for a specific service, operation type, recipient identity,
-//! and trusted time. Signatures cover the original bytes; JSON is never
+//! verifies that envelope for a specific service, operation type, recipient
+//! identity, and trusted time. Signatures cover the original bytes; JSON is never
 //! reserialized for verification.
 //!
-//! Verification is one part of authorization. Executors must select trusted
-//! issuers for the requested operation, enforce their resource policy, compare
-//! the signed operation with the request, and durably enforce their replay policy
-//! before side effects. This crate performs no I/O and executes no operations.
-//! In particular, a [`VerifiedGrant`] is not proof that a grant is unused.
+//! A verifier is constructed for one locally authorized issuer and the operation
+//! permissions that issuer may use. Every accepted grant therefore satisfies both
+//! local policy and the signing certificate's own authority, described in
+//! [`authority`]. Only certificates prepared as grant authorities can sign.
+//!
+//! Verification is one part of authorization. Executors must still enforce their
+//! resource policy, compare the signed operation with the request, and durably
+//! enforce their replay policy before side effects. This crate performs no I/O and
+//! executes no operations. In particular, a [`VerifiedGrant`] is not proof that a
+//! grant is unused.
 
 use std::time::Duration;
 use std::time::SystemTime;
 
+use const_oid::ObjectIdentifier;
 use rugix_pki::CmsSigner;
 use rugix_pki::CmsVerifier;
 use rugix_pki::PkiError;
@@ -61,14 +67,16 @@ pub trait Operation: sidex_serde::SidexType {
     /// For example, `rugix.install.v1`.
     const TYPE: &'static str;
 
-    /// Permission required by this operation's authenticated arguments.
+    /// Object identifier of the authority required by these arguments.
     ///
-    /// Override this for operations with distinct authority scopes. Identifiers
-    /// must be globally distinct and versioned, and must never depend on untrusted
-    /// caller configuration. A future change in meaning requires a new identifier.
-    fn permission(&self) -> &'static str {
-        Self::TYPE
-    }
+    /// Operations with distinct authority scopes return distinct identifiers, so
+    /// an authority can be limited to one of them. Assign them under a namespace
+    /// the operation's project controls, never from untrusted caller
+    /// configuration. A future change in meaning requires a new identifier.
+    ///
+    /// Issuing certificates carry this identifier as an extended key usage, so
+    /// local policy and the certificate chain constrain the same value.
+    fn permission(&self) -> ObjectIdentifier;
 }
 
 /// Recipient facts supplied by the executor's trusted identity provider.
@@ -93,29 +101,37 @@ pub struct VerificationContext<'a> {
     /// Trusted current time, used for both grants and certificate validity.
     ///
     /// The caller must refuse verification if trustworthy current time is
-    /// unavailable. Neither a grant timestamp nor CMS signing-time establishes it.
+    /// unavailable, and should bound this value below by durable local state.
+    /// Neither a grant timestamp nor CMS signing-time establishes it.
     pub now: SystemTime,
 }
 
 /// Verifies grants against one locally authorized certificate authority.
 ///
-/// Construct separate verifiers when authorities have different permissions.
-/// The trust root comes from local policy, never from the submitted grant.
+/// Construct separate verifiers for authorities with different permissions or
+/// lifetime limits. The trust root and the permissions come from local policy,
+/// never from the submitted grant.
 pub struct GrantVerifier {
     cms: CmsVerifier,
-    authority_cms: CmsVerifier,
+    permissions: Vec<ObjectIdentifier>,
     max_size: usize,
     max_lifetime: Duration,
 }
 
 impl GrantVerifier {
-    /// Use a PEM root certificate and the default resource and lifetime limits.
-    pub fn new(root_certificate: &[u8]) -> Result<Self, GrantError> {
+    /// Authorize a PEM root certificate for exactly `permissions`.
+    ///
+    /// An empty permission list authorizes nothing. Resource and lifetime limits
+    /// start at their defaults.
+    pub fn new(
+        root_certificate: &[u8],
+        permissions: Vec<ObjectIdentifier>,
+    ) -> Result<Self, GrantError> {
         Ok(Self {
-            cms: CmsVerifier::new(root_certificate).map_err(GrantError::Signature)?,
-            authority_cms: CmsVerifier::new(root_certificate)
+            cms: CmsVerifier::new(root_certificate)
                 .map_err(GrantError::Signature)?
                 .with_required_key_usage(authority::GRANT_AUTHORITY_EKU.as_bytes()),
+            permissions,
             max_size: DEFAULT_MAX_GRANT_SIZE,
             max_lifetime: DEFAULT_MAX_LIFETIME,
         })
@@ -140,16 +156,9 @@ impl GrantVerifier {
         if signed_grant.len() > self.max_size {
             return Err(GrantError::SizeLimit);
         }
-        let (verified, constrained) = self.authority_cms
+        let verified = self
+            .cms
             .verify_at(signed_grant, context.now)
-            .map(|verified| (verified, true))
-            .or_else(|authority_error| {
-                self.cms.verify_at(signed_grant, context.now)
-                    .map(|verified| (verified, false))
-                    .map_err(|legacy_error| PkiError::SignatureVerification(format!(
-                        "grant authority verification failed: {authority_error}; code signing verification failed: {legacy_error}"
-                    )))
-            })
             .map_err(GrantError::Signature)?;
         let content = verified
             .content
@@ -157,11 +166,14 @@ impl GrantVerifier {
             .ok_or(GrantError::UnsupportedFormat)?;
         let grant: Grant<T> = decode_strict(content)?;
         validate_structure(&grant)?;
+        if !self.permissions.contains(&grant.operation.permission()) {
+            return Err(GrantError::PermissionDenied);
+        }
         if Duration::from_secs(grant.expires_at - grant.not_before) > self.max_lifetime {
             return Err(GrantError::LifetimeLimit);
         }
         validate_context(&grant, context)?;
-        authority::verify(&verified.certificate_chain, constrained, &grant)?;
+        authority::verify(&verified.certificate_chain, &grant)?;
         Ok(VerifiedGrant {
             grant,
             signer_certificate: verified.signer_certificate,
@@ -241,15 +253,18 @@ pub enum GrantError {
     /// The CMS envelope exceeds the local size limit.
     #[error("grant size exceeds the configured limit")]
     SizeLimit,
-    /// A certificate has an unsupported or malformed authority policy.
-    #[error("invalid grant authority certificate or constraints")]
+    /// A certificate is not prepared as a grant authority.
+    #[error("invalid or missing grant authority certificate")]
     InvalidAuthority,
-    /// A subordinate authority exceeds its parent's scope, validity, or delegation depth.
+    /// A subordinate authority exceeds its parent's scope.
     #[error("grant authority exceeds its parent delegation")]
     AuthorityEscalation,
-    /// The grant exceeds its issuing authority's permissions or validity.
-    #[error("grant exceeds its issuing authority")]
+    /// The grant addresses an audience outside its issuing authority.
+    #[error("grant audience exceeds its issuing authority")]
     AuthorityDenied,
+    /// Local policy or the certificate chain withholds the required permission.
+    #[error("authority may not authorize this operation")]
+    PermissionDenied,
 }
 
 /// Decode without accepting unknown constraints, duplicate fields, or trailing data.
@@ -317,14 +332,24 @@ fn validate_context<T>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rcgen::BasicConstraints;
     use rcgen::CertificateParams;
+    use rcgen::CustomExtension;
     use rcgen::IsCa;
     use rcgen::KeyPair;
     use rcgen::KeyUsagePurpose;
     use serde::Deserialize;
     use serde::Serialize;
+
+    use super::*;
+    use crate::authority::AUTHORITY_SCOPE_OID;
+    use crate::authority::AuthorityScope;
+    use crate::authority::EXTENDED_KEY_USAGE_OID;
+    use crate::authority::ScopeTarget;
+    use crate::authority::purposes_extension_der;
+
+    const RESTART: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.4.1.67013.100.1.9001");
+    const REMOVE: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.4.1.67013.100.1.9002");
 
     #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
     struct Restart {
@@ -333,6 +358,10 @@ mod tests {
     sidex_serde::impl_sidex_type!(Restart);
     impl Operation for Restart {
         const TYPE: &'static str = "example.restart.v1";
+
+        fn permission(&self) -> ObjectIdentifier {
+            RESTART
+        }
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -342,6 +371,10 @@ mod tests {
     sidex_serde::impl_sidex_type!(Remove);
     impl Operation for Remove {
         const TYPE: &'static str = "example.remove.v1";
+
+        fn permission(&self) -> ObjectIdentifier {
+            REMOVE
+        }
     }
 
     struct Fixture {
@@ -362,6 +395,21 @@ mod tests {
             params.not_before = rcgen::date_time_ymd(2020, 1, 1);
             params.not_after = rcgen::date_time_ymd(2030, 1, 1);
             params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+            let arcs = |oid: ObjectIdentifier| oid.arcs().map(u64::from).collect::<Vec<_>>();
+            let mut purposes = CustomExtension::from_oid_content(
+                &arcs(EXTENDED_KEY_USAGE_OID),
+                purposes_extension_der(&[RESTART, REMOVE]).unwrap(),
+            );
+            purposes.set_criticality(true);
+            params.custom_extensions.push(purposes);
+            params
+                .custom_extensions
+                .push(CustomExtension::from_oid_content(
+                    &arcs(AUTHORITY_SCOPE_OID),
+                    AuthorityScope::new("example", vec![ScopeTarget::any()])
+                        .to_extension_der()
+                        .unwrap(),
+                ));
             let cert = params.signed_by(&signing_key, &ca, &key).unwrap();
             Self {
                 signer: CmsSigner::new(
@@ -369,7 +417,7 @@ mod tests {
                     signing_key.serialize_pem().as_bytes(),
                 )
                 .unwrap(),
-                verifier: GrantVerifier::new(ca.pem().as_bytes()).unwrap(),
+                verifier: GrantVerifier::new(ca.pem().as_bytes(), vec![RESTART, REMOVE]).unwrap(),
                 identity: RecipientIdentity {
                     namespace: "example".into(),
                     recipient_id: "recipient-1".into(),
@@ -445,6 +493,22 @@ mod tests {
             fixture.verifier.verify::<Restart>(&signed, &context),
             Err(GrantError::ServiceMismatch)
         ));
+    }
+
+    /// Local policy bounds which operations a trusted issuer may authorize.
+    #[test]
+    fn local_policy_bounds_permissions() {
+        let mut fixture = Fixture::new();
+        let signed = sign(&fixture.grant(), &fixture.signer).unwrap();
+        for permissions in [vec![REMOVE], vec![]] {
+            fixture.verifier.permissions = permissions;
+            assert!(matches!(
+                fixture
+                    .verifier
+                    .verify::<Restart>(&signed, &fixture.context(1_800_000_000)),
+                Err(GrantError::PermissionDenied)
+            ));
+        }
     }
 
     /// Recipient and group matching uses independently supplied, namespaced identity.

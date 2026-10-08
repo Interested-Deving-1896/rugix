@@ -18,7 +18,6 @@ sidex::include_bundle! {
 }
 
 pub use generated::compose;
-pub(crate) use generated::grants;
 pub use generated::manifest::*;
 
 /// Check whether a string is an RFC 6901 JSON Pointer.

@@ -92,7 +92,7 @@ impl Operation for RebootSystem {
         _events: &mut dyn EventSink<Self::Event>,
     ) -> SystemResult<Self::Output> {
         if self.spare {
-            super::install::grants::require_unconstrained_activation(context.config())?;
+            super::install::grants::reject_manual_activation(context.config())?;
         }
         reboot_system(self.spare)
     }

@@ -26,7 +26,6 @@ use crate::reader::read_optional_metadata;
 pub mod block_encoding;
 pub mod builder;
 pub mod format;
-pub mod grants;
 pub mod manifest;
 pub mod reader;
 pub mod source;

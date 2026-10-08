@@ -94,7 +94,7 @@ pub(crate) fn install_payloads<R: BundleSource>(
         },
         || {
             if let Some(grant) = grant {
-                grant.reserve()?;
+                grant.admit()?;
             }
             update_hooks
                 .run_hooks("pre-update", hook_vars.clone(), &Default::default())

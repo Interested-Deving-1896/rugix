@@ -40,7 +40,7 @@ thiserror.workspace = true
 reportify.workspace = true
 
 [dev-dependencies]
-rcgen = "0.13"
+rcgen.workspace = true
 tempfile = "3"
 
 [lints]

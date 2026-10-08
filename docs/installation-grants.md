@@ -1,423 +1,160 @@
 # Detached Installation Grants
 
-An installation grant authorizes a specific bundle for a device or provisioned group
-during a limited time window. The grant is a separate CMS file. Issuing or renewing
-it leaves the bundle unchanged, including its hash, streaming verification, and
-delta delivery.
+An installation grant authorizes one specific bundle for one device or provisioned
+group during a limited time window. This document specifies the wire format, the
+certificate profile, and the permanent identifiers, for anyone implementing a grant
+issuer or reviewing the implementation.
 
-Rugix Ctrl verifies grants inside the installation executor. The CLI and privileged
-daemon enforce the same grant policy. The signature covers the Rugix bundle hash,
-device audience, validity window, authorization sequence, and installation options.
+Operator documentation lives at
+[Installation Grants](https://rugix.org/docs/ctrl/next/updates/installation-grants).
 
-## Provision a Device
+## Components
 
-Configure `/etc/rugix/ctrl.toml`:
+| Crate | Responsibility |
+| --- | --- |
+| `crates/libs/rugix-grants` | Grant envelope, CMS signing and verification, certificate scope |
+| `crates/libs/rugix-install-grants` | The `rugix.install.v1` operation and its permissions |
+| `crates/apps/rugix-ctrl` | Local policy, device identity, replay state, enforcement |
+| `crates/apps/rugix-bundler` | Issuance, external signing, certificate extensions |
 
-```toml
-[grants]
-roots = ["/etc/rugix/grant-root.pem"]
-mode = { tag = "GrantOnly" }
-namespace = "example-production"
-identity-helper = "/usr/lib/rugix/grant-identity"
-max-lifetime = 86400
-```
+`rugix-grants` performs no I/O and executes no operations. It is reusable by other
+services that need signed, constrained operations; an operation defines its payload
+in Sidex and the key purpose that authorizes it.
 
-The executable at `identity-helper` supplies the device ID and current group
-memberships. It takes no arguments and must exit successfully with
-[`GrantIdentity`](../crates/apps/rugix-ctrl/schemas/grants.sidex) JSON on stdout:
+## Trust Model
 
-```json
-{"device": "device-001", "groups": ["canary"]}
-```
+Every accepted grant satisfies two independent limits, and authorization is their
+intersection:
 
-For example, a helper can read an identity record maintained by provisioning:
+- **Local policy** names the trusted roots, the operations each may authorize, and
+  the longest validity window each may use. A signing key cannot change it.
+- **Certificate scope** names the identity namespace and audiences one key may
+  address, and the operations its extended key usage permits. An authority cannot
+  delegate more than it holds.
 
-```sh
-#!/bin/sh
-exec cat /etc/rugix/grant-identity.json
-```
+A verifier is constructed for one root and one permission set, so an executor cannot
+accidentally accept a grant that local policy does not cover.
 
-A platform-specific helper can derive the stable ID from hardware or query a
-trusted identity service. Protect the helper, its inputs, configuration, and
-certificates from installation callers. Never derive identity from the submitted
-grant. A service-backed helper must authenticate its response and handle service
-unavailability; execution failure, invalid JSON, and empty identifiers reject the
-operation.
+Recipient identity must come from the executor's trusted provider, never from the
+request or the grant. The library takes it as an explicit input.
 
-Rugix runs the helper during explicit state initialization, at admission, before
-reservation, and before activation. The namespace and device ID must match the
-persisted replay state throughout installation. Changing device identity requires
-explicit reprovisioning; group membership can change without resetting history.
+Verification needs trusted current time, supplied by the caller. Rugix Ctrl uses the
+system clock bounded below by a durable watermark, so a clock that moves backwards
+cannot revive an expired grant. Neither grant timestamps nor CMS signing-time
+establish current time.
 
-Groups are exact identifiers within the configured namespace. A grant addressed
-to `{"Group":"canary"}` is accepted only if the helper currently lists `canary`.
-Omitting `groups` means no group memberships. Device-addressed grants use
-`{"Recipient":"device-001"}` and match the device ID independently of its groups.
-Membership never expands an issuer certificate's audience constraints. Changes
-in an external inventory take effect when the helper returns the updated memberships.
+## Wire Format
 
-Grant verification assumes that the system clock provides trustworthy current time.
-The platform must establish and maintain it before installations, including after
-reboots and power loss, for example through a protected clock or an authenticated
-time service. Rugix checks grant and certificate validity against that clock; it
-does not synchronize the clock or determine whether it is trustworthy. An incorrect
-clock can cause expired grants to be accepted or valid grants to be rejected.
-Grant timestamps and CMS signing-time do not establish current time. A stored
-timestamp alone cannot account for time spent powered off.
+The signed CMS content is the byte prefix `rugix.operation-grant.v1\0` followed by
+UTF-8 JSON. Signatures cover those exact bytes, and verification never reserializes
+JSON. The prefix provides domain separation, so a grant cannot be substituted for
+ordinary embedded bundle metadata.
 
-Grant replay state uses `/run/rugix/mounts/data/.rugix/grants` when Rugix state
-management is active, detected by the presence of `/run/rugix/state`. This location
-survives a state-profile reset. Systems without state management use
-`/var/lib/rugix/grants`. The state location is not configurable.
+Decoding rejects unsupported versions, mismatched operation types, unknown fields,
+duplicate fields, and trailing content. A constraint added by a future issuer
+therefore fails closed instead of being ignored. Operation payloads must use
+externally tagged variants: internally tagged variants buffer their content and can
+hide unknown fields from Serde's tracking adapter.
 
-Initialize state after the device's storage and state management are set up. Keep
-the selected directory on persistent, protected storage outside the A/B system
-slots and resettable profiles. When changing the storage layout, migrate the
-existing replay state. Rugix fails closed if the selected state file is missing,
-invalid, or belongs to another provisioned identity; it does not search other
-locations for a usable state file. Do not automatically initialize missing state
-at boot. Missing state cannot distinguish first use from deletion of previously
-consumed sequences. Lazy initialization would accept old, still-valid grants again
-after such deletion. A full data-partition wipe removes grant history and requires
-explicit reprovisioning.
+The Sidex contracts are
+[`grant.sidex`](../crates/libs/rugix-grants/schemas/grant.sidex) and
+[`install.sidex`](../crates/libs/rugix-install-grants/schemas/install.sidex). The
+published JSON schema for the installation operation is
+[`rugix-install-operation.schema.json`](../schemas/rugix-install-operation.schema.json).
+The unsigned 64-bit fields `notBefore` and `expiresAt` accept JSON integers or
+decimal strings; Sidex emits decimal strings above JavaScript's maximum safe
+integer, 9007199254740991.
 
-Initialize state once during provisioning, as root:
+Default limits are a 1 MiB CMS envelope, including certificates, and a one-day
+validity window.
 
-```sh
-rugix-ctrl initialize-grant-state
-```
+## Certificate Profile
 
-Initialization refuses to overwrite existing state. Restoring an old state backup
-can restore old permissions; deployments defending against storage rollback need
-hardware-backed protection for their security state and verifier.
+Every certificate below the trust anchor must carry:
 
-With a `[grants]` section present, every system and app installation requires a
-grant. Caller-supplied bundle hashes, root certificates, compatibility overrides,
-and insecure verification options cannot bypass this requirement. The daemon's
-`dangerously-insecure` switch does not override grant policy.
+1. A **critical extended key usage** holding the grant authority purpose plus one
+   purpose per operation the certificate may authorize, including purposes it only
+   delegates to subordinates.
+2. A **non-critical scope extension** holding a DER `AuthorityScope`.
 
-Grant roots authorize both system and app installation on the configured device.
-Unconstrained grant issuers can authorize any bundle under `GrantOnly`.
-Constrained authority certificates can narrow this permission as described below. Use independent publisher
-verification when deployment authorities should only select publisher-approved
-software:
+```text
+AuthorityScope ::= SEQUENCE {
+    version    INTEGER,
+    namespace  UTF8String,
+    targets    SEQUENCE OF ScopeTarget
+}
 
-```toml
-[signatures]
-roots = ["/etc/rugix/publisher-root.pem"]
-
-[grants]
-roots = ["/etc/rugix/grant-root.pem"]
-mode = { tag = "EmbeddedAndGrant" }
-namespace = "example-production"
-identity-helper = "/usr/lib/rugix/grant-identity"
-```
-
-Both signatures are then mandatory. Adding several roots allows certificate
-rotation within one authority; any accepted grant root may issue a grant. Restart
-the daemon after changing its configuration.
-
-## Issue and Install a Grant
-
-Issue a grant on a trusted signing machine. `--not-before` accepts an RFC 3339
-timestamp and defaults to the current time. `--expires-at` accepts an RFC 3339
-timestamp or a Jiff duration such as `1h`, `30m`, or `PT1H`. Durations are offsets
-from the current issuing time, including when `--not-before` is supplied.
-For example, `--not-before 2026-10-08T12:00:00Z --expires-at 2026-10-08T13:00:00Z`
-defines a fixed window; timestamps with numeric UTC offsets are also supported.
-
-The signed format stores whole Unix seconds, with an inclusive start and exclusive
-end. Fractional seconds are truncated. Empty or reversed windows and timestamps
-outside the supported range are rejected.
-
-```sh
-rugix-bundler grants sign \
-  --bundle update.rugixb \
-  --id rollout-42-device-001 \
-  --namespace example-production \
-  --device device-001 \
-  --expires-at 1h \
-  --sequence 42 \
-  --target system \
-  --reboot set \
-  --cert grant-signer.pem \
-  --key grant-signer.key \
-  update.cms
-```
-
-Install with the same authorized options:
-
-```sh
-rugix-ctrl update install --grant update.cms --reboot set update.rugixb
-```
-
-Use `--group canary` instead of `--device device-001` for a provisioned group.
-Use `--target apps` when signing for `rugix-ctrl apps install --grant app.cms app.rugixb`.
-
-System grants bind `--boot-group`, `--keep-overlay`, and `--reboot` exactly.
-Omitting a boot group authorizes local selection of an inactive group. Omitting
-reboot behavior authorizes the bundle's default. System options cannot be used
-with an app grant. The bundle hash binds its payload destinations, including app
-names.
-
-The default maximum grant size is 1 MiB, including certificates. The default
-maximum validity window is one day; `max-lifetime` configures the device's limit
-in seconds. It bounds the entire signed interval, `expiresAt - notBefore`, rather
-than the time remaining when a grant arrives. A grant with a two-day window is
-rejected under a one-day limit even if it expires in a minute. This is a bound on
-permission lifetime, not an installation timeout; installation must still reach
-authorization of activation before expiry.
-The verifier also applies normal bundle integrity, destination, and compatibility
-checks.
-
-Inspect authenticated grant content and compare it with a trusted bundle:
-
-```sh
-rugix-bundler grants verify update.cms \
-  --root-cert grant-root.pem \
-  --namespace example-production \
-  --device device-001 \
-  --bundle update.rugixb
-```
-
-For group grants, also supply the independently established membership with
-`--group`. This command uses the local clock and the library's default limits.
-It does not inspect a device's replay state or authorize an installation.
-
-## Use an External Signer
-
-Prepare the exact bytes that must be signed, using the same grant options as above:
-
-```sh
-rugix-bundler grants prepare \
-  --bundle update.rugixb --id rollout-42-device-001 \
-  --namespace example-production --device device-001 \
-  --expires-at 1h \
-  --sequence 42 --target system --reboot set grant.raw
-
-openssl cms -sign -binary -nodetach \
-  -in grant.raw -signer grant-signer.pem -inkey grant-signer.key \
-  -outform DER -out update.cms
-```
-
-The CMS envelope must include the signed content. Its signing certificate and
-intermediate chain must validate against a configured grant root. The existing
-Rugix PKI certificate rules apply, including digital signature key usage.
-Unconstrained chains use code-signing extended key usage when present; constrained
-chains use the dedicated grant-authority purpose described below. The signing command also supports
-repeated `--intermediate-cert` arguments.
-
-## Constrained Grant Authorities
-
-An authority certificate delegates permission to issue grants or subordinate
-certificates. Its signed constraints bind the public key to a namespace, audience
-selectors, service-operation permissions, maximum grant lifetime, and delegation
-depth. Its X.509 validity period bounds when that authority is usable. Verification
-requires no certificate server: the grant carries its signing certificate and
-intermediates.
-
-A child must preserve or narrow its parent's namespace, audience selectors,
-permissions, and maximum grant lifetime. Its whole certificate validity period
-must fit inside its parent's. An omitted `maxDelegationDepth` means zero: a CA may
-issue grant-signing certificates but may not issue subordinate CAs. Each additional
-CA level reduces the remaining allowance. A signing certificate must have depth
-zero. A child that widens authority is rejected even if a particular grant would
-fit its parent's permissions.
-
-Audience selectors use exact matching. `"Any"` permits any selector within the
-namespace. `{"Targets":[{"Group":"canary"}]}` permits grants addressed to that group;
-it does not permit device-addressed grants, even for devices in the group.
-Device membership comes from the trusted identity helper.
-
-Permissions pair a service identifier with an operation permission identifier:
-
-| Service | Permission | Authorized Operation |
-| --- | --- | --- |
-| `rugix-ctrl` | `rugix.install.apps.v1` | Application installation |
-| `rugix-ctrl` | `rugix.install.system.v1` | System installation |
-
-Both use the `rugix.install.v1` grant payload. Permissions distinguish the
-authenticated installation target. An empty permission or target list authorizes
-nothing. Unknown identifiers grant no additional permission. Unknown constraint
-fields, versions, duplicate fields, and malformed certificates are rejected.
-
-The grant's entire validity window must fit inside its signing certificate's
-window and its maximum grant lifetime. Device policy may impose a shorter limit.
-The certificate chain is checked again at reservation and consumption. A claimed
-signing time cannot extend authority beyond certificate expiry. Already authorized
-activation, recovery, and running software follow the rules in
-[Replay, Expiry, and Recovery](#replay-expiry-and-recovery).
-
-Configured trust roots remain administrative authorities. Existing unconstrained
-code-signing chains remain supported. Use separate keys for constrained authorities:
-issuing an unconstrained certificate for the same key creates another authorization
-path. A locally configured root's certificate expiry does not automatically expire
-local trust. If the root itself carries authority constraints, Rugix also enforces
-those constraints and its validity window.
-
-Constraints limit accepted requests. They do not reverse installations or replay
-state changes already authorized by a compromised key. In particular, issuers
-sharing an installation scope still share its authorization sequence.
-
-## Issue Constrained Certificates
-
-Create `authority.json` on a trusted signing machine:
-
-```json
-{
-  "version": 1,
-  "namespace": "example-production",
-  "audiences": {"Targets": [{"Group": "canary"}]},
-  "permissions": [
-    {"service": "rugix-ctrl", "operation": "rugix.install.apps.v1"}
-  ],
-  "maxGrantLifetime": 1800
+ScopeTarget ::= CHOICE {
+    any       [0] NULL,
+    recipient [1] UTF8String,
+    group     [2] UTF8String
 }
 ```
 
-Use an existing grant root to issue an intermediate with a 90-day validity period:
+A verifier implementing this profile MUST reject a certificate that carries the grant
+authority purpose without a scope extension. That requirement is what makes breadth
+explicit: a permissive authority still has to state `any` and name its namespace. The
+scope extension is non-critical only because X.509 verifiers reject critical
+extensions they do not recognize; the mandatory purpose is what keeps other verifiers
+from accepting these keys for code signing.
 
-```sh
-umask 077
-rugix-bundler grants authority-extensions \
-  authority.json authority.ext --intermediate
+DER decoding rejects unknown elements and trailing data, so an extension this verifier
+does not fully understand authorizes nothing. An empty target list authorizes nothing.
 
-openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
-  -nodes -subj "/CN=Application Deployment Authority" \
-  -keyout authority.key -out authority.csr
+A subordinate must preserve or narrow its parent's namespace and audience selectors.
+Delegation depth and certificate validity use standard basic constraints and validity
+periods, which the X.509 path verifier enforces for every certificate in the chain.
+Because the grant authority purpose is required on every certificate below the
+anchor, a grant authority cannot be chained under an existing code-signing
+intermediate.
 
-openssl x509 -req -in authority.csr \
-  -CA grant-root.pem -CAkey grant-root.key -CAcreateserial \
-  -days 90 -extfile authority.ext -out authority.pem
-```
+The locally configured anchor may omit both extensions, because local configuration
+is the authorization for the anchor. A scope attached to the anchor is enforced.
 
-Issue a grant-signing certificate with a shorter validity period:
+## Identifiers
 
-```sh
-rugix-bundler grants authority-extensions authority.json signer.ext
-
-openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
-  -nodes -subj "/CN=Application Grant Signer" \
-  -keyout grant-signer.key -out grant-signer.csr
-
-openssl x509 -req -in grant-signer.csr \
-  -CA authority.pem -CAkey authority.key -CAcreateserial \
-  -days 1 -extfile signer.ext -out grant-signer.pem
-
-rugix-bundler grants sign \
-  --bundle app.rugixb --id canary-app-42 \
-  --namespace example-production --group canary \
-  --expires-at 10m \
-  --sequence 42 --target apps \
-  --cert grant-signer.pem --key grant-signer.key \
-  --intermediate-cert authority.pem app.cms
-
-rugix-ctrl apps install --grant app.cms app.rugixb
-```
-
-Choose certificate and grant end times that fit inside their parent windows,
-including when renewing close to an authority's expiry. OpenSSL can issue
-certificates that exceed these limits; Rugix rejects them during verification.
-Renewed certificates can travel with the next grant.
-
-The extension generator validates the policy and emits the required certificate
-purpose and basic constraints. Certificate issuance remains with your CA tooling.
-It does not add a certificate service or maintain issuer state.
-
-## Replay, Expiry, and Recovery
-
-Rugix maintains separate authorization sequences for system installations and app
-installations. All apps share one sequence stream. An issuer must coordinate
-increasing sequences across its keys and device or group grants within each stream.
-Sequence numbers describe authorizations, so an intentional downgrade uses a newer
-sequence for an older bundle.
-
-After preflight, Rugix durably reserves the grant before installation side effects.
-An interrupted transfer can retry the exact same grant while it remains valid.
-Changing its ID or content at the same sequence is rejected. A newer reserved
-authorization supersedes older ones.
-
-Before activating apps, selecting or deferring a system boot, or finalizing a staged
-system update, Rugix rechecks grant and certificate validity and durably consumes
-the grant. Once consumed, another installation requires a higher sequence, including
-when activation fails or power is lost between consumption and activation.
-This permits retries of incomplete transfers and prevents repeated activation
-admission. It does not promise exactly-once execution of arbitrary payload handlers.
-
-An update that expires while streaming cannot proceed to activation. Its inactive
-data may remain and can be replaced by an installation with a new grant. Manual
-app activation, manual app rollback, and `system reboot --spare` are disabled under
-grant policy. To select stored software again, install its bundle with a new grant.
-A staged system installation with `--reboot no` follows the same rule.
-
-Once activation is durably authorized, boot retries, commit, and automatic recovery
-may finish after expiry. Existing software continues running. Deferred reboot
-authorization may execute on a later boot. The validity window limits authorization
-of the operation, not the time at which software must stop running.
-
-Short validity windows limit how long an offline grant remains usable. Immediate
-revocation requires fresh information on the device. Protect the privileged
-verifier, local policy, clock, and replay state as part of the device security boundary.
-
-## Library and Wire Format
-
-`crates/libs/rugix-grants` provides the reusable envelope, CMS signing, and
-verification for typed operations. It has no installer, filesystem, transport, or
-daemon dependency. `rugix-bundle` defines the `rugix.install.v1` operation and its
-`rugix-ctrl` service audience. The executor owns resource policy, replay state, and
-operation recovery.
-
-The signed CMS content is the byte prefix `rugix.operation-grant.v1\0`, followed by
-UTF-8 JSON. The signature covers the original bytes. Verification does not
-reserialize JSON. Unsupported versions, operation types, unknown fields, duplicate
-fields, and trailing content are rejected. A grant cannot be substituted for
-ordinary embedded bundle metadata.
-
-The Sidex source contracts are
-[`grant.sidex`](../crates/libs/rugix-grants/schemas/grant.sidex),
-[`authority.sidex`](../crates/libs/rugix-grants/schemas/authority.sidex), and
-[`grants.sidex`](../crates/libs/rugix-bundle/schemas/grants.sidex).
-The unsigned 64-bit fields `notBefore`, `expiresAt`, and `sequence` accept JSON
-integers or decimal strings. Sidex emits decimal strings for values above
-JavaScript's maximum safe integer, 9007199254740991.
-
-Rugix's delegated object identifier (OID) namespace is `1.3.6.1.4.1.67013.100`.
-The following assignments are permanent and must not be reused for other purposes:
+Rugix's delegated object identifier namespace is `1.3.6.1.4.1.67013.100` (Silitics
+PEN 67013). These assignments are permanent and must not be reused:
 
 | OID | Purpose |
 | --- | --- |
-| `1.3.6.1.4.1.67013.100.1` | Grant-authority extended key usage |
-| `1.3.6.1.4.1.67013.100.2` | Authority constraints extension |
+| `1.3.6.1.4.1.67013.100.1` | Grant authority extended key usage |
+| `1.3.6.1.4.1.67013.100.2` | Authority scope extension |
+| `1.3.6.1.4.1.67013.100.3.1` | Application installation key purpose |
+| `1.3.6.1.4.1.67013.100.3.2` | System installation key purpose |
 
-Authority constraints are UTF-8 Sidex JSON inside a DER UTF8String, carried in the
-certificate's non-critical authority extension. Every non-root certificate in a
-constrained path must carry this extension and a critical extended key usage
-containing only the dedicated grant-authority purpose. The verifier requires the
-constraints whenever that purpose is used. It evaluates only the path authenticated
-by X.509 validation, never unrelated certificates supplied in the CMS envelope.
+Operation key purposes are assigned under `.3`. The operation type string
+`rugix.install.v1` identifies the payload contract and is versioned separately from
+the purposes, because both installation targets share one payload.
 
-The dedicated purpose prevents existing code-signing verifiers from accepting
-constrained keys while ignoring their policy. A constrained key also cannot serve
-as an embedded bundle publisher. Unknown critical extensions on signing and
-intermediate certificates remain rejected.
-This profile uses the standard critical extended key usage extension because the
-X.509 validation library does not support custom critical extension handlers.
+## Enforcement an Issuer Can Rely On
+
+Rugix Ctrl records an admitted grant before installation side effects and a consumed
+grant before activation, identified by a hash of the authenticated content. An issuer
+can rely on the following:
+
+- An interrupted transfer may retry the same grant while it remains valid.
+- A consumed grant is never admitted again.
+- Grants are independent. Several authorities can issue grants for one device without
+  coordinating, and consuming one grant does not invalidate another.
+- Admission, the record, and activation each revalidate the grant, the certificate
+  chain, and the device identity.
+
+Records are retained until their grant expires, which bounds the state by the issuing
+rate within one window. Issuing more unexpired grants than a device retains delays
+further installations until some expire.
 
 ## Verify Changes
-
-Run the Rust checks and the CLI/daemon test:
 
 ```sh
 mise run check
 mise run test:grants
 ```
 
-The end-to-end test needs Linux user and mount namespaces, Python, OpenSSL, and
-`mount`. It replaces device paths in private namespaces and does not require host
-root access. It exercises real bundle creation, CMS issuance, app activation,
-system installation to file slots, boot selection through a test controller,
-streaming expiry, interrupted transfer recovery, replay protection, daemon policy,
-independent signing authorities, external OpenSSL signing, constrained certificate
-issuance, delegation escalation rejection, and application-only authority rejection
-for system installations. It also covers RFC 3339 and duration CLI inputs,
-identity-helper failures, and identity or membership changes before activation.
+`test:grants` needs Linux user and mount namespaces, Python, OpenSSL, and `mount`. It
+replaces device paths inside private namespaces and needs no host root access. It
+covers configuration validation, certificate preparation and rejection of unprepared
+certificates, delegation and escalation, option binding, replay and the time
+watermark, streaming expiry, identity changes during installation, daemon admission,
+independent publisher signatures, external OpenSSL signing, system installation to
+file slots with a test boot controller, and both state locations.

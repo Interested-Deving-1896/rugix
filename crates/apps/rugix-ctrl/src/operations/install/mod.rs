@@ -618,17 +618,16 @@ fn start_verified_bundle<'source>(
             .whatever("unable to read bundle")?,
     };
     let root_certs = configured_signature_roots(config, options.root_cert.as_deref());
+    // An authenticated hash stands in for a publisher signature unless the grant
+    // policy additionally requires independent publisher approval.
     let require_embedded = config.grants.as_ref().is_some_and(|policy| {
         matches!(
             policy.mode,
-            crate::config::grants::GrantPolicy::EmbeddedAndGrant
+            Some(crate::config::grants::GrantPolicy::EmbeddedAndGrant)
         )
     });
-    let bundle_verified = if require_embedded {
-        verify_bundle_signature(&root_certs, &bundle_reader)?
-    } else {
-        options.bundle_hash.is_some() || verify_bundle_signature(&root_certs, &bundle_reader)?
-    };
+    let bundle_verified = (!require_embedded && options.bundle_hash.is_some())
+        || verify_bundle_signature(&root_certs, &bundle_reader)?;
     if !bundle_verified && !options.insecure_skip_bundle_verification {
         match kind {
             BundleKind::App => {
