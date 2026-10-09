@@ -128,7 +128,7 @@ impl GrantSession {
         {
             bail!("this grant does not permit the requested installation options");
         }
-        let hash = content_hash(&verified)?;
+        let hash = content_hash(&verified);
         store.check_admissible(&hash)?;
         Ok(Some(Self {
             policy: policy.clone(),
@@ -203,10 +203,13 @@ fn install_request(target: &InstallTarget) -> InstallRequest {
 }
 
 /// Identify a grant by its authenticated content, independent of CMS packaging.
-fn content_hash(verified: &VerifiedGrant<InstallOperation>) -> SystemResult<String> {
-    let content =
-        rugix_grants::prepare(verified.grant()).whatever("unable to encode verified grant")?;
-    Ok(HashAlgorithm::Sha256.hash::<Vec<u8>>(&content).to_string())
+///
+/// Two envelopes carrying the same grant with different certificates hash alike,
+/// and an envelope that differs in any authenticated byte does not.
+fn content_hash(verified: &VerifiedGrant<InstallOperation>) -> String {
+    HashAlgorithm::Sha256
+        .hash::<Vec<u8>>(verified.content())
+        .to_string()
 }
 
 /// Verify against every locally authorized issuer and its delegated permissions.
@@ -236,7 +239,7 @@ fn verify(
             })
             .and_then(|verifier| {
                 verifier
-                    .with_limits(rugix_grants::DEFAULT_MAX_GRANT_SIZE, max_lifetime)
+                    .with_max_lifetime(max_lifetime)
                     .verify(signed, &context)
                     .whatever("grant rejected")
             });

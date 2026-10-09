@@ -143,25 +143,20 @@ impl GrantStore {
         expires_at: u64,
         now: SystemTime,
     ) -> SystemResult<()> {
+        self.check_admissible(hash)?;
         self.advance(now);
-        match self.record(hash) {
-            Some(record) if record.consumed => {
-                bail!("this grant was already consumed; a new grant is required")
+        if self.record(hash).is_none() {
+            if self.state.admitted.len() >= MAX_ADMITTED {
+                bail!(
+                    "too many unexpired installation grants are recorded; retry once they expire"
+                );
             }
-            Some(_) => {}
-            None => {
-                if self.state.admitted.len() >= MAX_ADMITTED {
-                    bail!(
-                        "too many unexpired installation grants are recorded; retry once they expire"
-                    );
-                }
-                self.state.admitted.push(AdmittedGrant {
-                    hash: hash.to_owned(),
-                    id: id.to_owned(),
-                    expires_at,
-                    consumed: false,
-                });
-            }
+            self.state.admitted.push(AdmittedGrant {
+                hash: hash.to_owned(),
+                id: id.to_owned(),
+                expires_at,
+                consumed: false,
+            });
         }
         self.save()
     }

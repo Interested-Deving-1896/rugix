@@ -114,7 +114,6 @@ pub struct VerificationContext<'a> {
 pub struct GrantVerifier {
     cms: CmsVerifier,
     permissions: Vec<ObjectIdentifier>,
-    max_size: usize,
     max_lifetime: Duration,
 }
 
@@ -132,14 +131,12 @@ impl GrantVerifier {
                 .map_err(GrantError::Signature)?
                 .with_required_key_usage(authority::GRANT_AUTHORITY_EKU.as_bytes()),
             permissions,
-            max_size: DEFAULT_MAX_GRANT_SIZE,
             max_lifetime: DEFAULT_MAX_LIFETIME,
         })
     }
 
-    /// Set the maximum accepted CMS size and signed validity window.
-    pub fn with_limits(mut self, max_size: usize, max_lifetime: Duration) -> Self {
-        self.max_size = max_size;
+    /// Set the longest signed validity window this authority may use.
+    pub fn with_max_lifetime(mut self, max_lifetime: Duration) -> Self {
         self.max_lifetime = max_lifetime;
         self
     }
@@ -153,7 +150,7 @@ impl GrantVerifier {
         signed_grant: &[u8],
         context: &VerificationContext<'_>,
     ) -> Result<VerifiedGrant<T>, GrantError> {
-        if signed_grant.len() > self.max_size {
+        if signed_grant.len() > DEFAULT_MAX_GRANT_SIZE {
             return Err(GrantError::SizeLimit);
         }
         let verified = self
@@ -176,7 +173,7 @@ impl GrantVerifier {
         authority::verify(&verified.certificate_chain, &grant)?;
         Ok(VerifiedGrant {
             grant,
-            signer_certificate: verified.signer_certificate,
+            content: verified.content,
         })
     }
 }
@@ -187,7 +184,7 @@ impl GrantVerifier {
 /// Local authorization and replay checks remain the executor's responsibility.
 pub struct VerifiedGrant<T> {
     grant: Grant<T>,
-    signer_certificate: Vec<u8>,
+    content: Vec<u8>,
 }
 
 impl<T> VerifiedGrant<T> {
@@ -196,9 +193,12 @@ impl<T> VerifiedGrant<T> {
         &self.grant
     }
 
-    /// DER certificate of the signer accepted by the configured trust root.
-    pub fn signer_certificate(&self) -> &[u8] {
-        &self.signer_certificate
+    /// Exact bytes the signature covers, including [`CONTENT_PREFIX`].
+    ///
+    /// Executors that need a stable identity for one grant should hash these
+    /// bytes rather than reserialize the envelope.
+    pub fn content(&self) -> &[u8] {
+        &self.content
     }
 }
 
@@ -466,7 +466,7 @@ mod tests {
                 .verify::<Restart>(&signed, &fixture.context(now))
                 .unwrap();
             assert_eq!(verified.grant(), &grant);
-            assert!(!verified.signer_certificate().is_empty());
+            assert!(verified.content().starts_with(CONTENT_PREFIX));
         }
         for now in [grant.not_before - 1, grant.expires_at] {
             assert!(matches!(
@@ -635,14 +635,6 @@ mod tests {
         let mut fixture = Fixture::new();
         let mut grant = fixture.grant();
         let signed = sign(&grant, &fixture.signer).unwrap();
-        fixture.verifier.max_size = signed.len() - 1;
-        assert!(matches!(
-            fixture
-                .verifier
-                .verify::<Restart>(&signed, &fixture.context(grant.not_before)),
-            Err(GrantError::SizeLimit)
-        ));
-        fixture.verifier.max_size = signed.len();
         fixture.verifier.max_lifetime = Duration::from_secs(59);
         assert!(matches!(
             fixture

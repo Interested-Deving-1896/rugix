@@ -6,7 +6,6 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::Child;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Stdio;
@@ -31,12 +30,6 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How often the helper is checked for completion.
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
-
-/// Attempts to start a helper that is momentarily open for writing.
-const SPAWN_ATTEMPTS: usize = 10;
-
-/// Delay between attempts to start a helper that is open for writing.
-const SPAWN_RETRY_DELAY: Duration = Duration::from_millis(20);
 
 /// Largest identity document accepted from a helper.
 const MAX_OUTPUT: usize = 64 * 1024;
@@ -84,7 +77,12 @@ struct HelperOutput {
 /// exiting. This thread keeps ownership of the child, so the process is never
 /// reaped while it is still waiting and a signal cannot reach an unrelated process.
 fn run(helper: &Path) -> SystemResult<HelperOutput> {
-    let mut child = spawn(helper)?;
+    let mut child = Command::new(helper)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| whatever!("unable to run grant identity helper: {error}"))?;
     let mut stdout = child.stdout.take().expect("stdout is piped");
     let mut stderr = child.stderr.take().expect("stderr is piped");
     let reader = thread::spawn(move || {
@@ -129,29 +127,4 @@ fn run(helper: &Path) -> SystemResult<HelperOutput> {
         stdout,
         diagnostics,
     })
-}
-
-/// Start the helper, retrying while it is open for writing.
-///
-/// The kernel reports `ETXTBSY` while an executable is being written, for example
-/// when the helper is replaced by a package update. The condition clears on its own.
-fn spawn(helper: &Path) -> SystemResult<Child> {
-    for attempt in 1..=SPAWN_ATTEMPTS {
-        let result = Command::new(helper)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
-        match result {
-            Ok(child) => return Ok(child),
-            Err(error) => {
-                let busy = error.raw_os_error() == Some(libc::ETXTBSY);
-                if !busy || attempt == SPAWN_ATTEMPTS {
-                    bail!("unable to run grant identity helper: {error}");
-                }
-                thread::sleep(SPAWN_RETRY_DELAY);
-            }
-        }
-    }
-    bail!("unable to run grant identity helper")
 }

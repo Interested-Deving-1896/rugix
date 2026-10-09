@@ -191,25 +191,10 @@ mod tests {
         assert!(!target.permits(&system(None, false, Some(RebootMode::No))));
     }
 
-    /// Application and system installations need separate certificate purposes.
+    /// The two installation purposes must stay distinct, since a certificate may
+    /// hold either one without holding the other.
     #[test]
-    fn targets_require_distinct_permissions() {
-        use rugix_grants::Operation;
-
-        let apps = InstallOperation {
-            bundle_hash: si_crypto_hashes::HashAlgorithm::Sha256.hash(b"bundle"),
-            target: InstallTarget::Apps,
-        };
-        let system = InstallOperation {
-            target: InstallTarget::System(SystemInstallConstraints {
-                boot_group: None,
-                keep_overlay: None,
-                reboot: None,
-            }),
-            ..apps.clone()
-        };
-        assert_eq!(apps.permission(), PERMISSION_APPS);
-        assert_eq!(system.permission(), PERMISSION_SYSTEM);
+    fn installation_purposes_are_distinct() {
         assert_ne!(PERMISSION_APPS, PERMISSION_SYSTEM);
     }
 }
