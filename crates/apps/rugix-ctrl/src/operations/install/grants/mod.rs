@@ -37,7 +37,6 @@ use crate::config::config::Config;
 use crate::config::grants::GrantAuthorityConfig;
 use crate::config::grants::GrantsConfig;
 use crate::config::grants::InstallPermission;
-use crate::config::grants::PendingActivation;
 use crate::system::SystemResult;
 
 mod identity;
@@ -86,23 +85,11 @@ impl GrantSession {
     }
 
     /// Durably consume the grant before authorizing activation or boot selection.
-    ///
-    /// A grant that permitted staging without activation keeps authorizing the
-    /// caller to select the staged system later, which [`Activation::Pending`]
-    /// records.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn consume(&mut self, activation: Activation) -> SystemResult<()> {
+    pub(crate) fn consume(&mut self) -> SystemResult<()> {
         let now = self.revalidate()?;
-        let grant = self.verified.grant();
-        let pending = match activation {
-            Activation::Now => None,
-            Activation::Pending { boot_group } => Some(PendingActivation {
-                boot_group,
-                grant_id: grant.id.clone(),
-            }),
-        };
-        self.store.consume(&self.hash, pending, now)?;
-        info!(grant_id = %grant.id, "installation grant consumed");
+        self.store.consume(&self.hash, now)?;
+        info!(grant_id = %self.verified.grant().id, "installation grant consumed");
         Ok(())
     }
 
@@ -169,48 +156,6 @@ impl GrantSession {
         verify(&self.policy, &self.signed, &identity, now)?;
         Ok(now)
     }
-}
-
-/// What an installation does with its software once it is in place.
-pub(crate) enum Activation {
-    /// The installation activates its software now.
-    Now,
-    /// The staged system may still be selected with `system reboot --spare`.
-    Pending { boot_group: String },
-}
-
-/// Reject activating stored software when grant policy requires a fresh grant.
-pub(crate) fn reject_manual_activation(config: &Config) -> SystemResult<()> {
-    if config.grants.is_some() {
-        bail!("manual activation requires a new installation with a valid grant");
-    }
-    Ok(())
-}
-
-/// Authorize selecting a staged system that a grant permitted but did not activate.
-///
-/// An installation requested with `--reboot no` leaves the caller to finish the
-/// update, which is how a deployment script emits telemetry before rebooting. The
-/// grant authorized that activation, so the device holds the authorization until it
-/// is used or replaced. Selecting any other boot group still needs a new grant,
-/// which is what keeps an unauthorized rollback out.
-pub(crate) fn authorize_spare_reboot(config: &Config, boot_group: &str) -> SystemResult<()> {
-    let Some(policy) = &config.grants else {
-        return Ok(());
-    };
-    let identity = identity::load(policy)?;
-    let mut store = GrantStore::open(state_directory()?, &identity)?;
-    if store.pending_activation() != Some(boot_group) {
-        bail!(
-            "booting boot group {boot_group} requires an installation granted with `reboot = no`"
-        );
-    }
-    store.take_pending_activation()?;
-    info!(
-        boot_group,
-        "selecting a staged system authorized by its grant"
-    );
-    Ok(())
 }
 
 /// Convert the exact caller-supplied options into the request the grant must permit.
@@ -597,14 +542,14 @@ mod tests {
         drop(first);
         let mut retry = fixture.begin().unwrap().unwrap();
         retry.admit().unwrap();
-        retry.consume(Activation::Now).unwrap();
+        retry.consume().unwrap();
         drop(retry);
         assert!(fixture.begin().is_err());
         for id in ["install-2", "install-3"] {
             fixture.grant.id = id.into();
             let mut next = fixture.begin().unwrap().unwrap();
             next.admit().unwrap();
-            next.consume(Activation::Now).unwrap();
+            next.consume().unwrap();
             drop(next);
         }
         fixture.grant.id = "install-2".into();
@@ -623,7 +568,7 @@ mod tests {
         );
         let mut session = fixture.begin().unwrap().unwrap();
         session.admit().unwrap();
-        session.consume(Activation::Now).unwrap();
+        session.consume().unwrap();
         drop(session);
         let saved = fs::read(&state).unwrap();
         fs::write(&state, b"invalid").unwrap();
@@ -682,6 +627,5 @@ mod tests {
         for options in variants {
             assert!(fixture.begin_with(&options, &fixture.target).is_err());
         }
-        assert!(reject_manual_activation(&fixture.config).is_err());
     }
 }

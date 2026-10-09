@@ -353,19 +353,10 @@ fn install_bundle(
                     stats.total_bytes(),
                 );
             }
-            let effective_reboot = reboot.unwrap_or(default_reboot);
             if let Some(grant) = grant {
-                // Staging without selecting leaves the activation to the caller, so
-                // the grant keeps authorizing it until it happens.
-                let activation = match (effective_reboot, boot_group) {
-                    (SystemRebootMode::No, Some((_, group))) => grants::Activation::Pending {
-                        boot_group: group.name().to_owned(),
-                    },
-                    _ => grants::Activation::Now,
-                };
-                grant.consume(activation)?;
+                grant.consume()?;
             }
-            match effective_reboot {
+            match reboot.unwrap_or(default_reboot) {
                 SystemRebootMode::Yes => {
                     let (entry_idx, boot_group) = require_update_target(boot_group, "reboot")?;
                     info!(

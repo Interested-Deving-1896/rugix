@@ -30,7 +30,6 @@ use tracing::warn;
 
 use crate::config::grants::AdmittedGrant;
 use crate::config::grants::GrantState;
-use crate::config::grants::PendingActivation;
 use crate::system::SystemResult;
 
 /// Only supported state version.
@@ -89,7 +88,6 @@ impl GrantStore {
                     device: identity.recipient_id.clone(),
                     time_watermark: 0,
                     admitted: Vec::new(),
-                    pending_activation: None,
                 }
             }
             Err(error) => {
@@ -103,20 +101,6 @@ impl GrantStore {
         };
         store.check_identity(identity)?;
         Ok(store)
-    }
-
-    /// Boot group whose staged system may still be selected, if any.
-    pub(crate) fn pending_activation(&self) -> Option<&str> {
-        self.state
-            .pending_activation
-            .as_ref()
-            .map(|pending| pending.boot_group.as_str())
-    }
-
-    /// Durably spend the recorded authorization to select a staged system.
-    pub(crate) fn take_pending_activation(&mut self) -> SystemResult<()> {
-        self.state.pending_activation = None;
-        self.save()
     }
 
     /// Reject an identity that does not match the recorded state.
@@ -183,16 +167,7 @@ impl GrantStore {
     }
 
     /// Durably mark an admitted grant as consumed.
-    ///
-    /// `pending` records a boot group whose staged system this grant still
-    /// authorizes the caller to select, which replaces any earlier record because
-    /// a new system installation overwrites the staged software.
-    pub(crate) fn consume(
-        &mut self,
-        hash: &str,
-        pending: Option<PendingActivation>,
-        now: SystemTime,
-    ) -> SystemResult<()> {
+    pub(crate) fn consume(&mut self, hash: &str, now: SystemTime) -> SystemResult<()> {
         self.advance(now);
         let Some(record) = self
             .state
@@ -203,9 +178,6 @@ impl GrantStore {
             bail!("the admitted installation grant is no longer recorded");
         };
         record.consumed = true;
-        if let Some(pending) = pending {
-            self.state.pending_activation = Some(pending);
-        }
         self.save()
     }
 
@@ -290,7 +262,7 @@ mod tests {
     fn pruning_expired_records_cannot_revive_them() {
         let (directory, mut store) = initialized();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store.consume("hash", None, time(NOW)).unwrap();
+        store.consume("hash", time(NOW)).unwrap();
         assert!(store.check_admissible("hash").is_err());
         store
             .admit("other", "grant-2", NOW + 3600, time(NOW + 120))
@@ -308,9 +280,9 @@ mod tests {
         let (_directory, mut store) = initialized();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store.consume("hash", None, time(NOW)).unwrap();
+        store.consume("hash", time(NOW)).unwrap();
         assert!(store.admit("hash", "grant-1", NOW + 60, time(NOW)).is_err());
-        assert!(store.consume("missing", None, time(NOW)).is_err());
+        assert!(store.consume("missing", time(NOW)).is_err());
     }
 
     /// Unexpired records are bounded, and the limit clears itself on expiry.
@@ -336,32 +308,10 @@ mod tests {
     fn state_is_created_on_first_use() {
         let (directory, mut store) = initialized();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store.consume("hash", None, time(NOW)).unwrap();
+        store.consume("hash", time(NOW)).unwrap();
         drop(store);
         let store = open(&state_dir(&directory));
         assert!(store.check_admissible("hash").is_err());
-    }
-
-    /// A grant that staged a system without selecting it authorizes one later
-    /// selection of exactly that boot group.
-    #[test]
-    fn pending_activation_is_recorded_and_spent_once() {
-        let (_directory, mut store) = initialized();
-        assert_eq!(store.pending_activation(), None);
-        store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store
-            .consume(
-                "hash",
-                Some(PendingActivation {
-                    boot_group: "B".into(),
-                    grant_id: "grant-1".into(),
-                }),
-                time(NOW),
-            )
-            .unwrap();
-        assert_eq!(store.pending_activation(), Some("B"));
-        store.take_pending_activation().unwrap();
-        assert_eq!(store.pending_activation(), None);
     }
 
     /// State belonging to another identity or version is never usable.

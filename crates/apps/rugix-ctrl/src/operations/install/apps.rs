@@ -335,7 +335,7 @@ pub(crate) fn install_payloads<S: BundleSource>(
     if app_generations.is_empty() {
         warn!("bundle contained no app payloads");
         if let Some(grant) = grant {
-            grant.consume(super::grants::Activation::Now)?;
+            grant.consume()?;
         }
         return Ok(());
     }
@@ -386,7 +386,7 @@ pub(crate) fn install_payloads<S: BundleSource>(
         });
     }
     if let Some(grant) = grant {
-        grant.consume(super::grants::Activation::Now)?;
+        grant.consume()?;
     }
     if let Err(failure) = run_app_activation_transaction(
         &activation_plan,

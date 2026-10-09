@@ -35,6 +35,14 @@ intersection:
 A verifier is constructed for one root and one permission set, so an executor cannot
 accidentally accept a grant that local policy does not cover.
 
+Grants gate installation and nothing else. Activating an installed app generation,
+rolling one back, and selecting the spare system are deliberately ungated: that
+software reached the device under a grant, the boot flow has to roll back
+automatically when a trial fails, and any caller privileged enough to reach those
+operations can also rewrite the local policy. Gating them would forbid operations no
+grant could authorize, since there is no activation operation to issue a grant for,
+and it would disable rollback as a recovery path.
+
 Recipient identity must come from the executor's trusted provider, never from the
 request or the grant. The library takes it as an explicit input.
 
@@ -149,11 +157,6 @@ can rely on the following:
   coordinating, and consuming one grant does not invalidate another.
 - Admission, the record, and activation each revalidate the grant, the certificate
   chain, and the device identity.
-- A grant whose installation was requested with `reboot = no` keeps authorizing the
-  caller to select that staged system once, through
-  `rugix-ctrl system reboot --spare`. The record names the boot group, is spent on
-  use, and is replaced by the next granted system installation. Selecting any other
-  system needs a new grant.
 
 Records are retained until their grant expires, up to 1024 at a time, which bounds
 the state by the issuing rate within one window. Issuing more unexpired grants than a

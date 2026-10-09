@@ -87,11 +87,11 @@ impl Operation for RebootSystem {
 
     fn execute(
         self,
-        context: &ExecutionContext<'_>,
+        _context: &ExecutionContext<'_>,
         _input: Self::Input,
         _events: &mut dyn EventSink<Self::Event>,
     ) -> SystemResult<Self::Output> {
-        reboot_system(context.config(), self.spare)
+        reboot_system(self.spare)
     }
 }
 
@@ -123,12 +123,10 @@ fn commit_system() -> SystemResult<()> {
         .whatever("unable to run `post-commit` hooks")
 }
 
-fn reboot_system(config: &crate::config::config::Config, spare: bool) -> SystemResult<()> {
+fn reboot_system(spare: bool) -> SystemResult<()> {
     let system = System::initialize()?;
     if spare {
-        if let Some((spare, entry)) = system.spare_entry()? {
-            // Selecting a different system is an activation, so grant policy applies.
-            super::install::grants::authorize_spare_reboot(config, entry.name())?;
+        if let Some((spare, _)) = system.spare_entry()? {
             system
                 .boot_flow()
                 .set_try_next(&system, spare)
