@@ -22,12 +22,12 @@
       "description": "Permitted boot group selection.",
       "oneOf": [
         {
-          "const": "Local"
+          "const": "local"
         },
         {
           "type": "object",
           "properties": {
-            "Named": {
+            "named": {
               "type": "string"
             }
           }
@@ -42,15 +42,15 @@
     },
     "rugix_install_grants.install.InstallTarget": {
       "$id": "rugix_install_grants.install.InstallTarget",
-      "description": "Supported installation targets.",
+      "description": "Supported installation targets.\n\nCases that carry a payload must stay externally tagged. Adjacent and internal\ntagging buffer the payload during deserialization, which hides unknown fields\ninside it from the tracking adapter that makes unsupported constraints fail.",
       "oneOf": [
         {
-          "const": "Apps"
+          "const": "apps"
         },
         {
           "type": "object",
           "properties": {
-            "System": {
+            "system": {
               "$ref": "#/$defs/rugix_install_grants.install.SystemInstallConstraints"
             }
           }
@@ -62,12 +62,12 @@
       "description": "Permitted reboot behavior.",
       "oneOf": [
         {
-          "const": "BundleDefault"
+          "const": "bundle-default"
         },
         {
           "type": "object",
           "properties": {
-            "Mode": {
+            "mode": {
               "$ref": "#/$defs/rugix_install_grants.install.RebootMode"
             }
           }
@@ -77,12 +77,12 @@
     "rugix_install_grants.install.RebootMode": {
       "$id": "rugix_install_grants.install.RebootMode",
       "enum": [
-        "Yes",
-        "No",
-        "Set",
-        "Deferred"
+        "yes",
+        "no",
+        "set",
+        "deferred"
       ],
-      "description": "Post-installation system behavior."
+      "description": "Post-installation system behavior.\n\nCases carry no payload, so external tagging encodes them as plain strings."
     },
     "rugix_install_grants.install.SystemInstallConstraints": {
       "$id": "rugix_install_grants.install.SystemInstallConstraints",

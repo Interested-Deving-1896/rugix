@@ -60,10 +60,13 @@ record GrantIdentity {
     groups?: [string],
 }
 
-/// Durable installation authorization state. Missing or invalid state fails closed.
+/// Durable installation authorization state.
+///
+/// State is created on first use, and invalid state fails closed. The directory is
+/// private to the privileged executor, which is what protects the history.
 record GrantState {
     version: u32,
-    /// Provisioned identity bound to this state.
+    /// Device identity bound to this state.
     namespace: string,
     device: string,
     /// Highest verification time ever used to admit an installation, in seconds
@@ -73,6 +76,22 @@ record GrantState {
     /// Admitted grants that have not yet expired. Expired entries are pruned on
     /// every update, which bounds this list by the issuing rate within one window.
     admitted: [AdmittedGrant],
+    /// Staged system that a consumed grant still authorizes the caller to select.
+    pending_activation?: PendingActivation,
+}
+
+/// Authorization to select a staged system that was installed but not activated.
+///
+/// A grant permitting `reboot = no` authorizes the installation together with its
+/// later activation, so the caller may finish it with
+/// `rugix-ctrl system reboot --spare`. Selecting the system spends this record, and
+/// the next granted system installation replaces it, because that installation
+/// overwrites the staged software.
+record PendingActivation {
+    /// Boot group whose staged system may be selected.
+    boot_group: string,
+    /// Grant that authorized the installation. Recorded for diagnostics.
+    grant_id: string,
 }
 
 /// One admitted installation, retained until its grant expires.

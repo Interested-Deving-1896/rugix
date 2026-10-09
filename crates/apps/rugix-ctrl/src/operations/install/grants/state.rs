@@ -8,14 +8,14 @@
 //!
 //! [`GrantStore`] holds an exclusive lock on the state directory for as long as an
 //! installation runs, so concurrent granted installations are refused rather than
-//! interleaved.
+//! interleaved. The directory is private to the privileged executor, which is what
+//! protects the history.
 
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -25,10 +25,12 @@ use nix::fcntl::FlockArg;
 use reportify::bail;
 use reportify::ResultExt;
 use rugix_grants::RecipientIdentity;
+use tracing::info;
 use tracing::warn;
 
 use crate::config::grants::AdmittedGrant;
 use crate::config::grants::GrantState;
+use crate::config::grants::PendingActivation;
 use crate::system::SystemResult;
 
 /// Only supported state version.
@@ -49,25 +51,51 @@ pub(crate) struct GrantStore {
 
 impl GrantStore {
     /// Lock the state directory and load the state belonging to `identity`.
+    ///
+    /// State for an unknown device is created on first use. Protecting the
+    /// directory is what protects the history: anyone who could delete it could
+    /// equally recreate it, so refusing to create it would add no protection.
     pub(crate) fn open(directory: PathBuf, identity: &RecipientIdentity) -> SystemResult<Self> {
+        fs::create_dir_all(&directory).whatever("unable to create grant state directory")?;
+        // Keep unprivileged callers from reading history or holding the lock.
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+            .whatever("unable to restrict grant state directory")?;
         let lock_file = fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
+            .mode(0o600)
             .open(directory.join("lock"))
-            .whatever("unable to open grant state lock; initialize grant state first")?;
+            .whatever("unable to open grant state lock")?;
         let lock = Flock::lock(lock_file, FlockArg::LockExclusiveNonblock)
             .map_err(|(_, error)| error)
             .whatever("another granted installation is in progress")?;
-        let state: GrantState = serde_json::from_slice(
-            &fs::read(directory.join("state.json"))
-                .whatever("unable to read grant state; initialize it during provisioning")?,
-        )
-        .whatever("invalid grant replay state")?;
-        if state.version != STATE_VERSION {
-            bail!("unsupported grant state version {}", state.version);
-        }
+        let path = directory.join("state.json");
+        let state = match fs::read(&path) {
+            Ok(bytes) => {
+                let state: GrantState =
+                    serde_json::from_slice(&bytes).whatever("invalid grant replay state")?;
+                if state.version != STATE_VERSION {
+                    bail!("unsupported grant state version {}", state.version);
+                }
+                state
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                info!(device = %identity.recipient_id, "creating grant replay state");
+                GrantState {
+                    version: STATE_VERSION,
+                    namespace: identity.namespace.clone(),
+                    device: identity.recipient_id.clone(),
+                    time_watermark: 0,
+                    admitted: Vec::new(),
+                    pending_activation: None,
+                }
+            }
+            Err(error) => {
+                bail!("unable to read grant state: {error}")
+            }
+        };
         let store = Self {
             directory,
             state,
@@ -77,11 +105,25 @@ impl GrantStore {
         Ok(store)
     }
 
-    /// Reject an identity that does not match the provisioned state.
+    /// Boot group whose staged system may still be selected, if any.
+    pub(crate) fn pending_activation(&self) -> Option<&str> {
+        self.state
+            .pending_activation
+            .as_ref()
+            .map(|pending| pending.boot_group.as_str())
+    }
+
+    /// Durably spend the recorded authorization to select a staged system.
+    pub(crate) fn take_pending_activation(&mut self) -> SystemResult<()> {
+        self.state.pending_activation = None;
+        self.save()
+    }
+
+    /// Reject an identity that does not match the recorded state.
     pub(crate) fn check_identity(&self, identity: &RecipientIdentity) -> SystemResult<()> {
         if identity.namespace != self.state.namespace || identity.recipient_id != self.state.device
         {
-            bail!("grant identity does not match the provisioned replay state");
+            bail!("grant identity does not match the recorded replay state");
         }
         Ok(())
     }
@@ -141,7 +183,16 @@ impl GrantStore {
     }
 
     /// Durably mark an admitted grant as consumed.
-    pub(crate) fn consume(&mut self, hash: &str, now: SystemTime) -> SystemResult<()> {
+    ///
+    /// `pending` records a boot group whose staged system this grant still
+    /// authorizes the caller to select, which replaces any earlier record because
+    /// a new system installation overwrites the staged software.
+    pub(crate) fn consume(
+        &mut self,
+        hash: &str,
+        pending: Option<PendingActivation>,
+        now: SystemTime,
+    ) -> SystemResult<()> {
         self.advance(now);
         let Some(record) = self
             .state
@@ -152,6 +203,9 @@ impl GrantStore {
             bail!("the admitted installation grant is no longer recorded");
         };
         record.consumed = true;
+        if let Some(pending) = pending {
+            self.state.pending_activation = Some(pending);
+        }
         self.save()
     }
 
@@ -185,42 +239,11 @@ impl GrantStore {
     }
 }
 
-/// Create the first replay record without overwriting any existing history.
-///
-/// Initialization is explicit because missing state cannot distinguish first use
-/// from deleted history. Automatic initialization would let a deleted record make
-/// an already consumed grant admissible again.
-pub(crate) fn initialize(directory: &Path, identity: &RecipientIdentity) -> SystemResult<()> {
-    fs::create_dir_all(directory).whatever("unable to create grant state directory")?;
-    // Keep unprivileged callers from reading replay history or holding the lock.
-    fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
-        .whatever("unable to restrict grant state directory")?;
-    let state = GrantState {
-        version: STATE_VERSION,
-        namespace: identity.namespace.clone(),
-        device: identity.recipient_id.clone(),
-        time_watermark: 0,
-        admitted: Vec::new(),
-    };
-    let bytes = serde_json::to_vec(&state).whatever("unable to encode initial grant state")?;
-    let mut file = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(directory.join("state.json"))
-        .whatever("unable to create grant state; existing state must not be reset")?;
-    file.write_all(&bytes)
-        .whatever("unable to write initial grant state")?;
-    file.sync_all()
-        .whatever("unable to synchronize initial grant state")?;
-    File::open(directory)
-        .and_then(|file| file.sync_all())
-        .whatever("unable to synchronize grant state directory")?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+    use std::path::PathBuf;
+
     use super::*;
 
     const NOW: u64 = 1_800_000_000;
@@ -243,9 +266,12 @@ mod tests {
 
     fn initialized() -> (tempfile::TempDir, GrantStore) {
         let directory = tempfile::tempdir().unwrap();
-        initialize(directory.path(), &identity()).unwrap();
-        let store = open(directory.path());
+        let store = open(&state_dir(&directory));
         (directory, store)
+    }
+
+    fn state_dir(directory: &tempfile::TempDir) -> PathBuf {
+        directory.path().join("grants")
     }
 
     /// Verification time never drops below the watermark left by an admission.
@@ -264,13 +290,13 @@ mod tests {
     fn pruning_expired_records_cannot_revive_them() {
         let (directory, mut store) = initialized();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store.consume("hash", time(NOW)).unwrap();
+        store.consume("hash", None, time(NOW)).unwrap();
         assert!(store.check_admissible("hash").is_err());
         store
             .admit("other", "grant-2", NOW + 3600, time(NOW + 120))
             .unwrap();
         drop(store);
-        let store = open(directory.path());
+        let store = open(&state_dir(&directory));
         assert_eq!(store.state.admitted.len(), 1);
         assert!(store.check_admissible("hash").is_ok());
         assert!(store.effective_now(time(NOW)) >= time(NOW + 120));
@@ -282,9 +308,9 @@ mod tests {
         let (_directory, mut store) = initialized();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
         store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
-        store.consume("hash", time(NOW)).unwrap();
+        store.consume("hash", None, time(NOW)).unwrap();
         assert!(store.admit("hash", "grant-1", NOW + 60, time(NOW)).is_err());
-        assert!(store.consume("missing", time(NOW)).is_err());
+        assert!(store.consume("missing", None, time(NOW)).is_err());
     }
 
     /// Unexpired records are bounded, and the limit clears itself on expiry.
@@ -305,28 +331,66 @@ mod tests {
         assert_eq!(store.state.admitted.len(), 1);
     }
 
+    /// State for an unknown device is created on first use and keeps its history.
+    #[test]
+    fn state_is_created_on_first_use() {
+        let (directory, mut store) = initialized();
+        store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
+        store.consume("hash", None, time(NOW)).unwrap();
+        drop(store);
+        let store = open(&state_dir(&directory));
+        assert!(store.check_admissible("hash").is_err());
+    }
+
+    /// A grant that staged a system without selecting it authorizes one later
+    /// selection of exactly that boot group.
+    #[test]
+    fn pending_activation_is_recorded_and_spent_once() {
+        let (_directory, mut store) = initialized();
+        assert_eq!(store.pending_activation(), None);
+        store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
+        store
+            .consume(
+                "hash",
+                Some(PendingActivation {
+                    boot_group: "B".into(),
+                    grant_id: "grant-1".into(),
+                }),
+                time(NOW),
+            )
+            .unwrap();
+        assert_eq!(store.pending_activation(), Some("B"));
+        store.take_pending_activation().unwrap();
+        assert_eq!(store.pending_activation(), None);
+    }
+
     /// State belonging to another identity or version is never usable.
     #[test]
     fn foreign_state_fails_closed() {
-        let (directory, _store) = initialized();
+        let (directory, store) = initialized();
+        store.save().unwrap();
+        drop(store);
         let other = RecipientIdentity {
             recipient_id: "device-2".into(),
             ..identity()
         };
-        assert!(GrantStore::open(directory.path().to_path_buf(), &other).is_err());
-        let path = directory.path().join("state.json");
+        assert!(GrantStore::open(state_dir(&directory), &other).is_err());
+        let path = state_dir(&directory).join("state.json");
         let mut state: GrantState = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         state.version = 2;
         fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
-        assert!(GrantStore::open(directory.path().to_path_buf(), &identity()).is_err());
+        assert!(GrantStore::open(state_dir(&directory), &identity()).is_err());
+        fs::write(&path, b"not json").unwrap();
+        assert!(GrantStore::open(state_dir(&directory), &identity()).is_err());
     }
 
     /// The state directory and its records stay private to the privileged executor.
     #[test]
     fn state_is_not_readable_by_other_users() {
-        let (directory, _store) = initialized();
+        let (directory, mut store) = initialized();
+        store.admit("hash", "grant-1", NOW + 60, time(NOW)).unwrap();
         let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode(directory.path()), 0o700);
-        assert_eq!(mode(&directory.path().join("state.json")), 0o600);
+        assert_eq!(mode(&state_dir(&directory)), 0o700);
+        assert_eq!(mode(&state_dir(&directory).join("lock")), 0o600);
     }
 }

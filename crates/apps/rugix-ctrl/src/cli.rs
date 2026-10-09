@@ -91,17 +91,6 @@ pub fn main() -> SystemResult<()> {
 
     let args = Args::parse();
     match &args.command {
-        Command::InitializeGrantState => {
-            if !crate::daemon::is_privileged() {
-                bail!("grant state initialization requires root");
-            }
-            let config = load_ctrl_config()?;
-            let policy = config
-                .grants
-                .as_ref()
-                .ok_or_else(|| whatever!("installation grants are not configured"))?;
-            crate::operations::install::grants::initialize(policy)?;
-        }
         Command::State(state_cmd) => match state_cmd {
             StateCommand::Reset {
                 backup,
@@ -1001,8 +990,6 @@ pub struct Args {
 
 #[derive(Debug, Parser)]
 pub enum Command {
-    /// Initialize durable grant replay state during provisioning (requires root).
-    InitializeGrantState,
     /// Run or inspect the privileged operation daemon.
     Daemon {
         /// Optional daemon inspection command.

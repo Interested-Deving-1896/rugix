@@ -52,9 +52,19 @@ ordinary embedded bundle metadata.
 
 Decoding rejects unsupported versions, mismatched operation types, unknown fields,
 duplicate fields, and trailing content. A constraint added by a future issuer
-therefore fails closed instead of being ignored. Operation payloads must use
-externally tagged variants: internally tagged variants buffer their content and can
-hide unknown fields from Serde's tracking adapter.
+therefore fails closed instead of being ignored.
+
+That property constrains the encoding: **every variant carrying a payload must be
+externally tagged**, which is why the signed contract uses `{"system": {...}}` rather
+than a `tag` and `content` pair. Sidex generates deserializers that hand unknown
+fields to Serde's tracking adapter, and that adapter is what turns them into a
+rejection. Adjacent and internal tagging buffer the payload into an intermediate
+value first, which hides every unknown field inside that payload from the adapter.
+Changing the tagging of `InstallTarget`, `AudienceTarget`, `BootGroupConstraint`, or
+`RebootConstraint` would silently drop the guarantee; the test
+`installation_contract_rejects_unknown_and_duplicate_constraints` exists to catch
+that. Case names use kebab-case, and variants whose cases carry no payload, such as
+`RebootMode`, encode as plain strings.
 
 The Sidex contracts are
 [`grant.sidex`](../crates/libs/rugix-grants/schemas/grant.sidex) and
@@ -139,10 +149,19 @@ can rely on the following:
   coordinating, and consuming one grant does not invalidate another.
 - Admission, the record, and activation each revalidate the grant, the certificate
   chain, and the device identity.
+- A grant whose installation was requested with `reboot = no` keeps authorizing the
+  caller to select that staged system once, through
+  `rugix-ctrl system reboot --spare`. The record names the boot group, is spent on
+  use, and is replaced by the next granted system installation. Selecting any other
+  system needs a new grant.
 
-Records are retained until their grant expires, which bounds the state by the issuing
-rate within one window. Issuing more unexpired grants than a device retains delays
-further installations until some expire.
+Records are retained until their grant expires, up to 1024 at a time, which bounds
+the state by the issuing rate within one window. Issuing more unexpired grants than a
+device retains delays further installations until some expire.
+
+Replay state is created on first use. The directory is private to the privileged
+executor, and that is what protects the history: anything able to delete the records
+could equally create new ones, so refusing to create them would add no protection.
 
 ## Verify Changes
 

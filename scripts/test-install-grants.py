@@ -150,13 +150,15 @@ class Device:
         self.identity_file.write_text(json.dumps(dict(self.identity, **changes)))
 
     def grant(self, name, target="apps", device="device-1", group=None, bundle=None,
-              start=None, end=None, options=(), signer=None, intermediates=(),
-              success=True):
+              bundle_hash=None, start=None, end=None, options=(), signer=None,
+              intermediates=(), success=True):
         """Issue a grant with Bundler and return its CMS file."""
         output = self.directory / f"{name}.cms"
         cert, key = signer or (self.signer, self.signer_key)
         audience = ["--group", group] if group else ["--device", device]
-        run(BUNDLER, "grants", "sign", "--bundle", bundle or self.bundle, "--id", name,
+        source = (["--bundle-hash", bundle_hash] if bundle_hash
+                  else ["--bundle", bundle or self.bundle])
+        run(BUNDLER, "grants", "sign", *source, "--id", name,
             "--namespace", "test", *audience,
             *(["--not-before", timestamp(start)] if start is not None else []),
             "--expires-at", timestamp(end) if end is not None else "5m",
@@ -192,8 +194,10 @@ class Device:
 
 def test_configuration_errors(device):
     """A policy that could never authorize an installation is rejected at load time."""
+    signature = device.grant("configuration-probe")
+
     def rejected(expected):
-        result = run(CTRL, "initialize-grant-state", success=False)
+        result = device.install(signature, success=False)
         assert expected in result.stderr, result.stderr
         assert not (device.state_dir / "state.json").exists()
 
@@ -211,19 +215,19 @@ def test_configuration_errors(device):
           flush=True)
 
 
-def test_state_initialization(device):
-    """State initialization needs a working helper and never replaces history."""
-    device.identity_file.write_text("invalid")
-    run(CTRL, "initialize-grant-state", success=False)
+def test_lazy_state_initialization(device):
+    """Replay state appears on first use, private to the privileged executor."""
     assert not (device.state_dir / "state.json").exists()
-    device.set_identity()
-    run(CTRL, "initialize-grant-state")
-    initial = (device.state_dir / "state.json").read_bytes()
-    run(CTRL, "initialize-grant-state", success=False)
-    assert (device.state_dir / "state.json").read_bytes() == initial
+    first = device.grant("first-install")
+    device.install(first)
     assert oct(device.state_dir.stat().st_mode & 0o777) == "0o700"
-    print("PASS: explicit state initialization is required and never resets history",
-          flush=True)
+    assert oct((device.state_dir / "lock").stat().st_mode & 0o777) == "0o600"
+    assert device.record("first-install")["consumed"] is True
+    device.install(first, success=False)
+    # Deleting the state resets history, which is why the directory is private.
+    (device.state_dir / "state.json").unlink()
+    device.install(first)
+    print("PASS: replay state is created on first use and kept private", flush=True)
 
 
 def test_window_parsing(device):
@@ -242,7 +246,7 @@ def test_window_parsing(device):
         assert prefix == b"rugix.operation-grant.v1"
         content = json.loads(payload)
         assert content["service"] == "rugix-ctrl"
-        assert content["audience"]["target"] == {"Recipient": "device-1"}
+        assert content["audience"]["target"] == {"recipient": "device-1"}
         return content
 
     for duration in ["5m", "PT5M"]:
@@ -273,6 +277,37 @@ def test_window_parsing(device):
           flush=True)
 
 
+def test_hash_only_issuance(device):
+    """A trusted hash is enough to issue, verify, and install a grant."""
+    digest = run(BUNDLER, "hash", device.bundle).stdout.strip()
+    signature = device.grant("hash-only", bundle_hash=digest)
+    run(BUNDLER, "grants", "verify", signature, "--root-cert", device.grant_root,
+        "--namespace", "test", "--device", "device-1", "--bundle-hash", digest)
+    output = run(BUNDLER, "grants", "verify", signature, "--root-cert", device.grant_root,
+                 "--namespace", "test", "--device", "device-1",
+                 "--bundle", device.bundle).stdout
+    assert json.loads(output)["operation"]["bundleHash"] == digest
+    run(BUNDLER, "grants", "sign", "--bundle", device.bundle, "--bundle-hash", digest,
+        "--id", "both", "--namespace", "test", "--device", "device-1",
+        "--expires-at", "5m", "--target", "apps", "--cert", device.signer,
+        "--key", device.signer_key, device.directory / "both.cms", success=False)
+    device.install(signature)
+    wrong = device.grant("hash-mismatch", bundle_hash=run(
+        BUNDLER, "hash", device.other_bundle).stdout.strip())
+    device.install(wrong, success=False)
+    # Verification needs a time inside the window, which --at supplies.
+    scheduled = device.grant("scheduled-inspection", bundle_hash=digest,
+                             start=int(time.time()) + 300, end=int(time.time()) + 600)
+    run(BUNDLER, "grants", "verify", scheduled, "--root-cert", device.grant_root,
+        "--namespace", "test", "--device", "device-1", "--bundle-hash", digest,
+        success=False)
+    run(BUNDLER, "grants", "verify", scheduled, "--root-cert", device.grant_root,
+        "--namespace", "test", "--device", "device-1", "--bundle-hash", digest,
+        "--at", timestamp(int(time.time()) + 450))
+    print("PASS: grants can be issued, verified, and installed from a bundle hash",
+          flush=True)
+
+
 def test_grant_bindings(device):
     """A grant binds the bundle, the device audience, and its validity window."""
     good = device.grant("first")
@@ -293,7 +328,7 @@ def test_grant_bindings(device):
         ["--skip-compatibility-check"],
     ]:
         device.install(good, success=False, extra=flags)
-    assert device.state()["admitted"] == []
+    assert device.record("first") is None
     print("PASS: bundle, audience, window, and override bindings are enforced", flush=True)
 
 
@@ -319,9 +354,10 @@ def test_unprepared_certificates(device):
             alter_extensions=lambda text: text.replace("=DER:30", "=DER:31"))),
     ]
     for reason, signer in unprepared:
-        signature = device.grant(f"unprepared-{reason.replace(' ', '-')}", signer=signer)
+        name = f"unprepared-{reason.replace(' ', '-')}"
+        signature = device.grant(name, signer=signer)
         device.install(signature, success=False)
-    assert device.state()["admitted"] == []
+        assert device.record(name) is None
     print("PASS: unprepared and malformed authority certificates cannot sign grants",
           flush=True)
 
@@ -508,13 +544,12 @@ def test_independent_publisher(device):
     device.install(None, signed_bundle, success=False)
     device.install(dual, signed_bundle)
     saved = (device.state_dir / "state.json").read_bytes()
-    (device.state_dir / "state.json").unlink()
-    device.install(device.grant("missing-state"), signed_bundle, success=False)
     (device.state_dir / "state.json").write_text("invalid")
     device.install(device.grant("corrupt-state"), signed_bundle, success=False)
     (device.state_dir / "state.json").write_bytes(saved)
     device.configure()
-    print("PASS: independent publisher approval and fail-closed replay state", flush=True)
+    print("PASS: independent publisher approval and corrupt state failing closed",
+          flush=True)
 
 
 def test_external_signing(device):
@@ -610,12 +645,24 @@ hash-algorithm = "sha256"
         f"set_try_next B consumed={before + 1}",
     ]
     run(*base, "--boot-group", "B", "--reboot", "set", success=False)
-    run(CTRL, "system", "reboot", "--spare", success=False)
+    # Nothing is staged for later selection, so selecting the spare is refused.
+    result = run(CTRL, "system", "reboot", "--spare", success=False)
+    assert "granted with `reboot = no`" in result.stderr, result.stderr
+    selections = boot_log.read_text().count("set_try_next")
     permissive = device.grant("system-permissive", target="system", bundle=system_bundle)
     run(CTRL, "update", "install", system_bundle, "--grant", permissive,
         "--boot-group", "B", "--reboot", "no")
-    print("PASS: system installation binds options and consumes before boot selection",
-          flush=True)
+    assert boot_log.read_text().count("set_try_next") == selections
+    assert device.state()["pendingActivation"]["bootGroup"] == "B"
+    # Staging authorized the activation, so finishing it later needs no new grant.
+    run(CTRL, "system", "reboot", "--spare")
+    assert boot_log.read_text().count("set_try_next") == selections + 1
+    assert device.state().get("pendingActivation") is None
+    result = run(CTRL, "system", "reboot", "--spare", success=False)
+    assert "granted with `reboot = no`" in result.stderr, result.stderr
+    assert boot_log.read_text().count("set_try_next") == selections + 1
+    print("PASS: system installation binds options, consumes before boot selection, "
+          "and defers activation only when granted", flush=True)
 
 
 def test_managed_state_location(device):
@@ -627,9 +674,8 @@ def test_managed_state_location(device):
     state_mount.mkdir()
     run("mount", "--bind", profile, state_mount)
     managed = device.grant("managed", group="canary")
-    device.install(managed, success=False)
     device.state_dir = Path("/run/rugix/mounts/data/.rugix/grants")
-    run(CTRL, "initialize-grant-state")
+    assert not (device.state_dir / "state.json").exists()
     device.install(managed)
     after_install = (device.state_dir / "state.json").read_bytes()
     run("umount", state_mount)
@@ -686,8 +732,9 @@ def daemon_install(bundle, grant, overrides=None, success=True):
 
 SECTIONS = [
     test_configuration_errors,
-    test_state_initialization,
+    test_lazy_state_initialization,
     test_window_parsing,
+    test_hash_only_issuance,
     test_grant_bindings,
     test_unprepared_certificates,
     test_authority_scope,

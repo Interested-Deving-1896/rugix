@@ -37,6 +37,7 @@ use crate::config::config::Config;
 use crate::config::grants::GrantAuthorityConfig;
 use crate::config::grants::GrantsConfig;
 use crate::config::grants::InstallPermission;
+use crate::config::grants::PendingActivation;
 use crate::system::SystemResult;
 
 mod identity;
@@ -85,11 +86,23 @@ impl GrantSession {
     }
 
     /// Durably consume the grant before authorizing activation or boot selection.
+    ///
+    /// A grant that permitted staging without activation keeps authorizing the
+    /// caller to select the staged system later, which [`Activation::Pending`]
+    /// records.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn consume(&mut self) -> SystemResult<()> {
+    pub(crate) fn consume(&mut self, activation: Activation) -> SystemResult<()> {
         let now = self.revalidate()?;
-        self.store.consume(&self.hash, now)?;
-        info!(grant_id = %self.verified.grant().id, "installation grant consumed");
+        let grant = self.verified.grant();
+        let pending = match activation {
+            Activation::Now => None,
+            Activation::Pending { boot_group } => Some(PendingActivation {
+                boot_group,
+                grant_id: grant.id.clone(),
+            }),
+        };
+        self.store.consume(&self.hash, pending, now)?;
+        info!(grant_id = %grant.id, "installation grant consumed");
         Ok(())
     }
 
@@ -158,9 +171,12 @@ impl GrantSession {
     }
 }
 
-/// Initialize replay state explicitly during provisioning.
-pub(crate) fn initialize(config: &GrantsConfig) -> SystemResult<()> {
-    state::initialize(&state_directory()?, &identity::load(config)?)
+/// What an installation does with its software once it is in place.
+pub(crate) enum Activation {
+    /// The installation activates its software now.
+    Now,
+    /// The staged system may still be selected with `system reboot --spare`.
+    Pending { boot_group: String },
 }
 
 /// Reject activating stored software when grant policy requires a fresh grant.
@@ -168,6 +184,32 @@ pub(crate) fn reject_manual_activation(config: &Config) -> SystemResult<()> {
     if config.grants.is_some() {
         bail!("manual activation requires a new installation with a valid grant");
     }
+    Ok(())
+}
+
+/// Authorize selecting a staged system that a grant permitted but did not activate.
+///
+/// An installation requested with `--reboot no` leaves the caller to finish the
+/// update, which is how a deployment script emits telemetry before rebooting. The
+/// grant authorized that activation, so the device holds the authorization until it
+/// is used or replaced. Selecting any other boot group still needs a new grant,
+/// which is what keeps an unauthorized rollback out.
+pub(crate) fn authorize_spare_reboot(config: &Config, boot_group: &str) -> SystemResult<()> {
+    let Some(policy) = &config.grants else {
+        return Ok(());
+    };
+    let identity = identity::load(policy)?;
+    let mut store = GrantStore::open(state_directory()?, &identity)?;
+    if store.pending_activation() != Some(boot_group) {
+        bail!(
+            "booting boot group {boot_group} requires an installation granted with `reboot = no`"
+        );
+    }
+    store.take_pending_activation()?;
+    info!(
+        boot_group,
+        "selecting a staged system authorized by its grant"
+    );
     Ok(())
 }
 
@@ -323,11 +365,6 @@ mod tests {
                 identity_helper: helper.to_str().unwrap().into(),
                 mode: None,
             };
-            state::initialize(
-                &directory.path().join("state"),
-                &identity::load(&policy).unwrap(),
-            )
-            .unwrap();
             let target = InstallTarget::System {
                 reboot: Some(SystemRebootMode::Set),
                 keep_overlay: false,
@@ -503,6 +540,11 @@ mod tests {
 
     /// Sidex operation records and nested variants reject unknown or duplicate
     /// constraints even when their signature is valid.
+    ///
+    /// This is what keeps a constraint added by a future issuer from being ignored
+    /// by an older device, and it holds only while payload-carrying variants are
+    /// externally tagged. Adjacent and internal tagging buffer the payload, which
+    /// hides unknown fields inside it from Serde's tracking adapter.
     #[test]
     fn installation_contract_rejects_unknown_and_duplicate_constraints() {
         let fixture = Fixture::new();
@@ -517,10 +559,18 @@ mod tests {
                 "\"keepOverlay\":false,\"keepOverlay\":true",
             ),
             (
-                "\"target\":{\"System\":",
-                "\"target\":{\"Apps\":null,\"System\":",
+                "\"target\":{\"system\":",
+                "\"target\":{\"apps\":null,\"system\":",
             ),
-            ("\"Named\":\"B\"", "\"Named\":\"B\",\"Local\":null"),
+            ("\"named\":\"B\"", "\"named\":\"B\",\"local\":null"),
+            (
+                "\"reboot\":{\"mode\":\"set\"}",
+                "\"reboot\":{\"mode\":\"set\",\"x\":1}",
+            ),
+            (
+                "\"target\":{\"recipient\":\"device-1\"}",
+                "\"target\":{\"recipient\":\"device-1\",\"group\":\"canary\"}",
+            ),
         ] {
             let altered = content.replace(field, replacement);
             assert_ne!(altered, content);
@@ -547,37 +597,39 @@ mod tests {
         drop(first);
         let mut retry = fixture.begin().unwrap().unwrap();
         retry.admit().unwrap();
-        retry.consume().unwrap();
+        retry.consume(Activation::Now).unwrap();
         drop(retry);
         assert!(fixture.begin().is_err());
         for id in ["install-2", "install-3"] {
             fixture.grant.id = id.into();
             let mut next = fixture.begin().unwrap().unwrap();
             next.admit().unwrap();
-            next.consume().unwrap();
+            next.consume(Activation::Now).unwrap();
             drop(next);
         }
         fixture.grant.id = "install-2".into();
         assert!(fixture.begin().is_err());
     }
 
-    /// Missing state, corrupt state, and a changed device identity cannot reset
-    /// authorization history.
+    /// Corrupt state and a changed device identity fail closed, while a device that
+    /// has no state yet gets one on first use.
     #[test]
-    fn replay_state_fails_closed_and_initialization_never_resets_it() {
+    fn replay_state_is_created_lazily_and_otherwise_fails_closed() {
         let mut fixture = Fixture::new();
-        let policy = fixture.config.grants.as_ref().unwrap();
         let state = fixture.directory.path().join("state/state.json");
-        let saved = fs::read(&state).unwrap();
         assert!(
-            state::initialize(state.parent().unwrap(), &identity::load(policy).unwrap()).is_err()
+            !state.exists(),
+            "state exists before the first installation"
         );
-        assert_eq!(fs::read(&state).unwrap(), saved);
-        fs::remove_file(&state).unwrap();
-        assert!(fixture.begin().is_err());
+        let mut session = fixture.begin().unwrap().unwrap();
+        session.admit().unwrap();
+        session.consume(Activation::Now).unwrap();
+        drop(session);
+        let saved = fs::read(&state).unwrap();
         fs::write(&state, b"invalid").unwrap();
         assert!(fixture.begin().is_err());
         fs::write(&state, saved).unwrap();
+        assert!(fixture.begin().is_err(), "the grant was consumed");
         fs::write(
             &fixture.config.grants.as_ref().unwrap().identity_helper,
             "#!/bin/sh\nprintf '%s\\n' '{\"device\":\"other-device\"}'\n",

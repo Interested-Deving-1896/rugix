@@ -29,7 +29,11 @@ record Audience {
 }
 
 /// Exact matching only. Empty identifiers never match.
-#[json(tagged = externally)]
+///
+/// Cases that carry a payload must stay externally tagged. Adjacent and internal
+/// tagging buffer the payload during deserialization, which hides unknown fields
+/// inside it from the tracking adapter that makes unsupported constraints fail.
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant AudienceTarget {
     /// One recipient identity.
     Recipient: string,

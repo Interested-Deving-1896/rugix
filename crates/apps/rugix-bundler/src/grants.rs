@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 use std::time::SystemTime;
 
 use clap::Args;
@@ -31,6 +32,7 @@ use rugix_install_grants::InstallTarget;
 use rugix_install_grants::RebootConstraint;
 use rugix_install_grants::SystemInstallConstraints;
 use rugix_pki::CmsSignerBuilder;
+use si_crypto_hashes::HashDigest;
 
 #[derive(Debug, Subcommand)]
 pub enum GrantsCommand {
@@ -68,7 +70,11 @@ pub enum GrantsCommand {
         /// Output unsigned content file.
         output: PathBuf,
     },
-    /// Verify a grant for a provisioned identity and print its authenticated content.
+    /// Verify a grant for a device identity and print its authenticated content.
+    ///
+    /// Prints the authenticated grant as JSON on standard output. Verification
+    /// applies no device policy and inspects no replay state, so a grant this
+    /// command accepts can still be refused by a device.
     Verify {
         /// CMS grant file.
         grant: PathBuf,
@@ -84,10 +90,43 @@ pub enum GrantsCommand {
         /// Independently established group membership; repeat as needed.
         #[clap(long)]
         group: Vec<String>,
-        /// Trusted local copy of the bundle to compare.
+        #[clap(flatten)]
+        bundle: BundleArgs,
+        /// Time to verify at, as an RFC 3339 timestamp. Defaults to the current time.
+        ///
+        /// The grant and its certificates must be valid then, so inspecting a grant
+        /// outside its window needs a time inside it.
         #[clap(long)]
-        bundle: PathBuf,
+        at: Option<Timestamp>,
     },
+}
+
+/// Bundle a grant applies to, either locally available or identified by its hash.
+#[derive(Debug, Args)]
+pub struct BundleArgs {
+    /// Trusted local bundle.
+    #[clap(
+        long,
+        conflicts_with = "bundle_hash",
+        required_unless_present = "bundle_hash"
+    )]
+    bundle: Option<PathBuf>,
+    /// Hash of the bundle header, from a trusted source.
+    ///
+    /// Issuing against a hash needs no local copy of the bundle.
+    #[clap(long)]
+    bundle_hash: Option<HashDigest>,
+}
+
+impl BundleArgs {
+    /// Resolve the authenticated bundle hash.
+    fn hash(self) -> BundleResult<HashDigest> {
+        match (self.bundle, self.bundle_hash) {
+            (Some(path), None) => rugix_bundle::bundle_hash(&path),
+            (None, Some(hash)) => Ok(hash),
+            _ => bail!("specify exactly one of --bundle or --bundle-hash"),
+        }
+    }
 }
 
 /// Namespace, audiences, and operations delegated to an authority certificate.
@@ -113,9 +152,8 @@ pub struct ScopeArgs {
 /// Installation request and authorization window of one grant.
 #[derive(Debug, Args)]
 pub struct GrantArgs {
-    /// Trusted local bundle to authorize.
-    #[clap(long)]
-    bundle: PathBuf,
+    #[clap(flatten)]
+    bundle: BundleArgs,
     /// Grant identifier, unique within the issuing authority.
     #[clap(long)]
     id: String,
@@ -224,16 +262,27 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
             device,
             group,
             bundle,
+            at,
         } => {
             let identity = RecipientIdentity {
                 namespace,
                 recipient_id: device,
                 groups: group,
             };
+            let now = match at {
+                Some(timestamp) => {
+                    SystemTime::UNIX_EPOCH
+                        + Duration::from_secs(
+                            u64::try_from(timestamp.as_second())
+                                .whatever("verification time precedes the Unix epoch")?,
+                        )
+                }
+                None => SystemTime::now(),
+            };
             let context = VerificationContext {
                 service: rugix_install_grants::SERVICE,
                 identity: &identity,
-                now: SystemTime::now(),
+                now,
             };
             let mut signed = Vec::new();
             fs::File::open(grant)
@@ -253,8 +302,7 @@ pub fn run(command: GrantsCommand) -> BundleResult<()> {
             let verified = verifier
                 .verify::<InstallOperation>(&signed, &context)
                 .whatever("unable to verify installation grant")?;
-            let expected = rugix_bundle::bundle_hash(&bundle)?;
-            if verified.grant().operation.bundle_hash != expected {
+            if verified.grant().operation.bundle_hash != bundle.hash()? {
                 bail!("grant bundle hash does not match");
             }
             println!(
@@ -365,7 +413,7 @@ impl GrantArgs {
                 .whatever("grant validity cannot end before the Unix epoch")?,
             operation_type: InstallOperation::TYPE.into(),
             operation: InstallOperation {
-                bundle_hash: rugix_bundle::bundle_hash(&self.bundle)?,
+                bundle_hash: self.bundle.hash()?,
                 target,
             },
         })

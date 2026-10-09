@@ -13,7 +13,11 @@ record InstallOperation {
 }
 
 /// Supported installation targets.
-#[json(tagged = externally)]
+///
+/// Cases that carry a payload must stay externally tagged. Adjacent and internal
+/// tagging buffer the payload during deserialization, which hides unknown fields
+/// inside it from the tracking adapter that makes unsupported constraints fail.
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant InstallTarget {
     /// Install and activate application payloads.
     Apps,
@@ -35,7 +39,7 @@ record SystemInstallConstraints {
 }
 
 /// Permitted boot group selection.
-#[json(tagged = externally)]
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant BootGroupConstraint {
     /// The device must select an inactive boot group locally.
     Local,
@@ -44,7 +48,7 @@ variant BootGroupConstraint {
 }
 
 /// Permitted reboot behavior.
-#[json(tagged = externally)]
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant RebootConstraint {
     /// The bundle's default behavior.
     BundleDefault,
@@ -53,7 +57,9 @@ variant RebootConstraint {
 }
 
 /// Post-installation system behavior.
-#[json(tagged = externally)]
+///
+/// Cases carry no payload, so external tagging encodes them as plain strings.
+#[json(tagged = externally, rename_all = "kebab-case")]
 variant RebootMode {
     /// Select the installed system and reboot.
     Yes,
