@@ -335,6 +335,31 @@ def test_grant_bindings(device):
     print("PASS: bundle, audience, window, and override bindings are enforced", flush=True)
 
 
+def test_explicit_policy_bypass(device):
+    """Grant policy can be skipped explicitly, and a grant excludes the overrides."""
+    digest = run(BUNDLER, "hash", device.bundle).stdout.strip()
+    device.install(None, success=False)
+    # Skipping policy returns to the ordinary verification rules, which this
+    # unsigned bundle does not satisfy on its own.
+    device.install(None, extra=["--insecure-skip-grant-verification"], success=False)
+    device.install(None, extra=["--insecure-skip-grant-verification",
+                                "--bundle-hash", digest])
+    # A grant decides its installation, so it excludes every local override.
+    good = device.grant("exclusive")
+    for flags in [
+        ["--insecure-skip-grant-verification"],
+        ["--bundle-hash", digest],
+        ["--root-cert", device.grant_root],
+        ["--insecure-skip-bundle-verification"],
+        ["--insecure-allow-missing-block-index"],
+        ["--skip-compatibility-check"],
+    ]:
+        device.install(good, success=False, extra=flags)
+    device.install(good)
+    print("PASS: policy can be skipped explicitly and a grant excludes overrides",
+          flush=True)
+
+
 def test_unprepared_certificates(device):
     """Only certificates prepared as grant authorities can sign grants."""
     unprepared = [
@@ -527,6 +552,8 @@ def test_daemon(device):
             daemon_install(device.bundle, None, success=False)
             daemon_install(device.bundle, signature,
                            {"insecure_skip_bundle_verification": True}, success=False)
+            daemon_install(device.bundle, signature,
+                           {"insecure_skip_grant_verification": True}, success=False)
             device.set_identity(groups=[])
             daemon_install(device.bundle, signature, success=False)
             device.set_identity()
@@ -736,6 +763,7 @@ SECTIONS = [
     test_window_parsing,
     test_hash_only_issuance,
     test_grant_bindings,
+    test_explicit_policy_bypass,
     test_unprepared_certificates,
     test_authority_scope,
     test_delegation,

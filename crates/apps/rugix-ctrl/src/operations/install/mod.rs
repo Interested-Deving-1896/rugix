@@ -222,6 +222,8 @@ impl<T: Read + Seek + Send> ReadSeek for T {}
 pub(crate) struct BundleInstallOptions {
     #[serde(default)]
     pub(crate) grant: Option<Vec<u8>>,
+    #[serde(default)]
+    pub(crate) insecure_skip_grant_verification: bool,
     pub(crate) bundle_hash: Option<HashDigest>,
     pub(crate) root_cert: Option<Vec<u8>>,
     pub(crate) insecure_skip_bundle_verification: bool,

@@ -43,6 +43,20 @@ operations can also rewrite the local policy. Gating them would forbid operation
 grant could authorize, since there is no activation operation to issue a grant for,
 and it would disable rollback as a recovery path.
 
+The boundary is between the installer and its callers, including every client of the
+privileged daemon. It is not a defense against root on the device. Accordingly the
+policy has an explicit way out, `insecure_skip_grant_verification`, which installs
+without a grant and falls back to the ordinary verification rules. It is classified
+as a security override, so the daemon refuses it without `dangerously-insecure`. An
+explicit per-invocation option is preferable to the alternative an operator would
+otherwise reach for, which is deleting `[grants]` and leaving the device unprotected
+for every later installation.
+
+A grant and a local override are mutually exclusive: `require_exclusive_grant`
+refuses a request that supplies both, because a grant already decides verification.
+It destructures the options so that a new one has to be classified before it can be
+combined with a grant.
+
 Recipient identity must come from the executor's trusted provider, never from the
 request or the grant. The library takes it as an explicit input.
 

@@ -28,6 +28,7 @@ use rugix_install_grants::RebootMode;
 use si_crypto_hashes::HashAlgorithm;
 use si_crypto_hashes::HashDigest;
 use tracing::info;
+use tracing::warn;
 
 use self::state::GrantStore;
 use super::BundleInstallOptions;
@@ -59,13 +60,7 @@ impl GrantSession {
         options: &BundleInstallOptions,
         target: &InstallTarget,
     ) -> SystemResult<Option<Self>> {
-        let Some(policy) = &config.grants else {
-            if options.grant.is_some() {
-                bail!("installation grants are not configured");
-            }
-            return Ok(None);
-        };
-        Self::begin_in(policy, options, target, state_directory()?)
+        Self::begin_in(config, options, target, state_directory()?)
     }
 
     /// Authenticated bundle hash used by the streaming bundle reader.
@@ -93,33 +88,29 @@ impl GrantSession {
         Ok(())
     }
 
-    /// Admit a grant using the selected persistent state directory.
+    /// Apply grant policy using the selected persistent state directory.
     fn begin_in(
-        policy: &GrantsConfig,
+        config: &Config,
         options: &BundleInstallOptions,
         target: &InstallTarget,
         directory: PathBuf,
     ) -> SystemResult<Option<Self>> {
-        // Destructured so that a new installation option has to be classified here
-        // before it can reach the installer under grant policy.
-        let BundleInstallOptions {
-            grant,
-            bundle_hash,
-            root_cert,
-            insecure_skip_bundle_verification,
-            insecure_allow_missing_block_index,
-            skip_compatibility_check,
-        } = options;
-        if bundle_hash.is_some()
-            || root_cert.is_some()
-            || *insecure_skip_bundle_verification
-            || *insecure_allow_missing_block_index
-            || *skip_compatibility_check
-        {
-            bail!("installation security overrides are disabled by grant policy");
+        require_exclusive_grant(options)?;
+        let Some(policy) = &config.grants else {
+            if options.grant.is_some() {
+                bail!("installation grants are not configured");
+            }
+            return Ok(None);
+        };
+        if options.insecure_skip_grant_verification {
+            warn!("grant policy skipped by explicit request; this installation is unauthorized");
+            return Ok(None);
         }
-        let Some(signed) = grant else {
-            bail!("a detached installation grant is required");
+        let Some(signed) = &options.grant else {
+            bail!(
+                "a detached installation grant is required; pass \
+                 --insecure-skip-grant-verification to install without one"
+            );
         };
         let identity = identity::load(policy)?;
         let store = GrantStore::open(directory, &identity)?;
@@ -156,6 +147,38 @@ impl GrantSession {
         verify(&self.policy, &self.signed, &identity, now)?;
         Ok(now)
     }
+}
+
+/// Reject options that would decide an installation a grant already decides.
+///
+/// Destructured so that a new installation option has to be classified here before
+/// it can be combined with a grant.
+fn require_exclusive_grant(options: &BundleInstallOptions) -> SystemResult<()> {
+    let BundleInstallOptions {
+        grant,
+        insecure_skip_grant_verification,
+        bundle_hash,
+        root_cert,
+        insecure_skip_bundle_verification,
+        insecure_allow_missing_block_index,
+        skip_compatibility_check,
+    } = options;
+    if grant.is_none() {
+        return Ok(());
+    }
+    if *insecure_skip_grant_verification
+        || bundle_hash.is_some()
+        || root_cert.is_some()
+        || *insecure_skip_bundle_verification
+        || *insecure_allow_missing_block_index
+        || *skip_compatibility_check
+    {
+        bail!(
+            "a grant decides this installation, so it cannot be combined with bundle \
+             verification, block index, or compatibility overrides"
+        );
+    }
+    Ok(())
 }
 
 /// Convert the exact caller-supplied options into the request the grant must permit.
@@ -351,6 +374,7 @@ mod tests {
         fn options(&self) -> BundleInstallOptions {
             BundleInstallOptions {
                 grant: Some(rugix_grants::sign(&self.grant, &self.signer).unwrap()),
+                insecure_skip_grant_verification: false,
                 bundle_hash: None,
                 root_cert: None,
                 insecure_skip_bundle_verification: false,
@@ -369,7 +393,7 @@ mod tests {
             target: &InstallTarget,
         ) -> SystemResult<Option<GrantSession>> {
             GrantSession::begin_in(
-                self.config.grants.as_ref().unwrap(),
+                &self.config,
                 options,
                 target,
                 self.directory.path().join("state"),
@@ -600,10 +624,10 @@ mod tests {
         }
     }
 
-    /// Grant policy cannot be downgraded with the legacy hash, certificate, or
-    /// insecure installation options.
+    /// A grant decides its installation, so it cannot be combined with options
+    /// that would decide verification, delivery, or compatibility locally.
     #[test]
-    fn required_grants_reject_legacy_overrides() {
+    fn grants_cannot_be_combined_with_overrides() {
         let fixture = Fixture::new();
         let mut variants = Vec::new();
         let mut missing = fixture.options();
@@ -624,8 +648,29 @@ mod tests {
         let mut compatibility = fixture.options();
         compatibility.skip_compatibility_check = true;
         variants.push(compatibility);
+        let mut skip = fixture.options();
+        skip.insecure_skip_grant_verification = true;
+        variants.push(skip);
         for options in variants {
             assert!(fixture.begin_with(&options, &fixture.target).is_err());
         }
+    }
+
+    /// Grant policy can be skipped explicitly, which installs nothing on its own
+    /// and leaves bundle verification to the ordinary rules.
+    #[test]
+    fn grant_policy_can_be_skipped_explicitly() {
+        let fixture = Fixture::new();
+        let mut options = fixture.options();
+        options.grant = None;
+        assert!(fixture.begin_with(&options, &fixture.target).is_err());
+        options.insecure_skip_grant_verification = true;
+        assert!(
+            fixture
+                .begin_with(&options, &fixture.target)
+                .unwrap()
+                .is_none(),
+            "skipping policy must not open a grant session"
+        );
     }
 }

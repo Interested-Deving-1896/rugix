@@ -15,7 +15,7 @@ Rugix Bundler:
 
 Rugix Ctrl:
 
-- Add opt-in detached installation grants. A grant authorizes one bundle for one device or provisioned group within a validity window and bounds the installation options the device may use. Configure trusted issuers and their permissions under `[grants]` and supply the device identity through an identity helper. Grants gate installation; activating software that is already on the device is unaffected. See [Installation Grants](https://rugix.org/docs/ctrl/next/updates/installation-grants).
+- Add opt-in detached installation grants. A grant authorizes one bundle for one device or provisioned group within a validity window and bounds the installation options the device may use. Configure trusted issuers and their permissions under `[grants]` and supply the device identity through an identity helper. Grants gate installation; activating software that is already on the device is unaffected. A grant cannot be combined with local verification overrides, and `--insecure-skip-grant-verification` installs without one for recovery. See [Installation Grants](https://rugix.org/docs/ctrl/next/updates/installation-grants).
 - Add opt-in automatic block-index management for delta-enabled full system updates.
 - Add the `rugix.init.quiet` kernel command-line option to suppress routine early-boot output while retaining errors.
 - Add versioned JSON configuration for Rugix Apps, including optional JSON Schema validation, crash-safe application, and rollback of generation/configuration pairs.
