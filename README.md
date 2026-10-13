@@ -121,11 +121,6 @@ When a dependency advisory fails CI, update the affected crate in `Cargo.lock` w
 crate is a direct dependency, also raise its minimum version in the corresponding
 `Cargo.toml` to exclude affected releases.
 
-The [HTTP fetch benchmark](benchmarks/http-fetch/README.md) measures bundle download
-and block decoding under controlled request latency, connection overhead, and
-bandwidth limits. [Bundle Fetching](docs/bundle-fetching.md) describes the source
-abstraction, concurrent range requests, verification, and shutdown.
-
 ## Run Directly from Git with Nix
 
 The Nix flake exposes each Rugix command as both a package and an app, so no checkout is
