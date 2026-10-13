@@ -1,3 +1,8 @@
+//! Pack manifest directories, payload files, and component metadata into bundles.
+//!
+//! [`pack`] encodes payloads, assembles their hashes and delivery metadata, and writes
+//! the completed bundle atomically, returning its header hash.
+
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Component as PathComponent;
@@ -32,6 +37,11 @@ use crate::paths_refer_to_same_file;
 const COMPONENTS_DIR: &str = "components";
 const COMPONENTS_SIZE_LIMIT: u64 = 64 * 1024;
 
+/// Pack `rugix-bundle.toml` and its referenced files from `path` into `dst`.
+///
+/// Payload paths are relative to `path/payloads`. Component declarations under
+/// `path/components` are embedded in the header. The returned hash identifies that
+/// header; the destination is replaced only after encoding completes successfully.
 pub fn pack(path: &Path, dst: &Path) -> BundleResult<HashDigest> {
     let manifest = toml::from_str::<BundleManifest>(
         &std::fs::read_to_string(path.join("rugix-bundle.toml"))
@@ -319,8 +329,7 @@ mod tests {
     use crate::block_encoding::block_index::compute_block_index;
     use crate::manifest::ChunkerAlgorithm;
     use crate::reader::BundleReader;
-    use crate::source::ReaderSource;
-    use crate::source::SkipSeek;
+    use crate::reader::BundleSource;
 
     #[test]
     fn pack_embeds_bundle_components_in_header() {
@@ -346,7 +355,7 @@ payloads = []
         let bundle_path = tempdir.path().join("bundle.rugixb");
         let hash = pack(&bundle_dir, &bundle_path).unwrap();
         let bundle_file = std::fs::File::open(&bundle_path).unwrap();
-        let bundle_source = ReaderSource::<_, SkipSeek>::from_unbuffered(bundle_file);
+        let bundle_source = BundleSource::from_seekable(bundle_file).unwrap();
         let bundle_reader = BundleReader::start(bundle_source, Some(hash)).unwrap();
         let components = bundle_reader.header().components.as_ref().unwrap();
 
@@ -386,9 +395,8 @@ chunker = "casync-64"
 
         let bundle_path = tempdir.path().join("bundle.rugixb");
         let hash = pack(&bundle_dir, &bundle_path).unwrap();
-        let source = ReaderSource::<_, SkipSeek>::from_unbuffered(
-            std::fs::File::open(&bundle_path).unwrap(),
-        );
+        let source =
+            BundleSource::from_seekable(std::fs::File::open(&bundle_path).unwrap()).unwrap();
         let mut reader = BundleReader::start(source, Some(hash)).unwrap();
         let payload = reader.next_payload().unwrap().unwrap();
         let decoded_path = tempdir.path().join("decoded.img");

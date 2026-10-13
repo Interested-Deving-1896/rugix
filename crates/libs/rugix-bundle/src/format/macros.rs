@@ -21,7 +21,7 @@ macro_rules! define_struct {
         }
 
         impl $crate::format::decode::Decode for $name {
-            fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+            fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
                 let AtomHead::Start { tag } = atom else {
                     bail!("expected segment, found {atom:?}");
                 };
@@ -97,7 +97,7 @@ macro_rules! define_enum {
         }
 
         impl $crate::format::decode::Decode for $name {
-            fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+            fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
                 let AtomHead::Start { tag } = atom else {
                     bail!("expected segment, found {atom:?}");
                 };
@@ -133,7 +133,7 @@ macro_rules! define_enum {
                 }
             }
 
-            fn continue_decode<S: BundleSource>(
+            fn continue_decode<S: StlvRead>(
                 &mut self,
                 decoder: &mut Decoder<S>,
                 atom: AtomHead,

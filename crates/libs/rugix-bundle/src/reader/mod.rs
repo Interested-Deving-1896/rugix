@@ -1,9 +1,146 @@
+//! Consume Rugix bundles and deliver verified payload bytes without staging a
+//! complete bundle.
+//!
+//! [`BundleReader`] owns a [`BundleSource`] and lends one [`PayloadReader`] at a time.
+//! [`PayloadTarget`] receives decoded output, [`StoredBlockProvider`] supplies local
+//! reuse candidates, and [`BundleProgress`] reports logical consumption progress.
+//!
+//! # Consuming a Bundle
+//!
+//! Supply a [`BundleSource`] to [`BundleReader::start`], inspect its metadata, and
+//! consume each [`PayloadReader`] through [`PayloadReader::decode_into`] or
+//! [`PayloadReader::skip`] before requesting the next payload. Successful
+//! consumption of the final payload also validates the closing bundle framing.
+//!
+//! ```
+//! use std::fs::{File, OpenOptions};
+//! use reportify::ResultExt;
+//! use rugix_bundle::BundleResult;
+//! use rugix_bundle::reader::{BundleReader, BundleSource};
+//! # fn main() -> BundleResult<()> {
+//! # let temporary = tempfile::tempdir().whatever("unable to create example directory")?;
+//! # let directory = temporary.path();
+//! # std::fs::create_dir(directory.join("payloads")).whatever("unable to create payload directory")?;
+//! # std::fs::write(directory.join("payloads/example.img"), b"example payload").whatever("unable to write example payload")?;
+//! # std::fs::write(directory.join("rugix-bundle.toml"), r#"
+//! # update-type = "full"
+//! # [[payloads]]
+//! # filename = "example.img"
+//! # delivery = { type = "slot", slot = "example" }
+//! # block-encoding = { chunker = "fixed-64" }
+//! # "#).whatever("unable to write example manifest")?;
+//! # let bundle_path = directory.join("example.rugixb");
+//! # let expected_hash = rugix_bundle::builder::pack(directory, &bundle_path)?;
+//! # let output_directory = directory;
+//! let source = BundleSource::from_seekable(
+//!     File::open(bundle_path).whatever("unable to open bundle")?,
+//! )?;
+//! let mut bundle = BundleReader::start(source, Some(expected_hash))?;
+//!
+//! while let Some(payload) = bundle.next_payload()? {
+//!     let target = OpenOptions::new()
+//!         .create(true).truncate(true).read(true).write(true)
+//!         .open(output_directory.join(format!("payload-{}.img", payload.idx())))
+//!         .whatever("unable to open payload target")?;
+//!     let info = payload.decode_into(target, None, &mut |progress| {
+//!         println!("consumed {}", progress.bytes_read);
+//!     })?;
+//!     println!("installed {}", info.size);
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The expected header hash must come from a trusted source. Passing `None`
+//! checks consistency against the hashes declared in the bundle; callers can
+//! authenticate the header by verifying [`BundleReader::signatures`] before
+//! consuming any payload. Signature verification and installation policy belong
+//! to the caller.
+//!
+//! # Sources and Ownership
+//!
+//! [`BundleSource::RangeSource`] owns a shareable [`RangeSource`]. It opens
+//! independent readers for half-open encoded byte ranges; concurrent reads keep
+//! separate positions. [`BundleSource::StreamSource`] owns one forward reader.
+//! [`BundleSource::from_seekable`] adapts files and other seekable inputs by
+//! serializing seek/read pairs while preserving each range reader's position.
+//!
+//! The bundle reader owns its source and its private buffered parser position.
+//! Sequential reading and skipping are implementation details of [`format::stlv`].
+//! Payload acquisition obtains range access internally, independently of framing.
+//! HTTP support belongs in a source backend: its connection pool, capability
+//! probe, transport retries, and traffic counters stay outside this crate.
+//!
+//! # Reader Pipeline
+//!
+//! Block-encoded payload consumption proceeds through these stages:
+//!
+//! 1. **Parse and validate metadata.** The reader checks the payload header against its
+//!    hash in the bundle header. Block hashes, compression, and encoded sizes describe
+//!    how payload bytes must be interpreted.
+//! 2. **Plan acquisition.** Encoded intervals are fixed before fetching starts. Physical
+//!    sizes must exactly cover the payload. A [`StoredBlockProvider`] supplies local
+//!    candidates; deduplicated entries refer to earlier output. Consecutive missing bytes
+//!    are combined into requests bounded by [`ReaderOptions::max_range_size`] (1 MiB by
+//!    default).
+//! 3. **Fetch ahead.** Up to [`ReaderOptions::concurrency`] blocking worker threads (four
+//!    by default) acquire independent ranges while the installation thread handles
+//!    earlier blocks. Each request has a private result slot, so responses can finish in
+//!    any order.
+//! 4. **Resolve and verify the next block.** The installation thread verifies local
+//!    candidates, decompresses downloaded bytes, and checks decoded block hashes. A
+//!    rejected local candidate requests its original encoded interval through a priority
+//!    queue. Rejected downloads can request two replacements. Duplicate blocks are read
+//!    from previously written target offsets and verified.
+//! 5. **Write in order.** Only a verified decoded block is passed to
+//!    [`PayloadTarget::write`]. The same bytes update the payload hash and the decoded
+//!    block index. Writing, hashing, decompression, and target reads stay on the
+//!    installation thread while workers continue downloading.
+//! 6. **Finish consumption.** The parser resumes at the encoded payload end. The reader
+//!    checks the complete decoded payload hash, finalizes the target, and validates
+//!    closing framing before returning [`DecodedPayloadInfo`].
+//!
+//! A forward stream follows the same logical order with sequential acquisition.
+//! Local candidates are verified before their original stream bytes are drained,
+//! so rejected candidates can still use those incoming bytes. Stream corruption
+//! fails consumption because an earlier interval cannot be requested again.
+//!
+//! A payload without block encoding is copied sequentially and checked against its
+//! complete payload hash before target finalization. Per-block verification
+//! requires a block encoding; an installer can enforce that requirement before
+//! calling `decode_into`.
+//!
+//! # Progress, Bounds, and Failures
+//!
+//! [`BundleProgress`] reports the logical encoded position reached after writes
+//! and an optional total source length. It does not count overlapping downloads
+//! or replacement requests. [`BundleReader::with_size_hint`] supplies a known
+//! transport length for a forward stream.
+//!
+//! [`BundleReader::start_with_options`] accepts [`ReaderOptions`] to tune concurrency
+//! and the maximum range size. Lookahead retains at most `concurrency` responses
+//! plus one separate fallback response, each bounded by `max_range_size`. Defaults
+//! retain at most four 1 MiB responses plus one 1 MiB fallback response. Metadata,
+//! the current encoded and decoded block, and codec workspace are additional.
+//! Large encoded blocks are assembled from several bounded requests.
+//!
+//! The first worker failure stops scheduling and cancels the source. An
+//! unfinished fetcher clears queued jobs and joins its workers. Successful
+//! consumption joins workers without canceling the source, allowing subsequent
+//! payloads to be read. Backends must support cancellation or bound blocking I/O
+//! so shutdown can finish. A consumption error aborts the operation; target writes
+//! already completed remain the caller's responsibility.
+//!
+//! A [`PayloadTarget`] supplies ordered writes, optional reads for deduplication,
+//! and finalization. The implementation for [`std::fs::File`] supports target
+//! reads and flushes and synchronizes the file during finalization. Boot selection,
+//! rollback policy, signature validation, and application activation belong to
+//! the installer.
+
 use std::fs::File;
-use std::io::Read;
 use std::io::Seek;
 use std::io::Write;
 
-use block_provider::StoredBlockProvider;
 use byte_calc::ByteLen;
 use byte_calc::NumBytes;
 use reportify::ResultExt;
@@ -13,33 +150,49 @@ use rugix_compression::ByteProcessor;
 use rugix_compression::CompressionFormat;
 use si_crypto_hashes::HashAlgorithm;
 use si_crypto_hashes::HashDigest;
-use tracing::error;
-use tracing::trace;
-use tracing::warn;
 
 use crate::BUNDLE_HEADER_SIZE_LIMIT;
 use crate::BundleResult;
 use crate::PAYLOAD_HEADER_SIZE_LIMIT;
 use crate::SIGNATURES_SIZE_LIMIT;
-use crate::block_encoding::block_index::BlockId;
-use crate::block_encoding::block_index::RawBlockIndex;
-use crate::block_encoding::block_index::encode_block_sizes;
-use crate::block_encoding::block_table::BlockTable;
 use crate::format::Signatures;
 use crate::format::decode::decode_slice;
 use crate::format::stlv::AtomHead;
+use crate::format::stlv::Read as StlvRead;
 use crate::format::stlv::Tag;
 use crate::format::stlv::read_atom_head;
 use crate::format::stlv::skip;
 use crate::format::stlv::write_atom_head;
 use crate::format::tags;
 use crate::format::{self};
-use crate::source::BundleSource;
 
-pub mod block_provider;
+mod block_fetcher;
+mod block_provider;
+mod cursor;
+mod options;
+mod range_fetcher;
+mod source;
 
-pub struct BundleReader<S> {
-    source: S,
+#[doc(inline)]
+pub use block_provider::StoredBlock;
+#[doc(inline)]
+pub use block_provider::StoredBlockProvider;
+#[doc(inline)]
+pub use options::ReaderOptions;
+#[doc(inline)]
+pub use source::BundleSource;
+#[doc(inline)]
+pub use source::RangeSource;
+#[doc(inline)]
+pub use source::SourceReader;
+
+use block_fetcher::BlockFetcher;
+use cursor::Cursor;
+
+/// Own a bundle source and consume its verified payloads in order.
+pub struct BundleReader {
+    cursor: Cursor,
+    options: ReaderOptions,
     header: format::BundleHeader,
     header_raw: Vec<u8>,
     signatures: Option<Signatures>,
@@ -47,8 +200,23 @@ pub struct BundleReader<S> {
     finished: bool,
 }
 
-impl<S: BundleSource> BundleReader<S> {
-    pub fn start(mut source: S, header_hash: Option<HashDigest>) -> BundleResult<Self> {
+impl BundleReader {
+    /// Own the input, parse its header, and optionally verify the expected header hash.
+    pub fn start(source: BundleSource, header_hash: Option<HashDigest>) -> BundleResult<Self> {
+        Self::start_with_options(source, header_hash, ReaderOptions::default())
+    }
+
+    /// Start consumption with explicit range concurrency and size limits.
+    ///
+    /// Limits apply to framing and payload reads from range sources. Forward
+    /// streams remain sequential. Invalid response-buffer sizes return an error.
+    pub fn start_with_options(
+        source: BundleSource,
+        header_hash: Option<HashDigest>,
+        options: ReaderOptions,
+    ) -> BundleResult<Self> {
+        options.validate()?;
+        let mut source = Cursor::new(source, options.max_range_size);
         let _ = expect_start(&mut source, tags::BUNDLE)?;
         let mut bundle_header = Vec::new();
         let header_head = skip_until_start(&mut source, tags::BUNDLE_HEADER)?;
@@ -67,7 +235,8 @@ impl<S: BundleSource> BundleReader<S> {
         let signatures = read_optional_metadata(&mut source)?;
         // At this point, we are in the payloads section.
         Ok(Self {
-            source,
+            cursor: source,
+            options,
             header,
             signatures,
             header_raw: bundle_header,
@@ -76,23 +245,42 @@ impl<S: BundleSource> BundleReader<S> {
         })
     }
 
+    /// Supply a transport's known length for progress on a forward stream.
+    pub fn with_size_hint(mut self, total: Option<NumBytes>) -> Self {
+        self.cursor.set_size_hint(total);
+        self
+    }
+
+    /// Logical parser position, distinct from actual transport traffic.
+    pub fn progress(&self) -> BundleProgress {
+        self.cursor.progress()
+    }
+
+    /// Decoded bundle metadata, including the ordered payload index.
     pub fn header(&self) -> &format::BundleHeader {
         &self.header
     }
 
+    /// Original encoded header bytes used for hashing and signature verification.
     pub fn header_raw(&self) -> &[u8] {
         &self.header_raw
     }
 
+    /// Hash the original header with the selected algorithm.
     pub fn header_hash(&self, algorithm: HashAlgorithm) -> HashDigest {
         algorithm.hash(&self.header_raw)
     }
 
+    /// Embedded signatures for the caller to authenticate before payload consumption.
     pub fn signatures(&self) -> Option<&Signatures> {
         self.signatures.as_ref()
     }
 
-    pub fn next_payload(&mut self) -> BundleResult<Option<PayloadReader<'_, S>>> {
+    /// Parse the next payload header, checking its declared header hash.
+    ///
+    /// Consume or skip the returned payload before requesting another. A result of
+    /// `None` also verifies that all declared payloads and closing framing were read.
+    pub fn next_payload(&mut self) -> BundleResult<Option<PayloadReader<'_>>> {
         if self.next_payload >= self.header.payload_index.len() {
             self.finish_payloads()?;
             return Ok(None);
@@ -100,11 +288,11 @@ impl<S: BundleSource> BundleReader<S> {
         let this_payload = self.next_payload;
         self.next_payload += 1;
         let entry = &self.header.payload_index[this_payload];
-        let _ = expect_start(&mut self.source, tags::PAYLOAD)?;
-        let header_atom = skip_until_start(&mut self.source, tags::PAYLOAD_HEADER)?;
+        let _ = expect_start(&mut self.cursor, tags::PAYLOAD)?;
+        let header_atom = skip_until_start(&mut self.cursor, tags::PAYLOAD_HEADER)?;
         let mut header_bytes = Vec::new();
         read_into_vec(
-            &mut self.source,
+            &mut self.cursor,
             &mut header_bytes,
             header_atom,
             PAYLOAD_HEADER_SIZE_LIMIT,
@@ -118,7 +306,7 @@ impl<S: BundleSource> BundleReader<S> {
         {
             bail!("invalid payload header hash");
         }
-        let remaining_data = skip_until_value(&mut self.source, tags::PAYLOAD_DATA)?;
+        let remaining_data = skip_until_value(&mut self.cursor, tags::PAYLOAD_DATA)?;
         Ok(Some(PayloadReader {
             idx: this_payload,
             reader: self,
@@ -131,9 +319,9 @@ impl<S: BundleSource> BundleReader<S> {
         if self.finished {
             return Ok(());
         }
-        skip_until_end(&mut self.source, tags::PAYLOADS)?;
-        skip_until_end(&mut self.source, tags::BUNDLE)?;
-        if read_atom_head(&mut self.source)?.is_some() {
+        skip_until_end(&mut self.cursor, tags::PAYLOADS)?;
+        skip_until_end(&mut self.cursor, tags::BUNDLE)?;
+        if read_atom_head(&mut self.cursor)?.is_some() {
             bail!("bundle contains trailing atoms after the root segment");
         }
         self.finished = true;
@@ -141,8 +329,19 @@ impl<S: BundleSource> BundleReader<S> {
     }
 }
 
+/// Position reached while consuming a bundle.
+#[derive(Debug, Clone, Copy)]
+pub struct BundleProgress {
+    /// Logical encoded position reached by completed writes or framing reads.
+    pub bytes_read: NumBytes,
+    /// Source length, if provided by the backend or a size hint.
+    pub bytes_total: Option<NumBytes>,
+}
+
 /// Read optional bundle metadata advancing the source to the payload section.
-pub fn read_optional_metadata(source: &mut dyn BundleSource) -> BundleResult<Option<Signatures>> {
+pub(crate) fn read_optional_metadata(
+    source: &mut dyn StlvRead,
+) -> BundleResult<Option<Signatures>> {
     let mut signatures = None;
     loop {
         let head = expect_atom_head(source)?;
@@ -165,33 +364,43 @@ pub fn read_optional_metadata(source: &mut dyn BundleSource) -> BundleResult<Opt
     Ok(signatures)
 }
 
-pub struct PayloadReader<'r, S> {
+/// One pending payload, borrowing its bundle until consumed or skipped.
+#[must_use = "consume or skip the payload before reading the next one"]
+pub struct PayloadReader<'r> {
     idx: usize,
-    reader: &'r mut BundleReader<S>,
+    reader: &'r mut BundleReader,
     header: format::PayloadHeader,
     remaining_data: NumBytes,
 }
 
-impl<'r, S: BundleSource> PayloadReader<'r, S> {
-    pub fn reader(&self) -> &BundleReader<S> {
+impl PayloadReader<'_> {
+    /// The containing bundle reader and its metadata.
+    pub fn reader(&self) -> &BundleReader {
         self.reader
     }
 
+    /// Position of this payload in the bundle's ordered index.
     pub fn idx(&self) -> usize {
         self.idx
     }
 
+    /// Verified payload metadata describing its block encoding.
     pub fn header(&self) -> &format::PayloadHeader {
         &self.header
     }
 
+    /// Delivery metadata and decoded payload hash from the bundle index.
     pub fn entry(&self) -> &format::PayloadEntry {
         &self.reader.header().payload_index[self.idx]
     }
 
+    /// Discard this payload's encoded bytes and validate its closing framing.
+    ///
+    /// Skipping does not verify the decoded payload hash. Streams drain the bytes;
+    /// range sources advance the private parser position without downloading them.
     pub fn skip(self) -> BundleResult<()> {
-        self.reader.source.skip(self.remaining_data)?;
-        skip_until_end(&mut self.reader.source, tags::PAYLOAD)?;
+        self.reader.cursor.skip(self.remaining_data)?;
+        skip_until_end(&mut self.reader.cursor, tags::PAYLOAD)?;
         if self.reader.next_payload >= self.reader.header.payload_index.len() {
             self.reader.finish_payloads()?;
         }
@@ -206,13 +415,22 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
         if max_chunk == 0 {
             return Ok(0);
         }
-        let read = self.reader.source.read(&mut buf[..max_chunk])?;
+        let read = self.reader.cursor.read(&mut buf[..max_chunk])?;
         self.remaining_data -=
             NumBytes::expect_from_usize(read, "bytes actually read always fit into u64");
         Ok(read)
     }
 
-    pub fn decode_into<T: PayloadTarget, F: FnMut(&S)>(
+    /// Resolve decoded bytes, write them in order, and return verified payload metadata.
+    ///
+    /// Block-encoded payloads are verified before each write. Local block candidates
+    /// are read through `provider`; rejected candidates fall back to bundle bytes.
+    /// Progress is reported after writes. The target is finalized after complete
+    /// payload-hash verification, followed by closing-framing validation.
+    ///
+    /// Payloads without block encoding are streamed with whole-payload verification
+    /// before finalization. Any failure aborts consumption; earlier writes can remain.
+    pub fn decode_into<T: PayloadTarget, F: FnMut(&BundleProgress)>(
         mut self,
         mut target: T,
         provider: Option<&dyn StoredBlockProvider>,
@@ -222,192 +440,26 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
         let mut payload_hasher = self.reader.header.hash_algorithm.hasher();
         let mut bytes_written = NumBytes::ZERO;
         let block_index = if let Some(block_encoding) = self.header.block_encoding {
-            let mut block_index_raw = block_encoding.block_hashes.raw;
-            if let Some(format) = block_encoding.compression {
-                block_index_raw = uncompress_bytes(format, &block_index_raw)?;
+            let mut fetcher = BlockFetcher::new(
+                &mut self.reader.cursor,
+                block_encoding,
+                self.remaining_data,
+                provider,
+                self.reader.options,
+            )?;
+            while let Some(block) = fetcher.next(&mut target)? {
+                target.write(&block)?;
+                payload_hasher.update(&block);
+                bytes_written += block.byte_len();
+                progress(&fetcher.progress());
             }
-            let block_sizes = if let Some(block_sizes) = block_encoding.block_sizes {
-                let mut block_sizes = block_sizes.raw;
-                if let Some(format) = block_encoding.compression {
-                    block_sizes = uncompress_bytes(format, &block_sizes)?;
-                }
-                validate_block_metadata_lengths(
-                    block_index_raw.len(),
-                    block_encoding.hash_algorithm.hash_size(),
-                    Some(block_sizes.len()),
-                )?;
-                let mut decoded_sizes = Vec::new();
-                for chunk in block_sizes.as_chunks::<4>().0 {
-                    decoded_sizes.push(u32::from_be_bytes(*chunk))
-                }
-                Some(decoded_sizes)
-            } else {
-                validate_block_metadata_lengths(
-                    block_index_raw.len(),
-                    block_encoding.hash_algorithm.hash_size(),
-                    None,
-                )?;
-                None
-            };
-            let fixed_block_size = match &block_encoding.chunker {
-                rugix_chunker::ChunkerAlgorithm::Casync { .. } => None,
-                rugix_chunker::ChunkerAlgorithm::Fixed { block_size_kib } => {
-                    Some((*block_size_kib as u32) * 1024)
-                }
-            };
-            if fixed_block_size.is_none() && block_sizes.is_none() {
-                bail!("variable-size index needs block sizes")
-            }
-            let raw_index = RawBlockIndex::new(&block_index_raw, block_encoding.hash_algorithm);
-            let mut table = BlockTable::new();
-            let mut current_target_offset = NumBytes::ZERO;
-            let num_blocks = block_index_raw.len() / block_encoding.hash_algorithm.hash_size();
-            let mut target_offsets = Vec::<NumBytes>::with_capacity(num_blocks);
-            let mut target_sizes = Vec::<NumBytes>::with_capacity(num_blocks);
-            let mut next_size_idx = 0;
-
-            for (idx, block_hash) in block_index_raw
-                .chunks_exact(block_encoding.hash_algorithm.hash_size())
-                .enumerate()
-            {
-                let block_id = BlockId { raw: idx };
-                let is_fresh = table.insert_raw(&raw_index, block_id);
-                let first_idx = table
-                    .get_raw(&raw_index, block_hash)
-                    .ok_or_else(|| whatever!("block table lost a newly inserted block"))?;
-                // Get the data, afterwards buffer should contain the uncompressed block.
-                if is_fresh || !block_encoding.deduplicated {
-                    // We need to read the block from the source.
-                    // Determine the size of the block in the encoding.
-                    let declared_block_size = if let Some(sizes) = &block_sizes {
-                        *sizes
-                            .get(next_size_idx)
-                            .ok_or_else(|| whatever!("block-size metadata has too few entries"))?
-                    } else {
-                        fixed_block_size.ok_or_else(|| {
-                            whatever!("variable-size block index is missing block sizes")
-                        })?
-                    };
-                    let block_size = (declared_block_size as u64).min(self.remaining_data.raw);
-                    next_size_idx += 1;
-                    let mut block_available = false;
-                    if let Some(stored_block) = provider.and_then(|p| p.query(block_hash)) {
-                        trace!(
-                            block_idx = idx,
-                            block_size_bundle = block_size,
-                            stored_block_file = ?stored_block.file,
-                            stored_block_offset = stored_block.offset.raw,
-                            stored_block_size = stored_block.size.raw,
-                            "using stored block from provider"
-                        );
-                        buffer.resize(
-                            usize::try_from(stored_block.size)
-                                .whatever("stored block size does not fit into usize")?,
-                            0,
-                        );
-                        let mut source_file = std::fs::File::open(&stored_block.file)
-                            .whatever("unable to open file")?;
-                        source_file
-                            .seek(std::io::SeekFrom::Start(stored_block.offset.raw))
-                            .whatever("unable to seek")?;
-                        source_file
-                            .read_exact(&mut buffer)
-                            .whatever("unable to read block")?;
-                        // At this point, we have the uncompressed block in the buffer.
-                        let hash_found = block_encoding.hash_algorithm.hash::<Box<[u8]>>(&buffer);
-                        if hash_found.raw() != block_hash {
-                            warn!(
-                                block_idx = idx,
-                                hash_expected = block_hash,
-                                hash_found = hash_found.raw(),
-                                "invalid block hash, reading from source instead"
-                            );
-                        } else {
-                            // We already have the block, let's skip it.
-                            self.reader.source.skip(block_size.into())?;
-                            self.remaining_data -= block_size;
-                            block_available = true;
-                        }
-                    }
-                    if !block_available {
-                        buffer.resize(
-                            usize::try_from(block_size)
-                                .whatever("encoded block size does not fit into usize")?,
-                            0,
-                        );
-                        self.reader.source.hint_next_chunk(block_size.into());
-                        self.reader.source.read_exact(&mut buffer)?;
-                        self.remaining_data -= buffer.byte_len();
-                        if let Some(format) = block_encoding.compression {
-                            buffer = uncompress_bytes(format, &buffer)?;
-                        }
-                        trace!(
-                            block_idx = idx,
-                            block_size = buffer.len(),
-                            block_size_bundle = block_size,
-                            "using block from bundle"
-                        );
-                        // At this point, we have the uncompressed block in the buffer.
-                        let hash_found = block_encoding.hash_algorithm.hash::<Box<[u8]>>(&buffer);
-                        if hash_found.raw() != block_hash {
-                            error!(
-                                block_idx = idx,
-                                hash_expected = block_hash,
-                                hash_found = hash_found.raw(),
-                                "invalid block hash"
-                            );
-                            bail!("invalid block hash of block {idx} of size {}", buffer.len());
-                        }
-                    }
-                } else {
-                    // The block has been deduplicated, read from target.
-                    assert!(first_idx.raw < idx);
-                    let offset = target_offsets[first_idx.raw];
-                    let size = target_sizes[first_idx.raw];
-                    trace!(
-                        block_idx = idx,
-                        block_offset = offset.raw,
-                        block_size = size.raw,
-                        "using deduplicated block from target"
-                    );
-                    target.read_block(offset, size, &mut buffer)?;
-                    // At this point, we have the uncompressed block in the buffer.
-                    let hash_found = block_encoding.hash_algorithm.hash::<Box<[u8]>>(&buffer);
-                    if hash_found.raw() != block_hash {
-                        error!(
-                            block_idx = idx,
-                            hash_expected = block_hash,
-                            hash_found = hash_found.raw(),
-                            "invalid block hash"
-                        );
-                        bail!("invalid block hash of block {idx} of size {}", buffer.len());
-                    }
-                }
-                target_offsets.push(current_target_offset);
-                target_sizes.push(buffer.byte_len());
-                current_target_offset += buffer.byte_len();
-                target.write(&buffer)?;
-                bytes_written += buffer.byte_len();
-                payload_hasher.update(&buffer);
-                progress(&self.reader.source);
-            }
-            let block_sizes = target_sizes
-                .into_iter()
-                .map(|size| u32::try_from(size.raw).whatever("decoded block is larger than 4 GiB"))
-                .collect::<BundleResult<Vec<_>>>()?;
-            Some(format::BlockIndex {
-                chunker: block_encoding.chunker,
-                hash_algorithm: block_encoding.hash_algorithm,
-                block_hashes: format::Bytes {
-                    raw: block_index_raw,
-                },
-                block_sizes: format::Bytes {
-                    raw: encode_block_sizes(block_sizes.into_iter()),
-                },
-            })
+            self.remaining_data = NumBytes::ZERO;
+            Some(fetcher.finish()?)
         } else {
             // The next chunk is the whole payload.
-            self.reader.source.hint_next_chunk(self.remaining_data);
+            self.reader
+                .cursor
+                .hint_sequential_bytes(self.remaining_data);
             loop {
                 let read = self.read(&mut buffer)?;
                 if read == 0 {
@@ -417,7 +469,7 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
                 payload_hasher.update(&buffer[..read]);
                 bytes_written +=
                     NumBytes::expect_from_usize(read, "bytes actually read always fit into u64");
-                progress(&self.reader.source);
+                progress(&self.reader.progress());
             }
             None
         };
@@ -432,7 +484,7 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
             bail!("payload hash mismatch");
         }
         target.finalize()?;
-        skip_until_end(&mut self.reader.source, tags::PAYLOAD)?;
+        skip_until_end(&mut self.reader.cursor, tags::PAYLOAD)?;
         if self.reader.next_payload >= self.reader.header.payload_index.len() {
             self.reader.finish_payloads()?;
         }
@@ -444,16 +496,28 @@ impl<'r, S: BundleSource> PayloadReader<'r, S> {
     }
 }
 
+/// Verified metadata for a fully consumed and finalized payload.
 pub struct DecodedPayloadInfo {
+    /// Hash of the complete decoded payload.
     pub hash: HashDigest,
+    /// Total decoded bytes written to the target.
     pub size: NumBytes,
     /// Verified block index of the decoded payload, when included in the bundle.
     pub block_index: Option<format::BlockIndex>,
 }
 
+/// Ordered output for decoded payload blocks and optional reads for deduplication.
+///
+/// Targets that support deduplication must read previously written bytes at offsets
+/// relative to the beginning of the decoded payload. The file implementation uses
+/// file offset zero as that beginning.
 pub trait PayloadTarget: Sized {
+    /// Write every byte in the supplied block before returning success.
     fn write(&mut self, bytes: &[u8]) -> BundleResult<()>;
 
+    /// Replace `buffer` with exactly `size` previously written bytes at `offset`.
+    ///
+    /// The default implementation rejects deduplicated payloads.
     #[expect(unused_variables)]
     fn read_block(
         &mut self,
@@ -464,6 +528,7 @@ pub trait PayloadTarget: Sized {
         bail!("target does not support reading blocks");
     }
 
+    /// Complete output after payload verification. Files flush and synchronize here.
     fn finalize(self) -> BundleResult<()> {
         Ok(())
     }
@@ -489,7 +554,7 @@ impl PayloadTarget for File {
             usize::try_from(size).whatever("block size does not fit into usize")?,
             0,
         );
-        self.read_exact(buffer).whatever("unable to read")?;
+        std::io::Read::read_exact(self, buffer).whatever("unable to read")?;
         self.seek(std::io::SeekFrom::Start(current_position))
             .whatever("unable to seek")?;
         Ok(())
@@ -503,8 +568,8 @@ impl PayloadTarget for File {
 }
 
 /// Read next segment or value into vector.
-pub fn read_into_vec(
-    source: &mut dyn BundleSource,
+pub(crate) fn read_into_vec(
+    source: &mut dyn StlvRead,
     output: &mut Vec<u8>,
     head: AtomHead,
     limit: NumBytes,
@@ -513,7 +578,7 @@ pub fn read_into_vec(
 }
 
 fn read_into_vec_at_depth(
-    source: &mut dyn BundleSource,
+    source: &mut dyn StlvRead,
     output: &mut Vec<u8>,
     head: AtomHead,
     limit: NumBytes,
@@ -527,7 +592,6 @@ fn read_into_vec_at_depth(
     match head {
         AtomHead::Value { length, .. } => {
             if output.byte_len() + length < limit {
-                source.hint_next_chunk(length);
                 let offset = output.len();
                 let length = usize::try_from(length.raw)
                     .whatever("STLV value length does not fit into memory")?;
@@ -563,7 +627,7 @@ fn read_into_vec_at_depth(
 
 /// Skip atoms until reaching a segment start with the given tag.
 #[track_caller]
-pub fn skip_until_start(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<AtomHead> {
+pub(crate) fn skip_until_start(source: &mut dyn StlvRead, tag: Tag) -> BundleResult<AtomHead> {
     loop {
         let head = expect_atom_head(source)?;
         if head.is_start() && head.tag() == tag {
@@ -578,7 +642,7 @@ pub fn skip_until_start(source: &mut dyn BundleSource, tag: Tag) -> BundleResult
 
 /// Skip atoms until reaching a segment end with the given tag.
 #[track_caller]
-pub fn skip_until_end(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<()> {
+pub(crate) fn skip_until_end(source: &mut dyn StlvRead, tag: Tag) -> BundleResult<()> {
     loop {
         let head = expect_atom_head(source)?;
         if head.is_end() && head.tag() == tag {
@@ -593,7 +657,7 @@ pub fn skip_until_end(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<(
 
 /// Skip atoms until reaching a value with the given tag.
 #[track_caller]
-pub fn skip_until_value(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<NumBytes> {
+pub(crate) fn skip_until_value(source: &mut dyn StlvRead, tag: Tag) -> BundleResult<NumBytes> {
     loop {
         let head = expect_atom_head(source)?;
         if let AtomHead::Value {
@@ -613,7 +677,7 @@ pub fn skip_until_value(source: &mut dyn BundleSource, tag: Tag) -> BundleResult
 
 /// Expect a segment start.
 #[track_caller]
-pub fn expect_start(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<AtomHead> {
+pub(crate) fn expect_start(source: &mut dyn StlvRead, tag: Tag) -> BundleResult<AtomHead> {
     match expect_atom_head(source)? {
         atom @ AtomHead::Start { tag: start_tag, .. } if start_tag == tag => Ok(atom),
         atom => bail!("expected start of {tag}, found {atom:?}"),
@@ -622,21 +686,9 @@ pub fn expect_start(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<Ato
 
 /// Expect the head of an atom.
 #[track_caller]
-pub fn expect_atom_head(source: &mut dyn BundleSource) -> BundleResult<AtomHead> {
+pub(crate) fn expect_atom_head(source: &mut dyn StlvRead) -> BundleResult<AtomHead> {
     read_atom_head(source)
         .and_then(|head| head.ok_or_else(|| whatever!("unexpected end of bundle, expected atom")))
-}
-
-/// Expect a segment start.
-#[track_caller]
-pub fn expect_value(source: &mut dyn BundleSource, tag: Tag) -> BundleResult<NumBytes> {
-    match expect_atom_head(source)? {
-        AtomHead::Value {
-            tag: value_tag,
-            length,
-        } if value_tag == tag => Ok(length),
-        atom => bail!("expected value of {tag}, found {atom:?}"),
-    }
 }
 
 fn validate_block_metadata_lengths(
@@ -712,12 +764,16 @@ mod tests {
     use crate::format::stlv::write_segment_end;
     use crate::format::stlv::write_segment_start;
     use crate::format::tags;
-    use crate::source::from_slice;
 
     use super::BundleReader;
+    use super::BundleSource;
     use super::uncompress_bytes;
     use super::uncompress_bytes_with_limit;
     use super::validate_block_metadata_lengths;
+
+    fn stream(bytes: &[u8]) -> BundleSource {
+        BundleSource::StreamSource(Box::new(std::io::Cursor::new(bytes.to_vec())))
+    }
 
     fn empty_header() -> format::BundleHeader {
         format::BundleHeader {
@@ -736,7 +792,7 @@ mod tests {
         bytes.extend(format::encode::to_vec(&empty_header(), tags::BUNDLE_HEADER));
         write_segment_start(&mut bytes, tags::PAYLOADS).unwrap();
 
-        assert!(BundleReader::start(from_slice(&bytes), None).is_err());
+        assert!(BundleReader::start(stream(&bytes), None).is_err());
     }
 
     #[test]
@@ -776,7 +832,11 @@ mod tests {
         let mut header = empty_header();
         header.payload_index.push(entry);
         let mut reader = BundleReader {
-            source: from_slice(&bytes),
+            cursor: super::Cursor::new(
+                stream(&bytes),
+                super::ReaderOptions::default().max_range_size,
+            ),
+            options: super::ReaderOptions::default(),
             header,
             header_raw: Vec::new(),
             signatures: None,
@@ -810,7 +870,7 @@ mod tests {
         write_segment_end(&mut bytes, tags::PAYLOADS).unwrap();
         write_segment_end(&mut bytes, tags::BUNDLE).unwrap();
 
-        let mut reader = BundleReader::start(from_slice(&bytes), None).unwrap();
+        let mut reader = BundleReader::start(stream(&bytes), None).unwrap();
         assert!(reader.next_payload().is_err());
     }
 
@@ -837,9 +897,9 @@ mod tests {
         let optional = crate::format::stlv::Tag::from_bytes([0x80, 1, 2, 3]);
         let required = crate::format::stlv::Tag::from_bytes([0x01, 1, 2, 3]);
         let bytes = bundle_with_metadata(optional);
-        assert!(BundleReader::start(from_slice(&bytes), None).is_ok());
+        assert!(BundleReader::start(stream(&bytes), None).is_ok());
         let bytes = bundle_with_metadata(required);
-        assert!(BundleReader::start(from_slice(&bytes), None).is_err());
+        assert!(BundleReader::start(stream(&bytes), None).is_err());
     }
 
     #[test]
@@ -859,7 +919,7 @@ mod tests {
     #[test]
     fn malformed_and_truncated_bundle_corpus_returns_errors() {
         fn read_all(bytes: &[u8]) -> crate::BundleResult<()> {
-            let mut reader = BundleReader::start(from_slice(&bytes), None)?;
+            let mut reader = BundleReader::start(stream(bytes), None)?;
             while let Some(payload) = reader.next_payload()? {
                 payload.skip()?;
             }

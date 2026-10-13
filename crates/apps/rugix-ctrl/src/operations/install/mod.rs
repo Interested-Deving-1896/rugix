@@ -8,17 +8,16 @@ use std::io::Seek;
 use std::io::Write;
 use std::path::Path;
 
+use byte_calc::NumBytes;
 use reportify::bail;
 use reportify::whatever;
 use reportify::ResultExt;
 use rugix_bundle::format;
 use rugix_bundle::format::decode::decode_slice;
 use rugix_bundle::reader::BundleReader;
+use rugix_bundle::reader::BundleSource;
 use rugix_bundle::reader::PayloadTarget;
-use rugix_bundle::source::BundleSource;
-use rugix_bundle::source::ReaderSource;
-use rugix_bundle::source::SkipRead;
-use rugix_bundle::source::SkipSeek;
+use rugix_bundle::reader::ReaderOptions;
 use rugix_common::pipe::PipeWriter;
 use serde::Deserialize;
 use serde::Serialize;
@@ -36,10 +35,10 @@ use crate::config::apps::AppConfiguration;
 use crate::config::config::Config;
 use crate::config::output::ComponentsCheckOutput;
 use crate::http_source::DownloadStats;
+use crate::http_source::HttpFetchConfig;
 use crate::http_source::HttpSource;
 use crate::http_source::RangeQueryStrategy;
 use crate::http_source::RetryConfig;
-use crate::payload_db;
 use crate::system::boot_groups::BootGroup;
 use crate::system::boot_groups::BootGroupIdx;
 use crate::system::System;
@@ -194,6 +193,8 @@ pub enum InstallSource {
         url: String,
         disable_range_queries: bool,
         retry: RetryConfig,
+        #[serde(default)]
+        fetch: HttpFetchConfig,
     },
 }
 
@@ -274,16 +275,6 @@ fn install_bundle(
         ResolvedInstallTarget::Apps(_) => BundleKind::App,
         ResolvedInstallTarget::System { .. } => BundleKind::System,
     };
-    let stored_block_indices_available = match (&source, &target) {
-        (InstallSource::Http { .. }, ResolvedInstallTarget::System { system, .. }) => {
-            system.slots().iter().any(|(_, slot)| {
-                payload_db::get_stored_indices(slot.name())
-                    .map(|indices| !indices.is_empty())
-                    .unwrap_or_default()
-            })
-        }
-        _ => false,
-    };
     let BundleSourceResult {
         output,
         download_stats,
@@ -291,7 +282,6 @@ fn install_bundle(
         config,
         source,
         input,
-        stored_block_indices_available,
         &options,
         kind,
         |bundle_reader| match &target {
@@ -471,13 +461,13 @@ fn with_verified_bundle<T>(
     config: &Config,
     source: InstallSource,
     input: BundleInput,
-    stored_block_indices_available: bool,
     options: &BundleInstallOptions,
     kind: BundleKind,
-    install: impl FnOnce(BundleReader<&mut dyn BundleSource>) -> SystemResult<T>,
+    install: impl FnOnce(BundleReader) -> SystemResult<T>,
 ) -> SystemResult<BundleSourceResult<T>> {
-    with_bundle_source(source, input, stored_block_indices_available, |source| {
-        let bundle_reader = start_verified_bundle(config, source, options, kind)?;
+    with_bundle_source(source, input, |source, size_hint, reader_options| {
+        let bundle_reader = start_verified_bundle(config, source, options, kind, reader_options)?
+            .with_size_hint(size_hint);
         install(bundle_reader)
     })
 }
@@ -538,20 +528,21 @@ fn require_compatible_components(
 fn with_bundle_source<T>(
     source: InstallSource,
     input: BundleInput,
-    stored_block_indices_available: bool,
-    install: impl FnOnce(&mut dyn BundleSource) -> SystemResult<T>,
+    install: impl FnOnce(BundleSource, Option<NumBytes>, ReaderOptions) -> SystemResult<T>,
 ) -> SystemResult<BundleSourceResult<T>> {
     match source {
         InstallSource::Stream => {
             let output = match input {
                 BundleInput::None => bail!("bundle input stream is required"),
-                BundleInput::Stream(input) => {
-                    let mut source = ReaderSource::<_, SkipRead>::from_unbuffered(input);
-                    install(&mut source)?
-                }
+                BundleInput::Stream(input) => install(
+                    BundleSource::StreamSource(input),
+                    None,
+                    ReaderOptions::default(),
+                )?,
                 BundleInput::Seekable(input) => {
-                    let mut source = ReaderSource::<_, SkipSeek>::from_unbuffered(input);
-                    install(&mut source)?
+                    let source = BundleSource::from_seekable(input)
+                        .whatever("unable to open seekable bundle input")?;
+                    install(source, None, ReaderOptions::default())?
                 }
             };
             Ok(BundleSourceResult {
@@ -563,39 +554,44 @@ fn with_bundle_source<T>(
             url,
             disable_range_queries,
             retry,
+            fetch,
         } => {
             if !matches!(input, BundleInput::None) {
                 bail!("HTTP bundle source does not accept an input stream");
             }
             let range_query_strategy = if disable_range_queries {
                 RangeQueryStrategy::Disabled
-            } else if stored_block_indices_available {
-                RangeQueryStrategy::Dynamic
             } else {
-                RangeQueryStrategy::Resume
+                RangeQueryStrategy::Dynamic
             };
-            let mut source = HttpSource::new(&url, range_query_strategy, retry)
-                .whatever("unable to create HTTP source")?;
-            let output = install(&mut source)?;
+            let (input, tracker) = HttpSource::new(&url, range_query_strategy, retry, &fetch)
+                .whatever("unable to create HTTP source")?
+                .into_parts();
+            let output = install(input, tracker.size_hint(), fetch.reader_options())?;
             Ok(BundleSourceResult {
                 output,
-                download_stats: Some(source.get_download_stats()),
+                download_stats: Some(tracker.get_download_stats()),
             })
         }
     }
 }
 
-fn start_verified_bundle<'source>(
+fn start_verified_bundle(
     config: &Config,
-    source: &'source mut dyn BundleSource,
+    source: BundleSource,
     options: &BundleInstallOptions,
     kind: BundleKind,
-) -> SystemResult<BundleReader<&'source mut dyn BundleSource>> {
+    reader_options: ReaderOptions,
+) -> SystemResult<BundleReader> {
     let bundle_reader = match kind {
-        BundleKind::App => BundleReader::start(source, options.bundle_hash.clone())
-            .whatever("unable to read app bundle")?,
-        BundleKind::System => BundleReader::start(source, options.bundle_hash.clone())
-            .whatever("unable to read bundle")?,
+        BundleKind::App => {
+            BundleReader::start_with_options(source, options.bundle_hash.clone(), reader_options)
+                .whatever("unable to read app bundle")?
+        }
+        BundleKind::System => {
+            BundleReader::start_with_options(source, options.bundle_hash.clone(), reader_options)
+                .whatever("unable to read bundle")?
+        }
     };
     let root_certs = configured_signature_roots(config, options.root_cert.as_deref());
     let bundle_verified =
@@ -633,9 +629,9 @@ fn configured_signature_roots<'a>(
         .unwrap_or_default()
 }
 
-fn verify_bundle_signature<S: BundleSource>(
+fn verify_bundle_signature(
     root_certs: &[SignatureRoot<'_>],
-    bundle_reader: &BundleReader<S>,
+    bundle_reader: &BundleReader,
 ) -> SystemResult<bool> {
     if root_certs.is_empty() {
         return Ok(false);

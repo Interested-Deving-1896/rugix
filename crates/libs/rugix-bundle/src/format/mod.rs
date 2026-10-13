@@ -15,8 +15,8 @@ use si_crypto_hashes::HashAlgorithm;
 use si_crypto_hashes::HashDigest;
 
 use crate::BundleResult;
+use crate::format::stlv::Read as StlvRead;
 use crate::manifest::DeltaEncodingFormat;
-use crate::source::BundleSource;
 
 use self::decode::Decode;
 use self::decode::Decoder;
@@ -119,7 +119,7 @@ define_struct! {
 }
 
 impl Decode for HashDigest {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         String::decode(decoder, atom)?
             .parse::<Self>()
             .whatever("invalid hash digest")
@@ -233,7 +233,7 @@ impl Encode for Bytes {
 }
 
 impl Decode for Bytes {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         if !atom.is_value() {
             bail!("cannot decode `Bytes` from segment");
         }
@@ -257,7 +257,7 @@ impl Encode for HashAlgorithm {
 }
 
 impl Decode for HashAlgorithm {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         String::decode(decoder, atom)?
             .parse::<Self>()
             .whatever("unknown hash algorithm")
@@ -277,7 +277,7 @@ impl Encode for DeltaEncodingFormat {
 }
 
 impl Decode for DeltaEncodingFormat {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         match String::decode(decoder, atom)?.as_str() {
             "xdelta" => Ok(Self::Xdelta),
             format => bail!("unknown delta encoding format '{format}'"),
@@ -292,7 +292,7 @@ impl Encode for ChunkerAlgorithm {
 }
 
 impl Decode for ChunkerAlgorithm {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         String::decode(decoder, atom)?
             .parse::<Self>()
             .whatever("unknown chunker algorithm")
@@ -306,7 +306,7 @@ impl Encode for CompressionFormat {
 }
 
 impl Decode for CompressionFormat {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         String::decode(decoder, atom)?
             .parse::<Self>()
             .whatever("unknown compression format")
