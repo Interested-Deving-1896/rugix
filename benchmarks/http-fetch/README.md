@@ -183,8 +183,9 @@ target/release/examples/http-fetch-benchmark fetch FIXTURE URL --strategy dynami
   --http-concurrency 2 --http-max-range-size 256KiB --http-stall-timeout 120
 ```
 
-See [Bundle Fetching](../../docs/bundle-fetching.md) for the source abstraction,
-fallback verification, buffering bounds, and shutdown behavior.
+The [reader module documentation](../../crates/libs/rugix-bundle/src/reader/mod.rs)
+explains the source abstraction, fallback verification, buffering bounds, and
+shutdown behavior.
 
 ## Check the Harness
 

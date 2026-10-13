@@ -1,8 +1,32 @@
 //! Pooled HTTP bundle access, independent range readers, and resumable streams.
 //!
-//! `HttpSource` probes access capabilities and yields an owned `BundleSource`.
-//! Readers pin the selected representation, bound idle reads, and resume failures
-//! with per-reader retry counters. `DownloadTracker` records actual body traffic.
+//! [`HttpSource`] probes access capabilities and yields an owned
+//! [`BundleSource`] and a separate [`DownloadTracker`]. The bundle reader plans
+//! and verifies blocks; this backend acquires their encoded byte intervals.
+//!
+//! Each installation shares one `ureq::Agent` connection pool. Readers consume
+//! completed response bodies through EOF to return connections to the pool.
+//! Range responses must match the requested interval and probed resource length,
+//! and content encoding must preserve byte offsets. A strong ETag, when supplied,
+//! pins subsequent requests through `If-Match`. Servers without range support
+//! fall back to the original full response. Disabling ranges opens a stream.
+//!
+//! DNS, connection setup, request transmission, and response headers have
+//! 60-second deadlines. [`HttpFetchConfig`] separately bounds idle socket reads,
+//! including TLS control traffic, without limiting the total duration of a
+//! progressing body. It also configures the range size, worker concurrency, and
+//! connection-pool capacity. The transport uses ureq's unversioned API and must
+//! be checked when upgrading ureq.
+//!
+//! Each reader resumes transient failures from its own remaining interval and
+//! resets its consecutive retry count when body bytes arrive. Invalid ranges
+//! and changed representations are terminal. Cancellation interrupts backoff
+//! immediately; active network operations end at their current deadline.
+//!
+//! [`DownloadTracker`] counts actual response-body bytes, including probes and
+//! replacement reads. Skipped bytes are the resource length minus the union of
+//! consumed intervals. Readers must close before coverage statistics are final;
+//! these counters are separate from the bundle parser's logical progress.
 
 use std::io;
 use std::io::Read;
