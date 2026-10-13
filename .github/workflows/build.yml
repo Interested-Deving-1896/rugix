@@ -130,10 +130,13 @@ jobs:
         run: |
           set -euo pipefail
           export RUGIX_BAKERY_IMAGE="ghcr.io/rugix/rugix-bakery:branch-main"
-          export RUGIX_BINARIES_DIR="$(pwd)/build/binaries"
+          RUGIX_BINARIES_DIR="$(pwd)/build/binaries"
+          export RUGIX_BINARIES_DIR
+          export RUGIX_BUNDLER="$RUGIX_BINARIES_DIR/x86_64-unknown-linux-musl/rugix-bundler"
           podman pull "$RUGIX_BAKERY_IMAGE"
           mise install --locked python uv
-          mise run --skip-tools test:system
+          nix shell --inputs-from . nixpkgs#skopeo nixpkgs#xdelta \
+            --command mise run --skip-tools test:system
       - name: Upload Test Outputs
         if: always()
         uses: actions/upload-artifact@v7

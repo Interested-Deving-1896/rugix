@@ -106,7 +106,11 @@ Run `mise run doctor` to check host dependencies. Development requires rustup; e
 the repository or running Cargo installs the configured Rust toolchain as needed. Native
 builds also require a C compiler, `pkg-config`, OpenSSL, and liblzma development files.
 Cross-builds require Docker or Podman. The system tests additionally require QEMU and
-OVMF.
+OVMF. App packing, signing, and delta creation run the host Bundler selected from
+`build/binaries` or `RUGIX_BUNDLER`; install Skopeo and xdelta3 for those operations.
+CI provides both tools from the Nixpkgs revision pinned in `flake.lock`. See the
+[shared test suite](https://github.com/rugix/rugix-tests#running-the-tests) for binary
+selection and test prerequisites.
 
 To deliberately update the non-Rust toolchain, update the loose specifications if needed
 and run `mise lock`; commit `mise.toml` and `mise.lock` together. Update Rust by changing
