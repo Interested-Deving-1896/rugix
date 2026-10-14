@@ -6,9 +6,7 @@ use reportify::bail;
 use byte_calc::NumBytes;
 
 use crate::BundleResult;
-use crate::source::BundleSource;
-use crate::source::ReaderSource;
-use crate::source::SkipRead;
+use crate::format::stlv::Read as StlvRead;
 
 use super::stlv::AtomHead;
 use super::stlv::Tag;
@@ -34,7 +32,7 @@ pub struct Decoder<S> {
     value_length: Option<NumBytes>,
 }
 
-impl<S: BundleSource> Decoder<S> {
+impl<S: StlvRead> Decoder<S> {
     /// Construct a new decoder from the provided source with the given limits.
     pub fn new(source: S, max_depth: usize, max_size: NumBytes) -> Self {
         Self {
@@ -171,16 +169,16 @@ impl<S: BundleSource> Decoder<S> {
 }
 
 pub fn decode_slice<T: Decode>(slice: &[u8]) -> BundleResult<T> {
-    let source = ReaderSource::<_, SkipRead>::new(slice);
+    let source = slice;
     let mut decoder = Decoder::new(source, 32, NumBytes::new(u64::MAX));
     decoder.decode()
 }
 
 pub trait Decode: Sized {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self>;
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self>;
 
     #[expect(unused_variables)]
-    fn continue_decode<S: BundleSource>(
+    fn continue_decode<S: StlvRead>(
         &mut self,
         decoder: &mut Decoder<S>,
         atom: AtomHead,
@@ -197,7 +195,7 @@ pub trait Decode: Sized {
 }
 
 impl Decode for String {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         match atom {
             AtomHead::Value { .. } => String::from_utf8(decoder.read_value()?)
                 .map_err(|error| error.whatever("unable to read string from bundle")),
@@ -207,7 +205,7 @@ impl Decode for String {
 }
 
 impl Decode for bool {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, _: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, _: AtomHead) -> BundleResult<Self> {
         match decoder.read_value_array::<1>()?[0] {
             0 => Ok(false),
             1 => Ok(true),
@@ -217,7 +215,7 @@ impl Decode for bool {
 }
 
 impl Decode for NumBytes {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         Ok(NumBytes::new(u64::decode(decoder, atom)?))
     }
 }
@@ -226,7 +224,7 @@ macro_rules! impl_decode_for_int {
     ($($int:ty),*) => {
         $(
             impl Decode for $int {
-                fn decode<S: BundleSource>(decoder: &mut Decoder<S>, _: AtomHead) -> BundleResult<Self> {
+                fn decode<S: StlvRead>(decoder: &mut Decoder<S>, _: AtomHead) -> BundleResult<Self> {
                     Ok(Self::from_be_bytes(decoder.read_value_array()?))
                 }
             }
@@ -237,11 +235,11 @@ macro_rules! impl_decode_for_int {
 impl_decode_for_int! { i8, u8, i16, u16, i32, u32, i64, u64, i128, u128 }
 
 impl<T: Decode> Decode for Option<T> {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         Ok(Some(T::decode(decoder, atom)?))
     }
 
-    fn continue_decode<S: BundleSource>(
+    fn continue_decode<S: StlvRead>(
         &mut self,
         decoder: &mut Decoder<S>,
         atom: AtomHead,
@@ -259,11 +257,11 @@ impl<T: Decode> Decode for Option<T> {
 }
 
 impl<T: Decode> Decode for Vec<T> {
-    fn decode<S: BundleSource>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
+    fn decode<S: StlvRead>(decoder: &mut Decoder<S>, atom: AtomHead) -> BundleResult<Self> {
         Ok(vec![T::decode(decoder, atom)?])
     }
 
-    fn continue_decode<S: BundleSource>(
+    fn continue_decode<S: StlvRead>(
         &mut self,
         decoder: &mut Decoder<S>,
         atom: AtomHead,
@@ -284,19 +282,19 @@ mod tests {
     use super::Decoder;
     use crate::format::stlv::Tag;
     use crate::format::stlv::write_value;
-    use crate::source::from_slice;
+    use std::io::Cursor;
 
     #[test]
     fn invalid_decoder_call_order_returns_errors() {
         let empty = Vec::<u8>::new();
-        let mut decoder = Decoder::new(from_slice(&empty), 4, NumBytes::new(1024));
+        let mut decoder = Decoder::new(Cursor::new(&empty), 4, NumBytes::new(1024));
         assert!(decoder.read_value().is_err());
         assert!(decoder.read_value_array::<1>().is_err());
         assert!(decoder.skip_value().is_err());
 
         let mut encoded = Vec::new();
         write_value(&mut encoded, Tag::from_bytes(*b"TEST"), b"value").unwrap();
-        let mut decoder = Decoder::new(from_slice(&encoded), 4, NumBytes::new(1024));
+        let mut decoder = Decoder::new(Cursor::new(&encoded), 4, NumBytes::new(1024));
         let _ = decoder.next_atom_head().unwrap();
         assert!(decoder.next_atom_head().is_err());
         assert_eq!(decoder.read_value().unwrap(), b"value");

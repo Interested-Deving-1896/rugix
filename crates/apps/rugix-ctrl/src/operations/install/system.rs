@@ -13,11 +13,11 @@ use reportify::ErrorExt;
 use reportify::ResultExt;
 use rugix_bundle::block_encoding::block_index::BlockIndexConfig;
 use rugix_bundle::format;
-use rugix_bundle::reader::block_provider::StoredBlockProvider;
+use rugix_bundle::reader::BundleProgress;
 use rugix_bundle::reader::BundleReader;
 use rugix_bundle::reader::DecodedPayloadInfo;
 use rugix_bundle::reader::PayloadTarget;
-use rugix_bundle::source::BundleSource;
+use rugix_bundle::reader::StoredBlockProvider;
 use rugix_bundle::xdelta::xdelta_decompress;
 use rugix_common::pipe::buffered_pipe;
 use rugix_common::slots::SlotState;
@@ -52,10 +52,10 @@ use crate::system::slots::SystemSlots;
 use crate::system::System;
 use crate::system::SystemResult;
 
-pub(super) fn install_payloads<R: BundleSource>(
+pub(crate) fn install_payloads(
     system: &System,
     config: &crate::config::config::Config,
-    mut bundle_reader: BundleReader<R>,
+    mut bundle_reader: BundleReader,
     boot_group: Option<&(BootGroupIdx, &BootGroup)>,
     options: &BundleInstallOptions,
     keep_overlay: bool,
@@ -136,16 +136,14 @@ pub(super) fn install_payloads<R: BundleSource>(
     let mut latest_bytes_read = 0;
     let mut latest_bytes_total = 0;
     let mut progress = {
-        |source: &R| {
-            let Some(bytes_total) = source.bytes_total() else {
+        |source: &BundleProgress| {
+            let Some(bytes_total) = source.bytes_total else {
                 return;
             };
             if bytes_total.raw == 0 {
                 return;
             }
-            let Some(bytes_read) = source.bytes_read() else {
-                return;
-            };
+            let bytes_read = source.bytes_read;
             let current_progress =
                 ((bytes_read.raw as f64) / (bytes_total.raw as f64) * 100.0).min(100.0);
             latest_bytes_read = bytes_read.raw;
@@ -527,9 +525,9 @@ fn automatic_delta_updates_enabled(
     !is_incremental && config.automatic_delta_updates.unwrap_or(false)
 }
 
-fn check_system_update_compatibility<S: BundleSource>(
+fn check_system_update_compatibility(
     config: &crate::config::config::Config,
-    bundle_reader: &BundleReader<S>,
+    bundle_reader: &BundleReader,
     events: &mut dyn EventSink<BundleInstallEvent>,
 ) -> SystemResult<()> {
     let Some(bundle_components) = bundle_reader.header().components.as_ref() else {

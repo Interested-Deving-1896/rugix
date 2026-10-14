@@ -545,8 +545,7 @@ impl JsonDocument {
 mod tests {
     use super::*;
     use rugix_bundle::reader::BundleReader;
-    use rugix_bundle::source::ReaderSource;
-    use rugix_bundle::source::SkipSeek;
+    use rugix_bundle::reader::BundleSource;
 
     #[test]
     fn app_archive_includes_reject_reserved_and_duplicate_paths() {
@@ -620,7 +619,7 @@ mod tests {
         pack_generic(&cmd).unwrap();
 
         let bundle_file = File::open(output).unwrap();
-        let source = ReaderSource::<_, SkipSeek>::from_unbuffered(bundle_file);
+        let source = BundleSource::from_seekable(bundle_file).unwrap();
         let reader = BundleReader::start(source, None).unwrap();
         let components = reader.header().components.as_ref().unwrap();
 

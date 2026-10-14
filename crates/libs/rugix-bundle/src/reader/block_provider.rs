@@ -1,16 +1,22 @@
+//! Candidates for reusing decoded payload blocks from local storage.
+//!
+//! Providers index block hashes; the fetcher verifies every candidate before use.
+
 use std::path::Path;
 
 use byte_calc::NumBytes;
 
-/// Provider for stored blocks.
+/// Locate candidate decoded blocks by their hash.
+///
+/// The payload's hash algorithm and chunker determine the index to query.
 pub trait StoredBlockProvider {
-    /// Query the provider for a block with the given hash.
+    /// Return a candidate block with this decoded hash, if one is indexed.
+    ///
+    /// Unreadable or mismatching candidates fall back to the original bundle bytes.
     fn query(&self, hash: &[u8]) -> Option<StoredBlock<'_>>;
-
-    fn has_stored_blocks(&self) -> bool;
 }
 
-/// Stored block.
+/// Location and decoded length of one locally indexed block candidate.
 #[derive(Debug, Clone, Copy)]
 pub struct StoredBlock<'provider> {
     /// File containing the block.

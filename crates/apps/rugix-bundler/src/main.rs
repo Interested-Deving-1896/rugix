@@ -29,8 +29,8 @@ use rugix_bundle::manifest::DeltaEncodingInput;
 use rugix_bundle::manifest::HashAlgorithm;
 use rugix_bundle::manifest::XzCompression;
 use rugix_bundle::reader::BundleReader;
+use rugix_bundle::reader::BundleSource;
 use rugix_bundle::signed_metadata;
-use rugix_bundle::source::FileSource;
 use rugix_bundle::xdelta::xdelta_compress;
 use rugix_bundle::BundleResult;
 use rugix_chunker::ChunkerAlgorithm;
@@ -341,9 +341,9 @@ fn main() -> BundleResult<()> {
             unpack(&cmd.src, &cmd.out)?;
         }
         Cmd::Extract(unpack_cmd) => {
-            let source = FileSource::from_unbuffered(
+            let source = BundleSource::from_seekable(
                 File::open(&unpack_cmd.bundle).whatever("unable to open bundle")?,
-            );
+            )?;
             let mut reader = BundleReader::start(source, unpack_cmd.bundle_hash)?;
             let mut did_read = false;
             while let Some(payload_reader) = reader.next_payload()? {
@@ -368,9 +368,9 @@ fn main() -> BundleResult<()> {
             }
         }
         Cmd::PrintStructure(print_cmd) => {
-            let mut source = FileSource::from_unbuffered(
+            let mut source = rugix_bundle::format::stlv::SeekReader::new(std::io::BufReader::new(
                 File::open(&print_cmd.bundle).whatever("unable to open bundle")?,
-            );
+            ))?;
             rugix_bundle::format::stlv::pretty_print(&mut source, Some(&TagNameResolver))
                 .whatever("unable to print bundle structure")?;
         }
@@ -380,9 +380,9 @@ fn main() -> BundleResult<()> {
             println!("{hash}");
         }
         Cmd::Inspect(inspect_cmd) => {
-            let source = FileSource::from_unbuffered(
+            let source = BundleSource::from_seekable(
                 File::open(&inspect_cmd.bundle).whatever("unable to open bundle")?,
-            );
+            )?;
             let reader = BundleReader::start(source, inspect_cmd.bundle_hash)?;
             println!("Payloads:");
             for (idx, entry) in reader.header().payload_index.iter().enumerate() {
@@ -623,9 +623,9 @@ fn main() -> BundleResult<()> {
                 add_bundle_signature(&bundle, signature, &out)?;
             }
             SignaturesCmd::List { bundle } => {
-                let source = FileSource::from_unbuffered(
+                let source = BundleSource::from_seekable(
                     File::open(&bundle).whatever("unable to open bundle")?,
-                );
+                )?;
                 let reader = BundleReader::start(source, None)?;
                 if let Some(signatures) = reader.signatures() {
                     for (idx, signature) in signatures.cms_signatures.iter().enumerate() {
@@ -664,9 +664,9 @@ fn main() -> BundleResult<()> {
                 add_bundle_signature(&bundle, signature, &out)?;
             }
             SignaturesCmd::Verify { bundle, cert } => {
-                let source = FileSource::from_unbuffered(
+                let source = BundleSource::from_seekable(
                     File::open(&bundle).whatever("unable to open bundle")?,
-                );
+                )?;
                 let reader = BundleReader::start(source, None)?;
                 let Some(signatures) = reader.signatures() else {
                     bail!("no signatures found");
@@ -749,9 +749,9 @@ pub fn unpack(src: &Path, dst: &Path) -> BundleResult<()> {
         bail!("bundle output directory must not be a symbolic link");
     }
     std::fs::create_dir_all(dst).whatever("unable to create bundle output directory")?;
-    let source = FileSource::from_unbuffered(
+    let source = BundleSource::from_seekable(
         File::open(src).whatever("unable to open bundle for unpacking")?,
-    );
+    )?;
     let mut reader = BundleReader::start(source, None)?;
     let Some(manifest) = &reader.header().manifest else {
         bail!("unpacking requires a manifest");

@@ -48,9 +48,6 @@ Works with Yocto, Buildroot, and other Linux build systems.
 
 [For details, check out Rugix Ctrl's documentation.](https://rugix.org/docs/ctrl)
 
-For the precise update durability boundaries, interruption behavior, and operator recovery
-expectations implemented by this repository, see [Update Reliability and Recovery](docs/update-reliability.md).
-
 ## Rugix Admin
 
 [**Rugix Admin**](https://github.com/rugix/rugix-admin) complements Rugix Ctrl with a

@@ -14,14 +14,15 @@ use rugix_bundle::block_encoding::block_index::compute_block_index;
 use rugix_bundle::block_encoding::block_index::BlockIndexConfig;
 use rugix_bundle::format::decode::Decode;
 use rugix_bundle::format::decode::Decoder;
+use rugix_bundle::format::stlv::SeekReader;
 use rugix_bundle::format::BlockIndex;
 use rugix_bundle::format::{self};
 use rugix_bundle::manifest::ChunkerAlgorithm;
-use rugix_bundle::reader::block_provider::StoredBlock;
-use rugix_bundle::reader::block_provider::StoredBlockProvider;
-use rugix_bundle::source::FileSource;
+use rugix_bundle::reader::StoredBlock;
+use rugix_bundle::reader::StoredBlockProvider;
 use rugix_common::slots::SlotState;
 use si_crypto_hashes::HashAlgorithm;
+use std::io::BufReader;
 use tracing::warn;
 
 /// State of an installed payload (hashes, size, timestamp).
@@ -82,9 +83,10 @@ impl BlockProvider {
                 continue;
             }
             // Load the index.
-            let source = FileSource::from_unbuffered(
+            let source = SeekReader::new(BufReader::new(
                 std::fs::File::open(&index.index_file).whatever("unable to open index file")?,
-            );
+            ))
+            .whatever("unable to open index reader")?;
             let mut decoder = Decoder::new(source, 16, NumBytes::new(u64::MAX));
             let atom = decoder
                 .next_atom_head()
@@ -144,10 +146,6 @@ impl StoredBlockProvider for BlockProvider {
                 offset: self.dimensions[*block].0,
                 size: self.dimensions[*block].1,
             })
-    }
-
-    fn has_stored_blocks(&self) -> bool {
-        !self.hashes.is_empty()
     }
 }
 

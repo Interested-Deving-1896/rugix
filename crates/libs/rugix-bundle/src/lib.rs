@@ -1,6 +1,22 @@
 #![forbid(unsafe_code)]
 
-//! Implementation of Rugix Ctrl's update bundle format.
+//! Create, inspect, and consume Rugix update bundles.
+//!
+//! A bundle contains a header, optional signatures, and an ordered sequence of
+//! payloads. Payloads can use compression, deduplication, and locally stored blocks
+//! to reduce download size.
+//!
+//! - [`reader`] consumes bundles from owned range sources or forward streams. Its
+//!   documentation explains the fetch pipeline, verification, and failure handling.
+//! - [`builder`] packs a manifest directory into a bundle.
+//! - [`manifest`] defines and validates bundle manifests.
+//! - [`format`](mod@format) exposes encoded metadata and STLV operations for inspection
+//!   tools.
+//! - [`block_encoding`] builds encoded payloads and block indices.
+//! - [`xdelta`] integrates Xdelta compression and decompression.
+//!
+//! [`bundle_hash`], [`signed_metadata`], and [`add_bundle_signature`] support external
+//! signing workflows.
 
 use std::io::BufReader;
 use std::io::BufWriter;
@@ -15,11 +31,11 @@ use reader::read_into_vec;
 use reportify::Report;
 use reportify::ResultExt;
 use si_crypto_hashes::HashDigest;
-use source::FileSource;
 
 use crate::format::Bytes;
 use crate::format::SignedMetadata;
 use crate::format::encode::Encode;
+use crate::format::stlv::SeekReader;
 use crate::format::stlv::write_segment_start;
 use crate::reader::read_optional_metadata;
 
@@ -28,7 +44,6 @@ pub mod builder;
 pub mod format;
 pub mod manifest;
 pub mod reader;
-pub mod source;
 pub mod xdelta;
 
 /// Start sequence of an update bundle.
@@ -52,11 +67,11 @@ const PAYLOAD_HEADER_SIZE_LIMIT: NumBytes = NumBytes::mebibytes(32);
 // Limit size of signatures to 32 MiB.
 const SIGNATURES_SIZE_LIMIT: NumBytes = NumBytes::mebibytes(32);
 
-/// Compute and return the hash for the given bundle.
+/// Compute the encoded header hash using the algorithm declared by the bundle.
 pub fn bundle_hash(bundle: &Path) -> BundleResult<HashDigest> {
     let bundle_file =
         BufReader::new(std::fs::File::open(bundle).whatever("unable to open bundle file")?);
-    let mut source = FileSource::new(bundle_file);
+    let mut source = SeekReader::new(bundle_file)?;
     let _ = expect_start(&mut source, format::tags::BUNDLE)?;
     let mut header_bytes = Vec::new();
     let start = expect_start(&mut source, format::tags::BUNDLE_HEADER)?;
@@ -71,6 +86,7 @@ pub fn bundle_hash(bundle: &Path) -> BundleResult<HashDigest> {
     Ok(hash_algorithm.hash(&header_bytes))
 }
 
+/// Encode the header hash as the metadata to be signed by an external signer.
 pub fn signed_metadata(bundle: &Path) -> BundleResult<Vec<u8>> {
     let hash = bundle_hash(bundle)?;
     let metadata = SignedMetadata { header_hash: hash };
@@ -80,13 +96,17 @@ pub fn signed_metadata(bundle: &Path) -> BundleResult<Vec<u8>> {
     ))
 }
 
+/// Append an externally produced CMS signature and atomically write a bundle copy.
+///
+/// The input and output must refer to different files. Existing signatures and
+/// encoded payloads are preserved; this function stores the supplied signature.
 pub fn add_bundle_signature(bundle: &Path, signature: Vec<u8>, out: &Path) -> BundleResult<()> {
     if paths_refer_to_same_file(bundle, out)? {
         reportify::bail!("input and output bundle must be different files");
     }
     let bundle_file =
         BufReader::new(std::fs::File::open(bundle).whatever("unable to open bundle file")?);
-    let mut source = FileSource::new(bundle_file);
+    let mut source = SeekReader::new(bundle_file)?;
     let _ = expect_start(&mut source, format::tags::BUNDLE)?;
     // Copy the header as is.
     let mut header_bytes = Vec::new();
@@ -184,7 +204,7 @@ impl Write for FaultWriter<'_> {
             ));
         }
         let length = bytes.len().min(self.remaining);
-        let written = self.inner.write(&bytes[..length])?;
+        let written = Write::write(&mut self.inner, &bytes[..length])?;
         self.remaining -= written;
         Ok(written)
     }

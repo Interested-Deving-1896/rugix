@@ -11,10 +11,9 @@ use reportify::bail;
 use reportify::whatever;
 use reportify::ResultExt;
 use rugix_bundle::format;
-use rugix_bundle::reader::block_provider::StoredBlockProvider;
 use rugix_bundle::reader::BundleReader;
 use rugix_bundle::reader::DecodedPayloadInfo;
-use rugix_bundle::source::BundleSource;
+use rugix_bundle::reader::StoredBlockProvider;
 use rugix_bundle::xdelta::xdelta_decompress;
 use rugix_common::path::ensure_no_symlink_components;
 use rugix_common::path::ValidatedRelativePath;
@@ -37,10 +36,10 @@ use crate::payload_db;
 use crate::payload_db::BlockProvider;
 use crate::system::SystemResult;
 
-pub(super) fn install_payloads<S: BundleSource>(
+pub(crate) fn install_payloads(
     config: &Config,
     app_manager: &AppManager,
-    mut bundle_reader: BundleReader<S>,
+    mut bundle_reader: BundleReader,
     options: &BundleInstallOptions,
     events: &mut dyn EventSink<BundleInstallEvent>,
 ) -> SystemResult<()> {
@@ -339,9 +338,9 @@ pub(super) fn install_payloads<S: BundleSource>(
     Ok(())
 }
 
-fn check_app_bundle_compatibility<S: BundleSource>(
+fn check_app_bundle_compatibility(
     config: &Config,
-    bundle_reader: &BundleReader<S>,
+    bundle_reader: &BundleReader,
     app_name: &str,
     events: &mut dyn EventSink<BundleInstallEvent>,
 ) -> SystemResult<()> {

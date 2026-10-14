@@ -5,6 +5,8 @@ use std::fs::{self};
 use std::io::Read;
 use std::io::Write;
 use std::io::{self};
+use std::num::NonZeroU64;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -44,6 +46,8 @@ use rugix_common::stream_hasher::StreamHasher;
 use crate::config::output::BlockDeviceInfo;
 use crate::daemon::client::DaemonClient;
 use crate::daemon::DaemonOperation;
+use crate::http_source::parse_max_range_size;
+use crate::http_source::HttpFetchConfig;
 use crate::http_source::RetryConfig;
 use crate::operations::apps::ActivateApp;
 use crate::operations::apps::AppLifecycleEvent;
@@ -131,16 +135,25 @@ pub fn main() -> SystemResult<()> {
                 http_max_retries,
                 http_retry_initial_backoff,
                 http_retry_max_backoff,
+                http_stall_timeout,
+                http_max_range_size,
+                http_concurrency,
             } => {
                 let retry_config = RetryConfig {
                     max_retries: *http_max_retries,
                     initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
                     max_backoff: Duration::from_secs(*http_retry_max_backoff),
                 };
+                let fetch_config = HttpFetchConfig {
+                    stall_timeout: Duration::from_secs(http_stall_timeout.get()),
+                    max_range_size: *http_max_range_size,
+                    concurrency: *http_concurrency,
+                };
                 let (source, input) = resolve_cli_bundle_source(
                     bundle,
                     *disable_range_queries,
                     retry_config,
+                    fetch_config,
                     "error opening image",
                 )?;
                 let operation = InstallBundle {
@@ -438,16 +451,25 @@ pub fn main() -> SystemResult<()> {
                     http_max_retries,
                     http_retry_initial_backoff,
                     http_retry_max_backoff,
+                    http_stall_timeout,
+                    http_max_range_size,
+                    http_concurrency,
                 } => {
                     let retry_config = RetryConfig {
                         max_retries: *http_max_retries,
                         initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
                         max_backoff: Duration::from_secs(*http_retry_max_backoff),
                     };
+                    let fetch_config = HttpFetchConfig {
+                        stall_timeout: Duration::from_secs(http_stall_timeout.get()),
+                        max_range_size: *http_max_range_size,
+                        concurrency: *http_concurrency,
+                    };
                     let (source, input) = resolve_cli_bundle_source(
                         bundle,
                         false,
                         retry_config,
+                        fetch_config,
                         "unable to open app bundle",
                     )?;
                     let operation = InstallBundle {
@@ -663,6 +685,7 @@ fn resolve_cli_bundle_source(
     bundle: &str,
     disable_range_queries: bool,
     retry: RetryConfig,
+    fetch: HttpFetchConfig,
     file_error_context: &'static str,
 ) -> SystemResult<(InstallSource, BundleInput)> {
     if bundle.starts_with("http") {
@@ -671,6 +694,7 @@ fn resolve_cli_bundle_source(
                 url: bundle.to_owned(),
                 disable_range_queries,
                 retry,
+                fetch,
             },
             BundleInput::None,
         ))
@@ -1113,6 +1137,17 @@ pub enum UpdateCommand {
         /// Disable the use of range queries for HTTP sources.
         #[clap(long)]
         disable_range_queries: bool,
+        /// Maximum idle wait for incoming HTTP data, in seconds.
+        ///
+        /// Connection and request deadlines remain 60 seconds.
+        #[clap(long, default_value = "60")]
+        http_stall_timeout: NonZeroU64,
+        /// Maximum bytes per HTTP range request (for example, 256KiB or 1MiB).
+        #[clap(long, default_value = "1MiB", value_parser = parse_max_range_size)]
+        http_max_range_size: NonZeroUsize,
+        /// Maximum concurrent HTTP range requests.
+        #[clap(long, default_value = "4")]
+        http_concurrency: NonZeroUsize,
         /// Maximum number of retry attempts for transient HTTP errors.
         #[clap(long, default_value_t = 5)]
         http_max_retries: u32,
@@ -1247,6 +1282,17 @@ pub enum AppsCommand {
         /// Expected bundle hash.
         #[clap(long)]
         bundle_hash: Option<HashDigest>,
+        /// Maximum idle wait for incoming HTTP data, in seconds.
+        ///
+        /// Connection and request deadlines remain 60 seconds.
+        #[clap(long, default_value = "60")]
+        http_stall_timeout: NonZeroU64,
+        /// Maximum bytes per HTTP range request (for example, 256KiB or 1MiB).
+        #[clap(long, default_value = "1MiB", value_parser = parse_max_range_size)]
+        http_max_range_size: NonZeroUsize,
+        /// Maximum concurrent HTTP range requests.
+        #[clap(long, default_value = "4")]
+        http_concurrency: NonZeroUsize,
         /// Maximum number of retry attempts for transient HTTP errors.
         #[clap(long, default_value_t = 5)]
         http_max_retries: u32,
@@ -1429,6 +1475,7 @@ fn run_data_wipe(yes: bool, no_reboot: bool) -> SystemResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use clap::Parser;
 
     use crate::config::system::BootGroupConfig;
     use crate::config::system::FileSlotConfig;
@@ -1439,6 +1486,10 @@ mod tests {
 
     use super::operation_event_as_cli_event;
     use super::resolve_mark_good_group;
+    use super::AppsCommand;
+    use super::Args;
+    use super::Command;
+    use super::UpdateCommand;
 
     fn file_slots(names: &[&str]) -> SystemSlots {
         let config = names
@@ -1455,6 +1506,69 @@ mod tests {
             .map(|(key, value)| (sidex::types::Str::from(key), value))
             .collect::<sidex::types::Map<_, _>>();
         SystemSlots::from_config(None, Some(&config)).unwrap()
+    }
+
+    /// System and app installs parse tuning flags with byte units and reject
+    /// zero values before opening a source.
+    #[test]
+    fn http_fetch_flags_accept_units_and_reject_zero() {
+        for command in ["update", "apps"] {
+            let arguments = [
+                "rugix-ctrl",
+                command,
+                "install",
+                "https://example.invalid/bundle",
+            ];
+            for (extra, expected) in [
+                (Vec::new(), (60, 1024 * 1024, 4)),
+                (
+                    vec![
+                        "--http-stall-timeout",
+                        "120",
+                        "--http-max-range-size",
+                        "256KiB",
+                        "--http-concurrency",
+                        "2",
+                    ],
+                    (120, 256 * 1024, 2),
+                ),
+            ] {
+                let parsed = Args::try_parse_from(arguments.into_iter().chain(extra)).unwrap();
+                let actual = match parsed.command {
+                    Command::Update(UpdateCommand::Install {
+                        http_stall_timeout,
+                        http_max_range_size,
+                        http_concurrency,
+                        ..
+                    })
+                    | Command::Apps(AppsCommand::Install {
+                        http_stall_timeout,
+                        http_max_range_size,
+                        http_concurrency,
+                        ..
+                    }) => (
+                        http_stall_timeout.get(),
+                        http_max_range_size.get(),
+                        http_concurrency.get(),
+                    ),
+                    _ => panic!("expected install command"),
+                };
+                assert_eq!(actual, expected);
+            }
+            for flag in [
+                "--http-stall-timeout",
+                "--http-max-range-size",
+                "--http-concurrency",
+            ] {
+                assert!(Args::try_parse_from(arguments.into_iter().chain([flag, "0"])).is_err());
+            }
+            assert!(Args::try_parse_from(
+                arguments
+                    .into_iter()
+                    .chain(["--http-max-range-size", "18446744073709551615B"])
+            )
+            .is_err());
+        }
     }
 
     #[test]

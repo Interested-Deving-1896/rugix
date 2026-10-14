@@ -75,7 +75,6 @@
 //! #
 //! use std::io::{self, Write, Read};
 //!
-//! use rugix_bundle::source::{BundleSource, from_slice};
 //!
 //! const SEGMENT_TAG: Tag = Tag::from_bytes([0xAA, 0xBB, 0xCC, 0xDD]);
 //! const VALUE_TAG: Tag = Tag::from_bytes([0x44, 0x33, 0x22, 0x11]);
@@ -87,7 +86,7 @@
 //! write_value(&mut buffer, VALUE_TAG, value.as_bytes());
 //! write_segment_end(&mut buffer, SEGMENT_TAG);
 //!
-//! let mut source = from_slice(buffer.get_ref());
+//! let mut source = io::Cursor::new(buffer.get_ref());
 //! assert_eq!(
 //!     read_atom_head(&mut source).unwrap(),
 //!     Some(AtomHead::start(SEGMENT_TAG))
@@ -111,10 +110,10 @@
 //!     None
 //! );
 //!
-//! let mut source = from_slice(buffer.get_ref());
+//! let mut source = io::Cursor::new(buffer.get_ref());
 //! let head = read_atom_head(&mut source).unwrap().unwrap();
 //! skip(&mut source, head).unwrap();
-//! assert_eq!(source.into_inner().position(), buffer.get_ref().len() as u64);
+//! assert_eq!(source.position(), buffer.get_ref().len() as u64);
 //! ```
 //!
 //! ##### ❗️ Important Notes
@@ -149,7 +148,11 @@ use byte_calc::NumBytes;
 use reportify::bail;
 
 use crate::BundleResult;
-use crate::source::BundleSource;
+mod read;
+
+pub use read::Read;
+use read::Read as StlvRead;
+pub use read::SeekReader;
 
 /// Tag size (4 bytes).
 pub const TAG_SIZE: usize = 4;
@@ -342,7 +345,7 @@ pub fn write_segment_end(writer: &mut dyn Write, tag: Tag) -> io::Result<()> {
 }
 
 /// Read the head of the next atom from the provided source.
-pub fn read_atom_head(source: &mut dyn BundleSource) -> BundleResult<Option<AtomHead>> {
+pub fn read_atom_head(source: &mut dyn StlvRead) -> BundleResult<Option<AtomHead>> {
     let Some(tag) = read_tag(source)? else {
         return Ok(None);
     };
@@ -371,7 +374,7 @@ pub fn read_atom_head(source: &mut dyn BundleSource) -> BundleResult<Option<Atom
 /// Skip a value atom or segment given an atom head.
 ///
 /// The atom head must indicate a value atom or open a segment.
-pub fn skip(source: &mut dyn BundleSource, head: AtomHead) -> BundleResult<()> {
+pub fn skip(source: &mut dyn StlvRead, head: AtomHead) -> BundleResult<()> {
     match head {
         AtomHead::Value { length, .. } => {
             source.skip(length)?;
@@ -418,7 +421,7 @@ pub trait TagNameResolver {
 
 /// Read and pretty print the structure of an STLV stream to stderr.
 pub fn pretty_print(
-    source: &mut dyn BundleSource,
+    source: &mut dyn StlvRead,
     resolver: Option<&dyn TagNameResolver>,
 ) -> BundleResult<()> {
     let mut indent = 0;
@@ -524,14 +527,14 @@ impl<T: AsRef<[u8]>> fmt::Display for DisplayBytes<T> {
 }
 
 /// Read a single byte.
-fn read_byte(source: &mut dyn BundleSource) -> BundleResult<u8> {
+fn read_byte(source: &mut dyn StlvRead) -> BundleResult<u8> {
     let mut buf = [0; 1];
     source.read_exact(&mut buf)?;
     Ok(buf[0])
 }
 
 /// Read a [`Tag`].
-fn read_tag(source: &mut dyn BundleSource) -> BundleResult<Option<Tag>> {
+fn read_tag(source: &mut dyn StlvRead) -> BundleResult<Option<Tag>> {
     let mut buf = [0; TAG_SIZE];
     let mut tail = buf.as_mut_slice();
     while !tail.is_empty() {
@@ -548,7 +551,7 @@ fn read_tag(source: &mut dyn BundleSource) -> BundleResult<Option<Tag>> {
 }
 
 /// Read a variable-length integer.
-fn read_varint(source: &mut dyn BundleSource) -> BundleResult<u64> {
+fn read_varint(source: &mut dyn StlvRead) -> BundleResult<u64> {
     let mut integer = 0u64;
     loop {
         let byte = read_byte(source)?;
@@ -617,7 +620,7 @@ mod tests {
 
     use byte_calc::NumBytes;
 
-    use crate::source::from_slice;
+    use std::io::Cursor;
 
     use super::*;
 
@@ -627,16 +630,16 @@ mod tests {
             let mut buffer = io::Cursor::new(vec![]);
             write_varint(&mut buffer, integer).unwrap();
             buffer.set_position(0);
-            let mut source = from_slice(buffer.get_ref());
+            let mut source = Cursor::new(buffer.get_ref());
             assert_eq!(read_varint(&mut source).unwrap(), integer);
         }
         for integer in [0, 1, 0x7f - 1, 0x7f, 0x7f + 1, u64::MAX / 2] {
             test_roundtrip(integer);
         }
         // Invalid zero digit.
-        assert!(read_varint(&mut from_slice(&[128, 0])).is_err());
+        assert!(read_varint(&mut Cursor::new(&[128, 0])).is_err());
         // Overflow.
-        assert!(read_varint(&mut from_slice(&[0xff; 10])).is_err());
+        assert!(read_varint(&mut Cursor::new(&[0xff; 10])).is_err());
     }
 
     #[test]
@@ -646,7 +649,7 @@ mod tests {
             write_atom_head(&mut buffer, head).unwrap();
             buffer.set_position(0);
             assert_eq!(
-                read_atom_head(&mut from_slice(buffer.get_ref()))
+                read_atom_head(&mut Cursor::new(buffer.get_ref()))
                     .unwrap()
                     .unwrap(),
                 head
@@ -661,9 +664,9 @@ mod tests {
             })
         }
         // Empty buffer.
-        assert_eq!(read_atom_head(&mut from_slice(&[])).unwrap(), None);
+        assert_eq!(read_atom_head(&mut Cursor::new(&[])).unwrap(), None);
         // Truncated buffer.
-        assert!(read_atom_head(&mut from_slice(&[0x99, 0x88])).is_err());
+        assert!(read_atom_head(&mut Cursor::new(&[0x99, 0x88])).is_err());
     }
 
     #[test]
@@ -674,7 +677,7 @@ mod tests {
         let mut unbalanced = Vec::new();
         write_segment_start(&mut unbalanced, ROOT).unwrap();
         write_segment_end(&mut unbalanced, OTHER).unwrap();
-        let mut source = from_slice(&unbalanced);
+        let mut source = Cursor::new(&unbalanced);
         let head = read_atom_head(&mut source).unwrap().unwrap();
         assert!(skip(&mut source, head).is_err());
 
@@ -685,7 +688,7 @@ mod tests {
         for _ in 0..65 {
             write_segment_end(&mut nested, ROOT).unwrap();
         }
-        let mut source = from_slice(&nested);
+        let mut source = Cursor::new(&nested);
         let head = read_atom_head(&mut source).unwrap().unwrap();
         assert!(skip(&mut source, head).is_err());
     }

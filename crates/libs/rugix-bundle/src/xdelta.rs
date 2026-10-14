@@ -1,3 +1,9 @@
+//! Encode and apply Xdelta patches through the external `xdelta3` command.
+//!
+//! [`xdelta_compress`] produces a patch from two files; [`xdelta_decompress`] applies
+//! a streamed patch to a source file and writes decoded output. Bundle payload
+//! acquisition and verification are handled separately by the bundle reader.
+
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -11,6 +17,18 @@ use tracing::trace;
 
 use crate::BundleResult;
 
+/// Apply a streamed patch against `source`, writing reconstructed bytes to `output`.
+///
+/// For a patch produced by [`xdelta_compress`], `source` must contain the contents
+/// of `old`; applying the patch reconstructs the contents of `new`.
+///
+/// Runs `xdelta3 -d -c -s SOURCE`, feeding `patch` to stdin and copying stdout to
+/// `output` concurrently on scoped threads. The `xdelta3` executable must be
+/// available on `PATH`. Waits for the command and both copy operations to finish.
+///
+/// Returns an error if the command cannot be run, exits unsuccessfully, or a data
+/// transfer fails. Bytes already written to `output` remain on failure. Validation
+/// against an expected output hash belongs to the caller.
 #[tracing::instrument(level = Level::DEBUG, skip(patch, output))]
 pub fn xdelta_decompress<R, W>(source: &Path, patch: &mut R, output: &mut W) -> BundleResult<()>
 where
@@ -62,6 +80,14 @@ where
     Ok(())
 }
 
+/// Encode the differences between the files `old` and `new` into `patch`.
+///
+/// Applying the patch with [`xdelta_decompress`], using `old` as the source,
+/// reconstructs the contents of `new`.
+///
+/// Runs `xdelta3 -e -s OLD NEW PATCH` and waits for it to finish. The `xdelta3`
+/// executable must be available on `PATH`. Returns an error if the command cannot
+/// be run or exits unsuccessfully.
 #[tracing::instrument(level = Level::DEBUG)]
 pub fn xdelta_compress(old: &Path, new: &Path, patch: &Path) -> BundleResult<()> {
     let mut child = Command::new("xdelta3")
