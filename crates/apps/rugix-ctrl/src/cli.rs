@@ -131,31 +131,10 @@ pub fn main() -> SystemResult<()> {
                 reboot: reboot_type,
                 keep_overlay,
                 boot_group,
-                disable_range_queries,
-                http_max_retries,
-                http_retry_initial_backoff,
-                http_retry_max_backoff,
-                http_stall_timeout,
-                http_max_range_size,
-                http_concurrency,
+                http,
             } => {
-                let retry_config = RetryConfig {
-                    max_retries: *http_max_retries,
-                    initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
-                    max_backoff: Duration::from_secs(*http_retry_max_backoff),
-                };
-                let fetch_config = HttpFetchConfig {
-                    stall_timeout: Duration::from_secs(http_stall_timeout.get()),
-                    max_range_size: *http_max_range_size,
-                    concurrency: *http_concurrency,
-                };
-                let (source, input) = resolve_cli_bundle_source(
-                    bundle,
-                    *disable_range_queries,
-                    retry_config,
-                    fetch_config,
-                    "error opening image",
-                )?;
+                let (source, input) =
+                    resolve_cli_bundle_source(bundle, http, "error opening image")?;
                 let operation = InstallBundle {
                     source,
                     target: InstallTarget::System {
@@ -175,6 +154,12 @@ pub fn main() -> SystemResult<()> {
                 execute_operation(operation, input)?;
             }
         },
+        Command::Bundle(BundleCommand::Inspect { bundle, json, http }) => {
+            let (source, input) = resolve_cli_bundle_source(bundle, http, "unable to open bundle")?;
+            let output = crate::bundle::inspect(source, input)?;
+            rugix_cli::json::print_json(&output, *json)
+                .whatever("unable to write bundle inspection to stdout")?;
+        }
         Command::System(sys_cmd) => match sys_cmd {
             SystemCommand::Info { json } => {
                 let output = execute_operation(QuerySystem, ())?;
@@ -448,30 +433,10 @@ pub fn main() -> SystemResult<()> {
                     skip_compatibility_check,
                     root_cert,
                     bundle_hash,
-                    http_max_retries,
-                    http_retry_initial_backoff,
-                    http_retry_max_backoff,
-                    http_stall_timeout,
-                    http_max_range_size,
-                    http_concurrency,
+                    http,
                 } => {
-                    let retry_config = RetryConfig {
-                        max_retries: *http_max_retries,
-                        initial_backoff: Duration::from_secs(*http_retry_initial_backoff),
-                        max_backoff: Duration::from_secs(*http_retry_max_backoff),
-                    };
-                    let fetch_config = HttpFetchConfig {
-                        stall_timeout: Duration::from_secs(http_stall_timeout.get()),
-                        max_range_size: *http_max_range_size,
-                        concurrency: *http_concurrency,
-                    };
-                    let (source, input) = resolve_cli_bundle_source(
-                        bundle,
-                        false,
-                        retry_config,
-                        fetch_config,
-                        "unable to open app bundle",
-                    )?;
+                    let (source, input) =
+                        resolve_cli_bundle_source(bundle, http, "unable to open app bundle")?;
                     let operation = InstallBundle {
                         source,
                         target: InstallTarget::Apps,
@@ -681,20 +646,27 @@ pub fn main() -> SystemResult<()> {
     Ok(())
 }
 
+/// Resolve file, stdin, or HTTP input using the shared CLI source controls.
 fn resolve_cli_bundle_source(
     bundle: &str,
-    disable_range_queries: bool,
-    retry: RetryConfig,
-    fetch: HttpFetchConfig,
+    http: &HttpOptions,
     file_error_context: &'static str,
 ) -> SystemResult<(InstallSource, BundleInput)> {
     if bundle.starts_with("http") {
         Ok((
             InstallSource::Http {
                 url: bundle.to_owned(),
-                disable_range_queries,
-                retry,
-                fetch,
+                disable_range_queries: http.disable_range_queries,
+                retry: RetryConfig {
+                    max_retries: http.http_max_retries,
+                    initial_backoff: Duration::from_secs(http.http_retry_initial_backoff),
+                    max_backoff: Duration::from_secs(http.http_retry_max_backoff),
+                },
+                fetch: HttpFetchConfig {
+                    stall_timeout: Duration::from_secs(http.http_stall_timeout.get()),
+                    max_range_size: http.http_max_range_size,
+                    concurrency: http.http_concurrency,
+                },
             },
             BundleInput::None,
         ))
@@ -1004,6 +976,9 @@ pub enum Command {
     /// Install and inspect over-the-air updates.
     #[clap(subcommand)]
     Update(UpdateCommand),
+    /// Inspect update bundles.
+    #[clap(subcommand)]
+    Bundle(BundleCommand),
     /// Manage the system.
     #[clap(subcommand)]
     System(SystemCommand),
@@ -1134,29 +1109,8 @@ pub enum UpdateCommand {
         /// Boot group to install the update to.
         #[clap(long)]
         boot_group: Option<String>,
-        /// Disable the use of range queries for HTTP sources.
-        #[clap(long)]
-        disable_range_queries: bool,
-        /// Maximum idle wait for incoming HTTP data, in seconds.
-        ///
-        /// Connection and request deadlines remain 60 seconds.
-        #[clap(long, default_value = "60")]
-        http_stall_timeout: NonZeroU64,
-        /// Maximum bytes per HTTP range request (for example, 256KiB or 1MiB).
-        #[clap(long, default_value = "1MiB", value_parser = parse_max_range_size)]
-        http_max_range_size: NonZeroUsize,
-        /// Maximum concurrent HTTP range requests.
-        #[clap(long, default_value = "4")]
-        http_concurrency: NonZeroUsize,
-        /// Maximum number of retry attempts for transient HTTP errors.
-        #[clap(long, default_value_t = 5)]
-        http_max_retries: u32,
-        /// Initial HTTP retry backoff duration in seconds.
-        #[clap(long, default_value_t = 1)]
-        http_retry_initial_backoff: u64,
-        /// Maximum HTTP retry backoff duration in seconds.
-        #[clap(long, default_value_t = 30)]
-        http_retry_max_backoff: u64,
+        #[clap(flatten)]
+        http: HttpOptions,
     },
 }
 
@@ -1180,6 +1134,48 @@ pub enum UpdateRebootType {
     /// to be shutoff after installing the update. On the next boot, Rugix will then try
     /// to boot into the new version.
     Deferred,
+}
+
+#[derive(Debug, Parser)]
+pub enum BundleCommand {
+    /// Inspect bundle metadata without installing or verifying signatures.
+    Inspect {
+        /// Bundle path, HTTP(S) URL, or - to read from standard input.
+        bundle: String,
+        /// Output compact JSON instead of pretty-printed JSON.
+        #[clap(long)]
+        json: bool,
+        #[clap(flatten)]
+        http: HttpOptions,
+    },
+}
+
+/// HTTP source controls shared by bundle inspection and installation.
+#[derive(Debug, clap::Args)]
+pub struct HttpOptions {
+    /// Disable HTTP range queries and read the bundle as a stream.
+    #[clap(long)]
+    disable_range_queries: bool,
+    /// Maximum idle wait for incoming HTTP data, in seconds.
+    ///
+    /// Connection and request deadlines remain 60 seconds.
+    #[clap(long, default_value = "60")]
+    http_stall_timeout: NonZeroU64,
+    /// Maximum bytes per HTTP range request, for example 256KiB or 1MiB.
+    #[clap(long, default_value = "1MiB", value_parser = parse_max_range_size)]
+    http_max_range_size: NonZeroUsize,
+    /// Maximum concurrent HTTP range requests.
+    #[clap(long, default_value = "4")]
+    http_concurrency: NonZeroUsize,
+    /// Maximum retry attempts for transient HTTP errors.
+    #[clap(long, default_value_t = 5)]
+    http_max_retries: u32,
+    /// Initial HTTP retry backoff, in seconds.
+    #[clap(long, default_value_t = 1)]
+    http_retry_initial_backoff: u64,
+    /// Maximum HTTP retry backoff, in seconds.
+    #[clap(long, default_value_t = 30)]
+    http_retry_max_backoff: u64,
 }
 
 #[derive(Debug, Parser)]
@@ -1282,26 +1278,8 @@ pub enum AppsCommand {
         /// Expected bundle hash.
         #[clap(long)]
         bundle_hash: Option<HashDigest>,
-        /// Maximum idle wait for incoming HTTP data, in seconds.
-        ///
-        /// Connection and request deadlines remain 60 seconds.
-        #[clap(long, default_value = "60")]
-        http_stall_timeout: NonZeroU64,
-        /// Maximum bytes per HTTP range request (for example, 256KiB or 1MiB).
-        #[clap(long, default_value = "1MiB", value_parser = parse_max_range_size)]
-        http_max_range_size: NonZeroUsize,
-        /// Maximum concurrent HTTP range requests.
-        #[clap(long, default_value = "4")]
-        http_concurrency: NonZeroUsize,
-        /// Maximum number of retry attempts for transient HTTP errors.
-        #[clap(long, default_value_t = 5)]
-        http_max_retries: u32,
-        /// Initial HTTP retry backoff duration in seconds.
-        #[clap(long, default_value_t = 1)]
-        http_retry_initial_backoff: u64,
-        /// Maximum HTTP retry backoff duration in seconds.
-        #[clap(long, default_value_t = 30)]
-        http_retry_max_backoff: u64,
+        #[clap(flatten)]
+        http: HttpOptions,
     },
     /// List all installed apps.
     List,
@@ -1488,6 +1466,7 @@ mod tests {
     use super::resolve_mark_good_group;
     use super::AppsCommand;
     use super::Args;
+    use super::BundleCommand;
     use super::Command;
     use super::UpdateCommand;
 
@@ -1508,19 +1487,23 @@ mod tests {
         SystemSlots::from_config(None, Some(&config)).unwrap()
     }
 
-    /// System and app installs parse tuning flags with byte units and reject
-    /// zero values before opening a source.
+    /// Inspection and both install commands share HTTP defaults, parse overrides,
+    /// and reject invalid sizes and zero values before opening a source.
     #[test]
     fn http_fetch_flags_accept_units_and_reject_zero() {
-        for command in ["update", "apps"] {
+        for (command, subcommand) in [
+            ("update", "install"),
+            ("apps", "install"),
+            ("bundle", "inspect"),
+        ] {
             let arguments = [
                 "rugix-ctrl",
                 command,
-                "install",
+                subcommand,
                 "https://example.invalid/bundle",
             ];
             for (extra, expected) in [
-                (Vec::new(), (60, 1024 * 1024, 4)),
+                (Vec::new(), (60, 1024 * 1024, 4, false, 5, 1, 30)),
                 (
                     vec![
                         "--http-stall-timeout",
@@ -1529,30 +1512,33 @@ mod tests {
                         "256KiB",
                         "--http-concurrency",
                         "2",
+                        "--disable-range-queries",
+                        "--http-max-retries",
+                        "3",
+                        "--http-retry-initial-backoff",
+                        "2",
+                        "--http-retry-max-backoff",
+                        "10",
                     ],
-                    (120, 256 * 1024, 2),
+                    (120, 256 * 1024, 2, true, 3, 2, 10),
                 ),
             ] {
                 let parsed = Args::try_parse_from(arguments.into_iter().chain(extra)).unwrap();
-                let actual = match parsed.command {
-                    Command::Update(UpdateCommand::Install {
-                        http_stall_timeout,
-                        http_max_range_size,
-                        http_concurrency,
-                        ..
-                    })
-                    | Command::Apps(AppsCommand::Install {
-                        http_stall_timeout,
-                        http_max_range_size,
-                        http_concurrency,
-                        ..
-                    }) => (
-                        http_stall_timeout.get(),
-                        http_max_range_size.get(),
-                        http_concurrency.get(),
-                    ),
-                    _ => panic!("expected install command"),
+                let http = match parsed.command {
+                    Command::Update(UpdateCommand::Install { http, .. })
+                    | Command::Apps(AppsCommand::Install { http, .. })
+                    | Command::Bundle(BundleCommand::Inspect { http, .. }) => http,
+                    _ => panic!("expected bundle command"),
                 };
+                let actual = (
+                    http.http_stall_timeout.get(),
+                    http.http_max_range_size.get(),
+                    http.http_concurrency.get(),
+                    http.disable_range_queries,
+                    http.http_max_retries,
+                    http.http_retry_initial_backoff,
+                    http.http_retry_max_backoff,
+                );
                 assert_eq!(actual, expected);
             }
             for flag in [
