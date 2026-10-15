@@ -60,10 +60,6 @@ rustls = { version = "0.23.46", default-features = false, features = [
     "tls12",
 ] }
 
-[[example]]
-name = "http-fetch-benchmark"
-path = "../../../benchmarks/http-fetch/fetch.rs"
-
 [build-dependencies]
 sidex-build-rs.workspace = true
 
