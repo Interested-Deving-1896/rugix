@@ -46,8 +46,9 @@ use super::tar_append_metadata;
 /// - An `app-archive` payload containing `app.toml`, a rewritten `docker-compose.yml`,
 ///   image metadata, and any extra included files/directories. Bundled services are
 ///   rewritten to Rugix-owned bundle-local image tags with `pull_policy: never`.
-/// - An `app-file` payload per Docker image, placed at `images/image-N.tar` inside the
-///   generation directory.
+/// - An `app-file` payload per Docker image at `images/image-N.tar`, kept in the device's
+///   content-addressed store or as a file in the generation directory, as selected by the
+///   image location.
 #[tracing::instrument(skip_all, fields(app = %cmd.app))]
 pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
     rugix_bundle::manifest::validate_app_name(&cmd.app)?;
@@ -128,10 +129,11 @@ pub fn pack(cmd: &crate::PackDockerComposeCmd) -> BundleResult<()> {
 
     for image in &images {
         payloads.push(Payload {
-            delivery: DeliveryConfig::AppFile(AppFileDeliveryConfig::new(
-                cmd.app.clone(),
-                image.app_path.clone(),
-            )),
+            delivery: DeliveryConfig::AppFile(
+                AppFileDeliveryConfig::new(cmd.app.clone(), image.app_path.clone()).with_store(
+                    (cmd.image_location == crate::ImageLocation::Store).then_some(true),
+                ),
+            ),
             filename: image.payload_filename.clone().into(),
             block_encoding: block_encoding.clone(),
             delta_encoding: None,
@@ -1154,6 +1156,7 @@ services:
             builder: crate::ImageBuilder::Podman,
             disable_pinning: false,
             disable_image_bundling: false,
+            image_location: crate::ImageLocation::Store,
             includes: Vec::new(),
             components: Vec::new(),
             health_check_timeout: None,

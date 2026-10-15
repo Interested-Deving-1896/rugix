@@ -17,6 +17,7 @@
   metadata ? { },
   platform ? null,
   healthCheckTimeout ? 120,
+  imageLocation ? "store",
 }:
 
 assert lib.assertMsg (
@@ -64,6 +65,10 @@ let
   ++ lib.optionals (platform != null) [
     "--platform"
     platform
+  ]
+  ++ [
+    "--image-location"
+    imageLocation
   ]
   ++ lib.concatMap (component: [
     "--components"

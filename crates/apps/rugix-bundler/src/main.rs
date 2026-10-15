@@ -118,6 +118,12 @@ pub struct PackDockerComposeCmd {
     /// file are saved and included in the bundle).
     #[clap(long)]
     disable_image_bundling: bool,
+    /// Where the device keeps the bundled images.
+    ///
+    /// Rugix Ctrl versions without the store cannot read images kept in the store.
+    /// Use `file` while devices may roll back to such a version.
+    #[clap(long, value_enum, default_value_t = ImageLocation::Store)]
+    image_location: ImageLocation,
     /// Extra files or directories to include in the archive.
     /// Each entry is added at the same relative path inside the generation directory.
     #[clap(long = "include")]
@@ -145,6 +151,14 @@ pub struct PackDockerComposeCmd {
     compose_file: PathBuf,
     /// Output bundle file.
     output: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ImageLocation {
+    /// Keep images in the device's content-addressed store.
+    Store,
+    /// Write images as files into the generation directory.
+    File,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -408,9 +422,10 @@ fn main() -> BundleResult<()> {
                 }
                 if let Some(type_app_file) = &entry.type_app_file {
                     println!(
-                        "  {idx}: app-file app={:?} path={:?} file={}",
+                        "  {idx}: app-file app={:?} path={:?} store={} file={}",
                         type_app_file.app,
                         type_app_file.path,
+                        type_app_file.store == Some(true),
                         HashDigest::new_unchecked(
                             reader.header().hash_algorithm,
                             &entry.file_hash.raw

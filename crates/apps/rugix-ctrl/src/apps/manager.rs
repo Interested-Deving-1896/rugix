@@ -9,6 +9,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use reportify::ResultExt;
+use rugix_store::GcSummary;
+use rugix_store::Store;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
@@ -27,6 +29,7 @@ use crate::payload_db::PayloadState;
 
 use super::config;
 use super::configuration;
+use super::files::GenerationFiles;
 use super::orchestrators;
 use super::orchestrators::AppContext;
 use super::orchestrators::AppStatus;
@@ -50,18 +53,44 @@ pub struct ResolvedGeneration {
 pub struct AppManager {
     /// Root directory for all apps.
     apps_dir: PathBuf,
+    /// Store holding the files of generations that opt into it.
+    store: Store,
     /// Resolved service manager name.
     service_manager: String,
 }
 
 impl AppManager {
     /// Create a new app manager.
-    pub fn new(apps_dir: PathBuf, apps_config: AppsConfig) -> Self {
+    pub fn new(apps_dir: PathBuf, store: Store, apps_config: AppsConfig) -> Self {
         let service_manager = config::effective_service_manager(&apps_config);
         Self {
             apps_dir,
+            store,
             service_manager,
         }
+    }
+
+    /// Store holding the files of generations that opt into it.
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Payload files of an existing generation.
+    pub fn generation_files(&self, app_name: &str, generation: u64) -> AppsResult<GenerationFiles> {
+        validate_app_name(app_name)?;
+        if !self.generation_dir_unchecked(app_name, generation).exists() {
+            reportify::bail!("app {app_name} has no generation {generation}");
+        }
+        Ok(self.files_unchecked(app_name, generation))
+    }
+
+    fn files_unchecked(&self, app_name: &str, generation: u64) -> GenerationFiles {
+        GenerationFiles::new(
+            self.store.clone(),
+            app_name,
+            generation,
+            self.generation_dir_unchecked(app_name, generation),
+        )
     }
 
     /// Acquire an exclusive advisory lock for the given app.
@@ -467,6 +496,11 @@ impl AppManager {
             .whatever("unable to create app data directory")?;
 
         let next = self.next_generation_number(app_name)?;
+        // Generation numbers are reused after the highest generation is removed. Refs
+        // left behind by an earlier generation with this number must not leak into it.
+        self.store
+            .remove(&GenerationFiles::generation_ref(app_name, next))
+            .whatever("unable to remove refs of stored files")?;
         let gen_dir = generations_dir.join(next.to_string());
         fs::create_dir_all(&gen_dir).whatever("unable to create generation directory")?;
         Ok((next, gen_dir))
@@ -786,10 +820,13 @@ impl AppManager {
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
+        let files = self.files_unchecked(app_name, deployment.generation);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
+            generation: deployment.generation,
             generation_dir: &gen_dir,
+            files: &files,
             data_dir: &data_dir,
             configuration_path: configuration.path.as_deref(),
             configuration: configuration.value.as_ref(),
@@ -831,10 +868,13 @@ impl AppManager {
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
+        let files = self.files_unchecked(app_name, deployment.generation);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
+            generation: deployment.generation,
             generation_dir: &gen_dir,
+            files: &files,
             data_dir: &data_dir,
             configuration_path: configuration.path.as_deref(),
             configuration: configuration.value.as_ref(),
@@ -932,10 +972,13 @@ impl AppManager {
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
+        let files = self.files_unchecked(app_name, deployment.generation);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
+            generation: deployment.generation,
             generation_dir: &gen_dir,
+            files: &files,
             data_dir: &data_dir,
             configuration_path: configuration.path.as_deref(),
             configuration: configuration.value.as_ref(),
@@ -961,10 +1004,13 @@ impl AppManager {
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
+        let files = self.files_unchecked(app_name, deployment.generation);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
+            generation: deployment.generation,
             generation_dir: &gen_dir,
+            files: &files,
             data_dir: &data_dir,
             configuration_path: configuration.path.as_deref(),
             configuration: configuration.value.as_ref(),
@@ -990,10 +1036,13 @@ impl AppManager {
         let orchestrator = orchestrators::get(manifest.orchestrator.as_str())?;
         let app_dir = self.app_dir(app_name);
         let data_dir = self.data_dir(app_name);
+        let files = self.files_unchecked(app_name, deployment.generation);
         let ctx = AppContext {
             app_name,
             app_dir: &app_dir,
+            generation: deployment.generation,
             generation_dir: &gen_dir,
+            files: &files,
             data_dir: &data_dir,
             configuration_path: configuration.path.as_deref(),
             configuration: configuration.value.as_ref(),
@@ -1156,7 +1205,8 @@ impl AppManager {
     /// Remove a generation directory.
     ///
     /// Removes the complete marker first so that an interrupted removal leaves
-    /// the generation in an incomplete state rather than appearing valid.
+    /// the generation in an incomplete state rather than appearing valid. Stored
+    /// files remain in the store until its next garbage collection.
     fn remove_generation(&self, app_name: &str, gen_number: u64) -> std::io::Result<()> {
         let gen_dir = self.generation_dir_unchecked(app_name, gen_number);
         let complete_marker = gen_dir.join(".rugix/complete");
@@ -1166,12 +1216,41 @@ impl AppManager {
         fs::remove_dir_all(&gen_dir)
     }
 
+    /// Collect the garbage of the store, releasing stored files of generations that no
+    /// longer exist.
+    ///
+    /// This covers generations and apps removed by Rugix Apps as well as by other
+    /// means, for example by a Rugix Ctrl version without the store. The store holds
+    /// back writers while deciding which refs to keep, and a generation directory is
+    /// created before the refs of its files, so refs of a running installation are
+    /// always kept.
+    pub fn collect_store_garbage(&self) -> AppsResult<GcSummary> {
+        self.store
+            .gc(|name| self.is_live_ref(name))
+            .whatever("unable to collect store garbage")
+    }
+
+    /// Whether a ref may still be in use, which a ref of Rugix Apps is while its
+    /// generation directory exists.
+    fn is_live_ref(&self, name: &str) -> bool {
+        let mut components = name.split('/');
+        let (Some("apps"), Some(app_name), Some(generation)) =
+            (components.next(), components.next(), components.next())
+        else {
+            return true;
+        };
+        generation.parse::<u64>().map_or(true, |generation| {
+            self.generation_dir_unchecked(app_name, generation).exists()
+        })
+    }
+
     /// Garbage collect old generations.
     ///
     /// Generations that were never activated are always removed (they are not valid
     /// rollback targets). Among previously-activated generations, at most `keep` of
     /// the most recent ones are retained. The currently active generation is never
-    /// removed.
+    /// removed. Stored files of removed generations remain in the store until its
+    /// next garbage collection.
     /// The caller must hold the [`AppLock`] for this app.
     pub fn gc(&self, _lock: &AppLock, app_name: &str, keep: usize) -> AppsResult<Vec<u64>> {
         validate_app_name(app_name)?;
@@ -1272,6 +1351,7 @@ impl AppManager {
 
     /// Remove an app entirely.
     ///
+    /// Stored files remain in the store until its next garbage collection.
     /// The caller must hold the [`AppLock`] for this app.
     pub fn remove_app(&self, _lock: &AppLock, app_name: &str) -> AppsResult<()> {
         validate_app_name(app_name)?;
@@ -1478,7 +1558,14 @@ mod tests {
     use crate::config::apps::AppStateActive;
     use crate::config::apps::AppStateError;
     use crate::config::apps::AppStateSwitching;
+    use std::io::Write;
+
+    use crate::apps::files::GenerationFiles;
     use crate::config::apps::AppsConfig;
+    use rugix_common::path::ValidatedRelativePath;
+    use rugix_store::Store;
+    use rugix_store::DEFAULT_CHUNKER;
+    use rugix_store::DEFAULT_HASH_ALGORITHM;
 
     use super::finalize_generation_with;
     use super::AppDeployment;
@@ -1537,7 +1624,11 @@ mod tests {
     fn invalid_app_names_are_rejected_before_lock_paths_are_created() {
         let tempdir = tempfile::tempdir().unwrap();
         let apps_dir = tempdir.path().join("apps");
-        let manager = AppManager::new(apps_dir, AppsConfig::new());
+        let manager = AppManager::new(
+            apps_dir,
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
 
         assert!(manager.lock_app("../escape").is_err());
         assert!(manager.generation_dir("../escape", 1).is_err());
@@ -1551,7 +1642,11 @@ mod tests {
     #[test]
     fn failed_activation_returns_error_after_successful_rollback() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         setup_generation(
             &manager,
@@ -1581,7 +1676,11 @@ mod tests {
     #[test]
     fn successful_activation_returns_success_and_persists_active_state() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
 
         manager
@@ -1596,7 +1695,11 @@ mod tests {
     #[test]
     fn failed_activation_and_rollback_persist_error_state() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(
             &manager,
             "example",
@@ -1632,7 +1735,11 @@ mod tests {
     #[test]
     fn interrupted_switch_is_recovered_to_the_requested_deployment() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         setup_generation(&manager, "example", 2, "#!/bin/sh\nexit 0\n");
         write_configuration(&manager, "example", 1, r#"{"revision":1}"#);
@@ -1672,7 +1779,11 @@ mod tests {
     #[test]
     fn app_update_and_rollback_use_their_expected_configuration_revisions() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         setup_generation(&manager, "example", 2, "#!/bin/sh\nexit 0\n");
         write_configuration(&manager, "example", 1, r#"{"revision":1}"#);
@@ -1718,7 +1829,11 @@ mod tests {
     #[test]
     fn inactive_configuration_is_used_during_the_next_activation() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         let lock = manager.lock_app("example").unwrap();
         let configuration = crate::apps::configuration::parse(r#"{"enabled":true}"#).unwrap();
@@ -1749,7 +1864,11 @@ mod tests {
     #[test]
     fn activating_a_generation_with_a_stricter_schema_requires_a_matching_document() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         setup_generation(&manager, "example", 2, "#!/bin/sh\nexit 0\n");
         declare_configuration_schema(
@@ -1807,7 +1926,11 @@ mod tests {
     #[test]
     fn the_last_activated_generation_is_ordered_by_instant() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         for generation in 1..=3 {
             setup_generation(&manager, "example", generation, "#!/bin/sh\nexit 0\n");
         }
@@ -1839,7 +1962,11 @@ mod tests {
     #[test]
     fn setting_an_identical_configuration_reuses_its_revision() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(
             &manager,
             "example",
@@ -1890,7 +2017,11 @@ mod tests {
     #[test]
     fn configuration_changes_require_a_stable_lifecycle_state() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(&manager, "example", 1, "#!/bin/sh\nexit 0\n");
         manager
             .write_state(
@@ -1911,7 +2042,11 @@ mod tests {
     #[test]
     fn failed_configuration_application_restores_the_last_working_revision() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         setup_generation(
             &manager,
             "example",
@@ -1960,7 +2095,11 @@ mod tests {
     #[test]
     fn garbage_collection_preserves_current_and_recent_rollback_generation() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         for generation in 1..=4 {
             setup_generation(&manager, "example", generation, "#!/bin/sh\nexit 0\n");
         }
@@ -1981,11 +2120,92 @@ mod tests {
         assert!(manager.generation_dir("example", 3).unwrap().exists());
     }
 
+    /// Store a file for a generation without creating the generation.
+    fn store_file(manager: &AppManager, app: &str, generation: u64) {
+        let mut writer = manager
+            .store()
+            .writer(DEFAULT_CHUNKER, DEFAULT_HASH_ALGORITHM)
+            .unwrap();
+        write!(writer, "{app}/{generation}").unwrap();
+        let path = ValidatedRelativePath::new("images/app.tar").unwrap();
+        writer
+            .commit(&GenerationFiles::file_ref(app, generation, &path))
+            .unwrap();
+    }
+
+    /// Verifies that garbage collection removes the refs of stored files of removed
+    /// and missing generations and apps, so that the store can free their content.
+    #[test]
+    fn garbage_collection_releases_stored_files_of_removed_generations() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
+        for generation in 1..=3 {
+            setup_generation(&manager, "example", generation, "#!/bin/sh\nexit 0\n");
+            AppManager::mark_activated(
+                &manager.generation_dir("example", generation).unwrap(),
+                None,
+            )
+            .unwrap();
+        }
+        manager
+            .write_state("example", &AppState::Active(AppStateActive::new(3)))
+            .unwrap();
+        // Generation 9 and the app `removed` do not exist, as after a removal by a
+        // Rugix Ctrl version without the store.
+        for (app, generation) in [
+            ("example", 1),
+            ("example", 3),
+            ("example", 9),
+            ("removed", 1),
+        ] {
+            store_file(&manager, app, generation);
+        }
+
+        let lock = manager.lock_app("example").unwrap();
+        assert_eq!(manager.gc(&lock, "example", 0).unwrap(), vec![1, 2]);
+        let summary = manager.collect_store_garbage().unwrap();
+        assert_eq!((summary.removed_refs, summary.removed_objects), (3, 3));
+        let refs = manager
+            .store()
+            .list(None)
+            .unwrap()
+            .into_iter()
+            .map(|stored| stored.name)
+            .collect::<Vec<_>>();
+        assert_eq!(refs, ["apps/example/3/images/app.tar"]);
+    }
+
+    /// Verifies that a new generation does not inherit stored files left behind by an
+    /// earlier generation with the same number.
+    #[test]
+    fn new_generations_do_not_inherit_stale_stored_files() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
+        store_file(&manager, "example", 1);
+
+        let lock = manager.lock_app("example").unwrap();
+        let (generation, _) = manager.create_generation(&lock, "example").unwrap();
+        assert_eq!(generation, 1);
+        assert!(manager.store().list(None).unwrap().is_empty());
+    }
+
     /// Verifies garbage collection retains only revisions required for rollback.
     #[test]
     fn garbage_collection_preserves_only_configuration_revisions_needed_for_rollback() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         for generation in 1..=2 {
             setup_generation(&manager, "example", generation, "#!/bin/sh\nexit 0\n");
         }
@@ -2031,7 +2251,11 @@ mod tests {
     #[test]
     fn garbage_collection_preserves_recovery_deployments() {
         let tempdir = tempfile::tempdir().unwrap();
-        let manager = AppManager::new(tempdir.path().join("apps"), AppsConfig::new());
+        let manager = AppManager::new(
+            tempdir.path().join("apps"),
+            Store::new(tempdir.path().join("store")),
+            AppsConfig::new(),
+        );
         for (app, state) in [
             (
                 "switching",
