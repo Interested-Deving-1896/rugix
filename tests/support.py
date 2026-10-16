@@ -16,8 +16,10 @@ UPDATE_PAGE = "Rugix test system: update"
 
 
 def web_page(vm: VMHandle) -> str:
-    """Return the web page that nginx serves on the VM."""
-    return vm.run(["curl", "--silent", "--fail", "http://localhost/"], hide=True).stdout
+    """Return the web page that nginx serves on the VM, waiting for nginx."""
+    command = ["curl", "--silent", "--fail", "http://localhost/"]
+    wait_until(lambda: vm.run(command, check=False, hide=True).ok, "nginx serves")
+    return vm.run(command, hide=True).stdout
 
 
 def exists(vm: VMHandle, path: str) -> bool:
