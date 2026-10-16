@@ -1,0 +1,57 @@
+[repositories]
+rugix-testkit = { git = "https://github.com/rugix/rugix-testkit.git", branch = "work/agents/per-repo-system-tests", dir = "bakery" }
+
+[systems.customized-amd64]
+layer = "customized-efi"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-amd64-delta]
+layer = "customized-efi-delta"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-slots]
+layer = "customized-slots"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-temp-overlay]
+layer = "customized-temp-overlay"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-overlay-fallback]
+layer = "customized-overlay-fallback"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-amd64-luks2-passphrase]
+layer = "customized-luks2-passphrase"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-amd64-luks2-tpm2]
+layer = "customized-luks2-tpm2"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-amd64-docker]
+layer = "customized-efi-docker"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.init-error-shell-disabled]
+layer = "init-error-shell-disabled"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.init-error-shell-enabled]
+layer = "init-error-shell-enabled"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.init-quiet]
+layer = "init-quiet"
+architecture = "amd64"
+target = "generic-grub-efi"

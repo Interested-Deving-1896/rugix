@@ -1,0 +1,14 @@
+#:schema https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/schemas/rugix-ctrl-system.schema.json
+
+# Encrypt the data partition with a key sealed by a TPM 2.0 device.
+#
+# `pcrs = [7]` binds the unseal to the Secure Boot policy state — the only
+# PCR that's stable across kernel / initrd / bootloader updates. Stronger
+# binding (PCR 4 + 8 + 9) requires per-release signed policies
+# (`tpm2-public-key` + a bakery-emitted signature file) — to be added.
+[data-partition.driver]
+type = "luks2-tpm2"
+device = "auto"
+pcrs = [7]
+label = "data-tpm"
+mapper-name = "rugix-data"

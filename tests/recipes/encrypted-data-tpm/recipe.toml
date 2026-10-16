@@ -1,0 +1,2 @@
+description = "configure the data partition for the LUKS2 TPM2 driver"
+dependencies = ["core/pkg-update"]

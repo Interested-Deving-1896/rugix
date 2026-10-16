@@ -1,0 +1,2 @@
+description = "serve a static web page with nginx"
+dependencies = ["core/pkg-update"]

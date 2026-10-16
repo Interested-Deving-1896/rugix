@@ -1,0 +1,9 @@
+#!/bin/bash
+# Simple HTTP-like server that writes a marker file and stays running.
+set -euo pipefail
+
+MARKER="${DATA_DIR}/running"
+echo "hello-binary" > "${MARKER}"
+
+# Stay alive as a daemon.
+exec sleep infinity

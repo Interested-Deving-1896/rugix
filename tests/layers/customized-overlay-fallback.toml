@@ -1,0 +1,6 @@
+description = "customized image with in-memory overlay fallback"
+parent = "customized-efi"
+
+recipes = [
+    "overlay-fallback",
+]

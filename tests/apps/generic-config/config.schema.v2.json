@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "endpoint": { "type": "string" },
+    "token": { "type": "string" }
+  },
+  "required": ["endpoint", "token"],
+  "additionalProperties": false
+}

@@ -1,0 +1,5 @@
+description = "append kernel arguments to the generic GRUB boot script"
+priority = -1_500_000
+
+[parameters]
+args = { default = "" }

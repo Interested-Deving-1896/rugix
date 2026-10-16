@@ -1,0 +1,2 @@
+description = "install Xdelta3"
+dependencies = ["core/pkg-update"]

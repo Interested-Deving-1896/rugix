@@ -1,0 +1,6 @@
+[Unit]
+Description=Garbage collect old Rugix app generations
+
+[Service]
+Type=oneshot
+ExecStart=rugix-ctrl apps gc

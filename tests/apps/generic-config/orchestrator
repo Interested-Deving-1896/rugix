@@ -1,0 +1,47 @@
+#!/bin/bash
+# Generic orchestrator script for the hello-config app.
+#
+# Records the effective application configuration Rugix applied so tests can
+# observe which document a generation was activated with.
+set -euo pipefail
+
+APPLIED="${RUGIX_APP_DATA_DIR}/applied-config.json"
+PIDFILE="${RUGIX_APP_DATA_DIR}/pid"
+
+start_workload() {
+    mkdir -p "${RUGIX_APP_DATA_DIR}"
+    if [ -n "${RUGIX_APP_CONFIG_PATH:-}" ]; then
+        cp "${RUGIX_APP_CONFIG_PATH}" "${APPLIED}"
+    else
+        rm -f "${APPLIED}"
+    fi
+    nohup sleep infinity &>/dev/null &
+    echo $! > "${PIDFILE}"
+}
+
+stop_workload() {
+    if [ -f "${PIDFILE}" ]; then
+        kill "$(cat "${PIDFILE}")" 2>/dev/null || true
+        rm -f "${PIDFILE}"
+    fi
+}
+
+case "$1" in
+    activate | start)
+        start_workload
+        ;;
+    deactivate | stop)
+        stop_workload
+        ;;
+    status)
+        if [ -f "${PIDFILE}" ] && kill -0 "$(cat "${PIDFILE}")" 2>/dev/null; then
+            echo '{"state": "running"}'
+        else
+            echo '{"state": "stopped"}'
+        fi
+        ;;
+    *)
+        echo "unknown operation: $1" >&2
+        exit 1
+        ;;
+esac

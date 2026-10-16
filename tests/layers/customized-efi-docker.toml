@@ -1,0 +1,6 @@
+parent = "rugix-testkit/debian-efi"
+
+recipes = [
+    "install-docker",
+    "setup-apps-services",
+]

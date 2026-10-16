@@ -1,0 +1,14 @@
+parent = "core/debian-trixie"
+
+recipes = [
+    "core/debian-grub-setup",
+    "break-init-config",
+    "append-grub-kernel-args",
+]
+
+[parameters."core/rugix-ctrl"]
+version = "container"
+use_musl = false
+
+[parameters.append-grub-kernel-args]
+args = "console=ttyS0 rugix.init.quiet"
