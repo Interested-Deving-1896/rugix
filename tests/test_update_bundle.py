@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from rugix_testkit import BakeryBuilder, CmdError, RugixCtrl, VMHandle
 
-from support import BASE_PAGE, UPDATE_PAGE, web_page
+from support import BASE_PAGE, UPDATE_PAGE, trust_test_root, web_page
 
 HOOKS_DIR = "/etc/rugix/hooks/system-commit/pre-commit"
 WRONG_BUNDLE_HASH = "sha512-256:" + "0" * 64
@@ -71,14 +71,26 @@ def test_rejected_bundles_leave_system_unchanged(
     vm: VMHandle,
     rugix: RugixCtrl,
     update_bundle: Path,
+    signed_bundle: Path,
     bundle_url: Callable[[Path], str],
 ) -> None:
-    """Unsigned bundles and bundles that do not match the expected hash are
-    refused without selecting the spare system for the next boot."""
+    """Unsigned bundles, bundles signed for an untrusted root certificate, and
+    bundles that do not match the expected hash are refused without selecting
+    the spare system for the next boot."""
+    trust_test_root(vm)
     url = bundle_url(update_bundle)
     with pytest.raises(CmdError) as unsigned:
         rugix.update_install(url, reboot="set", insecure=False)
     assert "bundle verification failed" in unsigned.value.result.stderr
+
+    with pytest.raises(CmdError) as untrusted:
+        rugix.update_install(
+            bundle_url(signed_bundle),
+            reboot="set",
+            insecure=False,
+            root_cert="/etc/rugix/other-root.crt",
+        )
+    assert "bundle verification failed" in untrusted.value.result.stderr
 
     with pytest.raises(CmdError) as mismatch:
         vm.run(
