@@ -1,0 +1,3 @@
+parent = "customized-efi-apps"
+
+recipes = ["install-docker"]

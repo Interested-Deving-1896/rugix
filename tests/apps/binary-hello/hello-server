@@ -1,0 +1,9 @@
+#!/bin/bash
+# Workload of the hello-binary app. Writes a marker file and stays running.
+set -euo pipefail
+
+MARKER="${DATA_DIR}/running"
+echo "hello-binary" > "${MARKER}"
+
+# Stay alive as a daemon.
+exec sleep infinity

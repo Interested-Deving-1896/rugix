@@ -1,0 +1,14 @@
+parent = "core/debian-trixie"
+
+recipes = [
+    "core/debian-grub-setup",
+    "break-init-config",
+    "append-grub-kernel-args",
+]
+
+# Boots the GNU build of Rugix Ctrl, which no other system uses.
+[parameters."core/rugix-ctrl"]
+use_musl = false
+
+[parameters.append-grub-kernel-args]
+args = "console=ttyS0 rugix.init.quiet"

@@ -102,10 +102,15 @@ run = "cargo test --workspace --all-features"
 [tasks."test:system"]
 description = "Run the QEMU-based system test suite (requires a container runtime, QEMU, and OVMF)."
 dir = "tests"
+run = 'uv run pytest "$@"'
+
+[tasks."check:tests"]
+description = "Lint, format-check, and type-check the system tests."
+dir = "tests"
 run = '''
-./generate-test-keys.sh
-uv sync --group dev
-./scripts/run-pytest.sh "$@"
+uv run --group dev ruff check .
+uv run --group dev ruff format --check .
+uv run --group dev mypy .
 '''
 
 [tasks.build]

@@ -1,0 +1,10 @@
+#:schema https://raw.githubusercontent.com/rugix/rugix/refs/heads/main/schemas/rugix-ctrl-system.schema.json
+
+# Exercises the LUKS2 code paths without a TPM. Do not use this in production:
+# the passphrase lives in the unencrypted root filesystem, so anyone with
+# physical access can read it and unlock the volume.
+[data-partition.driver]
+type = "luks2-passphrase"
+passphrase-file = "/etc/rugix/luks-data.key"
+label = "data-encrypted"
+mapper-name = "rugix-data"

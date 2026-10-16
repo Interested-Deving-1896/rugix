@@ -1,0 +1,12 @@
+[Unit]
+Description=Hello Binary App
+
+[Service]
+Type=simple
+Environment=DATA_DIR=${DATA_DIR}
+ExecStart=${GENERATION_DIR}/hello-server
+ExecStopPost=-/bin/rm -f ${DATA_DIR}/running
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

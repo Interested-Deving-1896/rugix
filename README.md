@@ -96,7 +96,7 @@ mise run fmt
 mise run codegen
 mise run build x86_64-unknown-linux-musl
 mise run package:deb x86_64-unknown-linux-musl
-mise run test:system
+mise run test:system -n 4
 ```
 
 Run `mise run doctor` to check host dependencies. Development requires rustup; entering
@@ -106,8 +106,7 @@ Cross-builds require Docker or Podman. The system tests additionally require QEM
 OVMF. App packing, signing, and delta creation run the host Bundler selected from
 `build/binaries` or `RUGIX_BUNDLER`; install Skopeo and xdelta3 for those operations.
 CI provides both tools from the Nixpkgs revision pinned in `flake.lock`. See the
-[shared test suite](https://github.com/rugix/rugix-tests#running-the-tests) for binary
-selection and test prerequisites.
+[system tests](tests/README.md) for binary selection and test prerequisites.
 
 To deliberately update the non-Rust toolchain, update the loose specifications if needed
 and run `mise lock`; commit `mise.toml` and `mise.lock` together. Update Rust by changing

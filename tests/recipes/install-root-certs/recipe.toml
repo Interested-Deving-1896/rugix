@@ -1,0 +1,5 @@
+description = "install update root certificates"
+
+[parameters]
+root_crt = {}
+other_root_crt = {}

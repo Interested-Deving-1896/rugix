@@ -1,0 +1,9 @@
+[Unit]
+Description=Periodically garbage collect old Rugix app generations
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1d
+
+[Install]
+WantedBy=timers.target

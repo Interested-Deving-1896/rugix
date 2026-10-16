@@ -1,0 +1,10 @@
+parent = "core/debian-trixie"
+
+recipes = [
+    "core/debian-grub-setup",
+    "break-init-config",
+    "append-grub-kernel-args",
+]
+
+[parameters.append-grub-kernel-args]
+args = "console=ttyS0"
