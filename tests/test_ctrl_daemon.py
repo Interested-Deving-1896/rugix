@@ -14,28 +14,23 @@ from typing import Any
 import pytest
 from rugix_testkit import BakeryBuilder, CmdError, CmdResult, RugixCtrl, VMHandle
 
+from support import trust_test_root, wait_until
+
 CLIENT = "rugix-client"
-CTRL_CONFIG = """\
-[signatures]
-roots = ["/etc/rugix/root.crt"]
-"""
 REMOTE_BUNDLE = "/tmp/signed.rugixb"
 
 
 @pytest.fixture
 def daemon_vm(vm: VMHandle) -> VMHandle:
     """A VM whose daemon trusts the test root and that has a client user."""
-    vm.run(
-        ["sh", "-c", f"cat >/etc/rugix/ctrl.toml <<'TOML'\n{CTRL_CONFIG}TOML"],
-        hide=True,
-    )
-    vm.run(["systemctl", "restart", "rugix-ctrl-daemon.service"], hide=True)
-    vm.run(
-        ["sh", "-c", "until [ -S /run/rugix/ctrl.sock ]; do sleep 0.1; done"],
-        timeout=30,
-        hide=True,
-    )
+    trust_test_root(vm)
     vm.run(["useradd", "--system", "--gid", "rugix-daemon", CLIENT], hide=True)
+    vm.run(["systemctl", "restart", "rugix-ctrl-daemon.service"], hide=True)
+    wait_until(
+        lambda: _client_command(vm, ["daemon", "info", "--json"], check=False).ok,
+        "the daemon accepts clients",
+        timeout=30,
+    )
     return vm
 
 
@@ -97,11 +92,19 @@ def test_daemon_enforces_policy(
         hide=True,
     )
     assert not outsider.ok
+    assert "Permission denied" in outsider.stderr
 
 
 def _as_client(vm: VMHandle, args: list[str]) -> CmdResult:
+    return _client_command(vm, args, check=True)
+
+
+def _client_command(vm: VMHandle, args: list[str], *, check: bool) -> CmdResult:
     return vm.run(
-        ["runuser", "-u", CLIENT, "--", "rugix-ctrl", *args], timeout=600, hide=True
+        ["runuser", "-u", CLIENT, "--", "rugix-ctrl", *args],
+        check=check,
+        timeout=600,
+        hide=True,
     )
 
 

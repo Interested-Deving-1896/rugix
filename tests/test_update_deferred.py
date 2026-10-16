@@ -8,6 +8,8 @@ from pathlib import Path
 
 from rugix_testkit import BakeryBuilder, RugixCtrl, VMHandle
 
+from support import exists
+
 
 def test_deferred_update_reboots_into_recorded_group(
     vm: VMHandle,
@@ -15,17 +17,12 @@ def test_deferred_update_reboots_into_recorded_group(
     bakery: BakeryBuilder,
     bundle_url: Callable[[Path], str],
 ) -> None:
+    """A deferred installation records the spare group and the next boot
+    switches to it."""
     bundle = bundle_url(bakery.bake_bundle("customized-amd64"))
     rugix.assert_boot(default="a", active="a")
 
-    result = rugix.update_install(
-        bundle,
-        reboot="deferred",
-        insecure=True,
-        timeout=600,
-        check=False,
-    )
-    assert result.ok, f"{result.stdout}\n{result.stderr}"
+    rugix.update_install(bundle, reboot="deferred", insecure=True, timeout=600)
     rugix.assert_boot(default="a", active="a")
 
     marker = vm.run(
@@ -38,11 +35,7 @@ def test_deferred_update_reboots_into_recorded_group(
     # group B, clears the marker, and performs the second reboot automatically.
     vm.reboot(timeout=600)
     rugix.assert_boot(default="a", active="b")
-    assert not vm.run(
-        ["test", "-e", "/run/rugix/mounts/data/.rugix/deferred-reboot-spare"],
-        check=False,
-        hide=True,
-    ).ok
+    assert not exists(vm, "/run/rugix/mounts/data/.rugix/deferred-reboot-spare")
 
     rugix.system_commit()
     rugix.assert_boot(default="b", active="b")

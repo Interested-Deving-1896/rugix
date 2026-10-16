@@ -16,13 +16,17 @@ Prerequisites:
 - `openssl`, which generates the update signing keys in `keys/`.
 - Skopeo for packing Docker Compose apps and xdelta3 for static deltas.
 
-The tests install the Rugix Ctrl and Rugix Bundler builds in `../build/binaries`
-when that directory exists. Build them with `mise run build
-x86_64-unknown-linux-musl`; the `init-quiet` system additionally needs the
-`x86_64-unknown-linux-gnu` build. Set `RUGIX_BINARIES_DIR` to use builds from
-elsewhere and `RUGIX_BUNDLER` to select a specific Bundler binary. Without
-builds, the systems use the Rugix Ctrl of the Bakery image and the tests run
-the `rugix-bundler` on `PATH`.
+The tests need builds of Rugix Ctrl and Rugix Bundler. The systems install
+Rugix Ctrl from these builds and the tests run Rugix Bundler from them. From the
+repository root, build them into `build/binaries`:
+
+```sh
+mise run build x86_64-unknown-linux-musl x86_64-unknown-linux-gnu
+```
+
+The `init-quiet` system needs the `x86_64-unknown-linux-gnu` build. Set
+`RUGIX_BINARIES_DIR` to use builds from elsewhere and `RUGIX_BUNDLER` to select
+a specific Bundler binary.
 
 Rugix Bakery runs from the image named by `RUGIX_BAKERY_IMAGE`, which must be
 available locally. From the repository root, run all tests on four parallel
@@ -45,7 +49,8 @@ serial output and command history of each test's VMs end up in
 `test-outputs/`.
 
 Bakery does not notice when mounted binaries change. After rebuilding Rugix
-Ctrl, delete `.rugix/` so that cached layers pick up the new build.
+Ctrl, delete `tests/.rugix/` so that cached layers pick up the new build. The
+tests fail if a VM runs another Rugix Ctrl than the build under test.
 
 ## Project Layout
 

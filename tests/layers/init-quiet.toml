@@ -8,7 +8,6 @@ recipes = [
 
 # Boots the GNU build of Rugix Ctrl, which no other system uses.
 [parameters."core/rugix-ctrl"]
-version = "container"
 use_musl = false
 
 [parameters.append-grub-kernel-args]

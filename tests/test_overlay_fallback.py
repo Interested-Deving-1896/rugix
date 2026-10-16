@@ -1,4 +1,4 @@
-"""End-to-end tests for root overlay fallback handling."""
+"""The root overlay falls back to memory when its persistent storage is unusable."""
 
 from __future__ import annotations
 
@@ -12,10 +12,8 @@ def boot_system() -> str:
 
 
 def test_overlay_falls_back_to_in_memory(vm: VMHandle) -> None:
-    vm.run(
-        ["test", "-f", "/run/rugix/state/.rugix/overlay-fallback-error.log"],
-        hide=True,
-    )
+    """The system boots with an in-memory overlay, logs why, and reports the
+    error state."""
     vm.run(["test", "-d", "/run/rugix/overlay/upper"], hide=True)
 
     log = vm.run(

@@ -8,10 +8,7 @@ from pathlib import Path
 import pytest
 from rugix_testkit import CmdError, RugixCtrl, VMHandle
 
-CTRL_CONFIG = """\
-[signatures]
-roots = ["/etc/rugix/root.crt"]
-"""
+from support import trust_test_root
 
 
 def test_signed_bundle_requires_trusted_root(
@@ -22,10 +19,7 @@ def test_signed_bundle_requires_trusted_root(
 ) -> None:
     """A signed bundle is refused with an unrelated root certificate and
     installs with the configured root."""
-    vm.run(
-        ["sh", "-c", f"cat >/etc/rugix/ctrl.toml <<'TOML'\n{CTRL_CONFIG}TOML"],
-        hide=True,
-    )
+    trust_test_root(vm)
     url = bundle_url(signed_bundle)
 
     with pytest.raises(CmdError) as untrusted:

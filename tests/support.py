@@ -20,6 +20,17 @@ def web_page(vm: VMHandle) -> str:
     return vm.run(["curl", "--silent", "--fail", "http://localhost/"], hide=True).stdout
 
 
+def exists(vm: VMHandle, path: str) -> bool:
+    """Return whether *path* exists on the VM."""
+    return vm.run(["test", "-e", path], check=False, hide=True).ok
+
+
+def trust_test_root(vm: VMHandle) -> None:
+    """Configure Rugix Ctrl to verify bundles with the test root certificate."""
+    config = '[signatures]\nroots = ["/etc/rugix/root.crt"]\n'
+    vm.run(["sh", "-c", f"printf '%s' '{config}' >/etc/rugix/ctrl.toml"], hide=True)
+
+
 def wait_until(
     condition: Callable[[], bool], description: str, *, timeout: float = 60
 ) -> None:
@@ -36,6 +47,11 @@ def wait_until(
 def apps(vm: VMHandle) -> dict[str, Any]:
     """Return the output of ``rugix-ctrl apps list``."""
     return vm.run_json(["rugix-ctrl", "apps", "list"])
+
+
+def app_info(vm: VMHandle, app: str) -> Any:
+    """Return the output of ``rugix-ctrl apps info``."""
+    return vm.run_json(["rugix-ctrl", "apps", "info", app])
 
 
 def app_state(vm: VMHandle, app: str) -> str | None:

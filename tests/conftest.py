@@ -5,12 +5,22 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from rugix_testkit import BakeryBuilder, Bundler, Parameters, VMConfig, VMHandle
+from rugix_testkit import (
+    BakeryBuilder,
+    Bundler,
+    Parameters,
+    QemuVM,
+    VMConfig,
+    VMHandle,
+)
 from rugix_testkit.locks import exclusive_lock
+
+OUTDATED_CTRL = "the VM runs an outdated Rugix Ctrl, delete `.rugix/` and retry"
 
 REPOSITORY_DIR = Path(__file__).resolve().parent.parent
 
@@ -51,10 +61,32 @@ def start_vm(
         vm = start_vm(config)
         output = vm.run(["sha256sum", "/usr/bin/rugix-ctrl"], hide=True).stdout
         if output.split()[0] not in ctrl_build_digests:
-            pytest.fail(
-                "the VM runs an outdated Rugix Ctrl, delete `.rugix/` and retry"
-            )
+            pytest.fail(OUTDATED_CTRL)
         return vm
+
+    return start
+
+
+@pytest.fixture
+def start_qemu(
+    start_qemu: Callable[[VMConfig], QemuVM], ctrl_build_digests: set[str]
+) -> Callable[[VMConfig], QemuVM]:
+    """Starts VMs without SSH after checking the image's Rugix Ctrl build.
+
+    Only use it for systems without bundles, because baking a bundle rewrites
+    the inspected archive.
+    """
+
+    def start(config: VMConfig) -> QemuVM:
+        system_archive = (
+            config.drives[0].file.parent / "filesystems" / "partition-4.tar"
+        )
+        with tarfile.open(system_archive) as archive:
+            binary = archive.extractfile("./usr/bin/rugix-ctrl")
+            assert binary is not None
+            if hashlib.sha256(binary.read()).hexdigest() not in ctrl_build_digests:
+                pytest.fail(OUTDATED_CTRL)
+        return start_qemu(config)
 
     return start
 
@@ -86,11 +118,15 @@ def bakery_parameters(update_keys: Path) -> Parameters:
 
 @pytest.fixture(scope="session")
 def signed_bundle(
-    bakery: BakeryBuilder, bundler: Bundler, rugix_project: Path, update_keys: Path
+    bakery: BakeryBuilder,
+    bundler: Bundler,
+    rugix_project: Path,
+    update_keys: Path,
+    worker_id: str,
 ) -> Path:
     """The `customized-amd64` bundle signed by ``signer.crt``."""
     # Workers sign concurrently, so each writes its own file.
-    output = rugix_project / "build" / f"signed-{os.getpid()}.rugixb"
+    output = rugix_project / "build" / f"signed-{worker_id}.rugixb"
     return bundler.sign(
         bakery.bake_bundle("customized-amd64"),
         update_keys / "signer.crt",

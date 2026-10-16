@@ -32,7 +32,7 @@ def test_dynamic_delta_downloads_changed_blocks(
     result = rugix.update_install("http://localhost/system.rugixb", timeout=600)
     downloaded = re.search(r"downloaded ([\d.]+)% .* of the full bundle", result.stderr)
     assert downloaded is not None, result.stderr
-    assert float(downloaded.group(1)) < 25
+    assert float(downloaded.group(1)) < 5
 
     vm.run_disconnecting(["rugix-ctrl", "system", "reboot", "--spare"])
     vm.wait_for_reboot()

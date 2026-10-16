@@ -18,6 +18,8 @@ from rugix_testkit import (
     amd64_efi_config,
 )
 
+from support import exists
+
 DATA_PARTITION = "/dev/vda6"
 
 
@@ -50,7 +52,7 @@ def test_tpm_unlocks_data_across_update(
     bundle_url: Callable[[Path], str],
 ) -> None:
     """The first boot seals the volume key to the TPM. The key unlocks the data
-    partition again after booting an updated system."""
+    partition again after booting the other boot group."""
     assert "systemd-tpm2" in _luks_dump(vm)
     vm.run(["touch", "/run/rugix/state/marker"], hide=True)
 
@@ -59,28 +61,39 @@ def test_tpm_unlocks_data_across_update(
     )
 
     rugix.assert_boot(default="a", active="b")
-    vm.run(["test", "-e", "/run/rugix/state/marker"], hide=True)
-    source = vm.run(["findmnt", "-no", "SOURCE", "/run/rugix/mounts/data"], hide=True)
-    assert source.stdout.startswith("/dev/mapper/")
+    assert exists(vm, "/run/rugix/state/marker")
+    assert _data_source(vm).startswith("/dev/mapper/")
 
 
 def test_data_wipe_enrolls_new_key(vm: VMHandle) -> None:
-    """``rugix-ctrl data wipe`` recreates the volume and seals its new key."""
+    """``rugix-ctrl data wipe`` recreates the volume and seals its new key,
+    which unlocks the volume on later boots."""
     uuid = _luks_uuid(vm)
     vm.run(["touch", "/run/rugix/state/marker"], hide=True)
 
     vm.run_disconnecting(["rugix-ctrl", "data", "wipe", "--yes"])
     vm.wait_for_reboot()
 
-    assert not vm.run(
-        ["test", "-e", "/run/rugix/state/marker"], check=False, hide=True
-    ).ok
-    assert _luks_uuid(vm) != uuid
+    assert not exists(vm, "/run/rugix/state/marker")
+    new_uuid = _luks_uuid(vm)
+    assert new_uuid != uuid
     assert "systemd-tpm2" in _luks_dump(vm)
+
+    vm.run(["touch", "/run/rugix/state/marker"], hide=True)
+    vm.reboot()
+    assert _luks_uuid(vm) == new_uuid
+    assert exists(vm, "/run/rugix/state/marker")
+    assert _data_source(vm).startswith("/dev/mapper/")
 
 
 def _luks_dump(vm: VMHandle) -> str:
     return vm.run(["cryptsetup", "luksDump", DATA_PARTITION], hide=True).stdout
+
+
+def _data_source(vm: VMHandle) -> str:
+    return vm.run(
+        ["findmnt", "-no", "SOURCE", "/run/rugix/mounts/data"], hide=True
+    ).stdout.strip()
 
 
 def _luks_uuid(vm: VMHandle) -> str:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple HTTP-like server that writes a marker file and stays running.
+# Workload of the hello-binary app. Writes a marker file and stays running.
 set -euo pipefail
 
 MARKER="${DATA_DIR}/running"

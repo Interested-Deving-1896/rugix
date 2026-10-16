@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from rugix_testkit import Bundler, VMHandle
 
-from support import wait_for_app_state
+from support import app_info, apps, install_app, wait_for_app_state
 
 APP_NAME = "hello-config"
 
@@ -51,8 +51,7 @@ def _pack(
 ) -> Path:
     output = rugix_project / "apps" / "build" / f"generic-config_{label}_amd64.rugixb"
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists():
-        output.unlink()
+    output.unlink(missing_ok=True)
     bundler.apps_pack(
         "generic",
         [
@@ -101,6 +100,8 @@ def test_apps_configuration(
     app_bundle_v2: Path,
     bundle_url: Callable[[Path], str],
 ) -> None:
+    """Configuration documents follow the app through installation,
+    activation, and rollback of its generations."""
     _install(vm, bundle_url(app_bundle_v1))
 
     # Without a device-specific document, the bundled default applies.
@@ -138,6 +139,7 @@ def test_apps_configuration(
         hide=True,
     )
     assert not result.ok
+    assert "does not match its schema" in result.stderr
     assert _generation(vm) == 1
     assert _configuration_revision(vm) == 1
     assert _applied_config(vm) == DEVICE_CONFIG
@@ -180,11 +182,7 @@ def test_apps_configuration(
 
 
 def _install(vm: VMHandle, url: str) -> None:
-    vm.run(
-        ["rugix-ctrl", "apps", "install", "--insecure-skip-bundle-verification", url],
-        timeout=300,
-        hide=True,
-    )
+    install_app(vm, url)
     wait_for_app_state(vm, APP_NAME, "running")
 
 
@@ -203,15 +201,15 @@ def _config_get(vm: VMHandle) -> Any:
 
 
 def _info(vm: VMHandle) -> Any:
-    return vm.run_json(["rugix-ctrl", "apps", "info", APP_NAME])
+    return app_info(vm, APP_NAME)
 
 
 def _generation(vm: VMHandle) -> Any:
-    return vm.run_json(["rugix-ctrl", "apps", "list"])[APP_NAME].get("generation")
+    return apps(vm)[APP_NAME].get("generation")
 
 
 def _status(vm: VMHandle) -> Any:
-    return vm.run_json(["rugix-ctrl", "apps", "list"])[APP_NAME]["status"]["state"]
+    return apps(vm)[APP_NAME]["status"]["state"]
 
 
 def _configuration_revision(vm: VMHandle) -> Any:
@@ -223,7 +221,7 @@ def _desired_configuration_revision(vm: VMHandle) -> Any:
 
 
 def _orchestrator(vm: VMHandle) -> Any:
-    return vm.run_json(["rugix-ctrl", "apps", "list"])[APP_NAME].get("orchestrator")
+    return apps(vm)[APP_NAME].get("orchestrator")
 
 
 def _applied_config(vm: VMHandle) -> Any:

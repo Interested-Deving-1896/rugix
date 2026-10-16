@@ -77,6 +77,7 @@ def test_apps_docker_compose(
     store = vm.run_json(["rugix-ctrl", "store", "info"])
     stored, referenced = store["storedSize"], store["referencedSize"]
     assert store["refs"] == len(images)
+    # The store keeps the content in compressed chunks.
     assert (
         isinstance(stored, int) and isinstance(referenced, int) and stored < referenced
     )

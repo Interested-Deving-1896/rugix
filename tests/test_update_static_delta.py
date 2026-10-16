@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from rugix_testkit import BakeryBuilder, Bundler, RugixCtrl, VMHandle
 
-from support import UPDATE_PAGE, web_page
+from support import UPDATE_PAGE, exists, web_page
 
 TARGET_INDEX = (
     "/run/rugix/mounts/data/rugix/slots/system-a/casync-64_sha512-256.rugix-block-index"
@@ -36,14 +36,21 @@ def test_static_delta_installs_target_system(
     delta_bundle: Path,
     bundle_url: Callable[[Path], str],
 ) -> None:
-    """The delta reconstructs the target system from the installed source.
-    Static deltas do not provide the block index of the target slot."""
+    """The delta reconstructs the target system from the installed source and
+    discards the stale block index of the overwritten slot."""
     rugix.install_and_reboot(bundle_url(bakery.bake_bundle("customized-amd64")))
     rugix.system_commit()
     rugix.assert_boot(default="b", active="b")
+    vm.run(
+        ["rugix-ctrl", "slots", "create-index", "system-a", "casync-64", "sha512-256"],
+        hide=True,
+    )
+    assert exists(vm, TARGET_INDEX)
 
     rugix.install_and_reboot(bundle_url(delta_bundle))
 
     rugix.assert_boot(default="b", active="a")
     assert UPDATE_PAGE in web_page(vm)
-    vm.run(["test", "!", "-e", TARGET_INDEX], hide=True)
+    # The index described the previous contents of the slot and static deltas
+    # do not deliver a new one.
+    assert not exists(vm, TARGET_INDEX)
