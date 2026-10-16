@@ -16,11 +16,6 @@ layer = "customized-slots"
 architecture = "amd64"
 target = "generic-grub-efi"
 
-[systems.customized-temp-overlay]
-layer = "customized-temp-overlay"
-architecture = "amd64"
-target = "generic-grub-efi"
-
 [systems.customized-overlay-fallback]
 layer = "customized-overlay-fallback"
 architecture = "amd64"
@@ -33,6 +28,11 @@ target = "generic-grub-efi"
 
 [systems.customized-amd64-luks2-tpm2]
 layer = "customized-luks2-tpm2"
+architecture = "amd64"
+target = "generic-grub-efi"
+
+[systems.customized-amd64-apps]
+layer = "customized-efi-apps"
 architecture = "amd64"
 target = "generic-grub-efi"
 

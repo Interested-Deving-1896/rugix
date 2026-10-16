@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-curl -fsSL https://test.docker.com -o /tmp/install-docker.sh
+curl -fsSL https://get.docker.com -o /tmp/install-docker.sh
 sh /tmp/install-docker.sh
 
 mkdir -p /etc/rugix/state

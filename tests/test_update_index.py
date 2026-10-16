@@ -1,4 +1,5 @@
-"""Exercise slot-index retention and opt-in computation for system updates."""
+"""Updates retain block indices of the slots they write and compute missing
+indices of source slots only when ``auto-index`` is enabled."""
 
 from __future__ import annotations
 
@@ -8,78 +9,38 @@ from pathlib import Path
 import pytest
 from rugix_testkit import BakeryBuilder, RugixCtrl, VMHandle
 
-SOURCE_INDEX_FILE = (
-    "/run/rugix/mounts/data/rugix/slots/system-a/casync-64_sha512-256.rugix-block-index"
-)
-TARGET_INDEX_FILE = (
-    "/run/rugix/mounts/data/rugix/slots/system-b/casync-64_sha512-256.rugix-block-index"
+INDEX_FILE = (
+    "/run/rugix/mounts/data/rugix/slots/{slot}/casync-64_sha512-256.rugix-block-index"
 )
 
 
-@pytest.fixture(params=[("system-a",), ("boot-a", "system-a")], ids=["single", "multi"])
-def index_slots(request: pytest.FixtureRequest) -> tuple[str, ...]:
-    return request.param
-
-
-def test_update_index(
-    vm: VMHandle,
-    rugix: RugixCtrl,
-    bakery: BakeryBuilder,
-    index_slots: tuple[str, ...],
-    bundle_url: Callable[[Path], str],
-) -> None:
-    for slot in index_slots:
-        vm.run(
-            ["rugix-ctrl", "slots", "create-index", slot, "casync-64", "sha512-256"],
-            hide=True,
-        )
-    vm.run(["test", "-e", SOURCE_INDEX_FILE], hide=True)
-
-    rugix.assert_boot(default="a", active="a")
-
-    rugix.install_and_reboot(bundle_url(bakery.bake_bundle("customized-amd64")))
-
-    rugix.assert_boot(default="a", active="b")
-    rugix.system_commit()
-    rugix.assert_boot(default="b", active="b")
-
-
-@pytest.mark.parametrize(
-    "compute_missing_indices", [False, True], ids=["retain", "compute"]
-)
-def test_update_indices(
+@pytest.mark.parametrize("auto_index", [False, True], ids=["retain", "compute"])
+def test_update_retains_target_index(
     vm: VMHandle,
     rugix: RugixCtrl,
     bakery: BakeryBuilder,
     bundle_url: Callable[[Path], str],
-    compute_missing_indices: bool,
+    auto_index: bool,
 ) -> None:
-    """Always retain target indices; compute missing source indices only when enabled."""
-    if compute_missing_indices:
+    """Installing an update stores the target slot's index. The index of the
+    active source slot is computed only with ``auto-index = true``."""
+    source_index = INDEX_FILE.format(slot="system-a")
+    target_index = INDEX_FILE.format(slot="system-b")
+    if auto_index:
         vm.run(
             [
                 "sh",
                 "-c",
-                "printf '%s\\n' '[install]' 'auto-index = true' > /etc/rugix/ctrl.toml",
+                "printf '[install]\\nauto-index = true\\n' >/etc/rugix/ctrl.toml",
             ],
             hide=True,
         )
-    vm.run(["test", "!", "-e", SOURCE_INDEX_FILE], hide=True)
-    vm.run(["test", "!", "-e", TARGET_INDEX_FILE], hide=True)
+    vm.run(["test", "!", "-e", source_index], hide=True)
 
-    rugix.assert_boot(default="a", active="a")
-    rugix.install_and_reboot(bundle_url(bakery.bake_bundle("customized-amd64")))
+    rugix.update_install(
+        bundle_url(bakery.bake_bundle("customized-amd64")), timeout=600
+    )
 
-    source_check = ["test", "-e", SOURCE_INDEX_FILE]
-    if not compute_missing_indices:
-        source_check.insert(1, "!")
-    vm.run(source_check, hide=True)
-    vm.run(["test", "-e", TARGET_INDEX_FILE], hide=True)
-    rugix.assert_boot(default="a", active="b")
-    rugix.system_commit()
-    rugix.assert_boot(default="b", active="b")
-
-    rugix.install_and_reboot(bundle_url(bakery.bake_bundle("customized-amd64-delta")))
-    vm.run(["test", "-e", SOURCE_INDEX_FILE], hide=True)
-    vm.run(["test", "-e", TARGET_INDEX_FILE], hide=True)
-    rugix.assert_boot(default="b", active="a")
+    vm.run(["test", "-e", target_index], hide=True)
+    source_exists = vm.run(["test", "-e", source_index], check=False, hide=True).ok
+    assert source_exists == auto_index

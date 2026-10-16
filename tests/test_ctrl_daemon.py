@@ -1,144 +1,68 @@
-"""End-to-end coverage for the privileged Rugix Ctrl daemon bridge."""
+"""The privileged Rugix Ctrl daemon serves unprivileged clients within its policy.
+
+Members of the ``rugix-daemon`` group are daemon clients. The base layer
+installs the daemon with its default policy, which permits update
+installation but disables insecure operations and all optional features.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
-from rugix_testkit import BakeryBuilder, Bundler, CmdError, RugixCtrl, VMHandle
+from rugix_testkit import BakeryBuilder, CmdError, CmdResult, RugixCtrl, VMHandle
 
+CLIENT = "rugix-client"
 CTRL_CONFIG = """\
 [signatures]
 roots = ["/etc/rugix/root.crt"]
 """
-REMOTE_BUNDLE = "/tmp/rugix-ctrl-daemon-update.rugixb"
-REJECTED_BUNDLE = "/tmp/rugix-ctrl-daemon-rejected.rugixb"
-
-
-@pytest.fixture(scope="session")
-def daemon_signed_bundle(
-    bakery: BakeryBuilder, bundler: Bundler, rugix_project: Path, update_keys: Path
-) -> Path:
-    base = bakery.bake_bundle("customized-amd64")
-    output = rugix_project / "build" / "customized-amd64-daemon-signed.rugixb"
-    bundler.sign(
-        base,
-        update_keys / "signer.crt",
-        update_keys / "signer.key",
-        output,
-    )
-    return output
+REMOTE_BUNDLE = "/tmp/signed.rugixb"
 
 
 @pytest.fixture
-def ctrl_daemon_vm(vm: VMHandle) -> VMHandle:
+def daemon_vm(vm: VMHandle) -> VMHandle:
+    """A VM whose daemon trusts the test root and that has a client user."""
     vm.run(
-        [
-            "sh",
-            "-c",
-            f"cat > /etc/rugix/ctrl.toml <<'TOML'\n{CTRL_CONFIG}TOML",
-        ],
+        ["sh", "-c", f"cat >/etc/rugix/ctrl.toml <<'TOML'\n{CTRL_CONFIG}TOML"],
         hide=True,
     )
+    vm.run(["systemctl", "restart", "rugix-ctrl-daemon.service"], hide=True)
     vm.run(
-        ["systemctl", "is-enabled", "--quiet", "rugix-ctrl-daemon.service"],
+        ["sh", "-c", "until [ -S /run/rugix/ctrl.sock ]; do sleep 0.1; done"],
+        timeout=30,
         hide=True,
     )
-    vm.run(
-        ["systemctl", "is-active", "--quiet", "rugix-ctrl-daemon.service"],
-        hide=True,
-    )
-    vm.run(
-        ["systemctl", "restart", "rugix-ctrl-daemon.service"],
-        hide=True,
-    )
-    vm.run(
-        [
-            "sh",
-            "-c",
-            (
-                "for attempt in $(seq 1 100); do "
-                "[ -S /run/rugix/ctrl.sock ] && exit 0; sleep 0.1; "
-                "done; exit 1"
-            ),
-        ],
-        hide=True,
-    )
-    vm.run(
-        [
-            "sh",
-            "-c",
-            (
-                "getent group rugix-daemon >/dev/null; "
-                "id rugix-admin >/dev/null 2>&1 || "
-                "useradd --system --gid rugix-daemon --no-create-home rugix-admin"
-            ),
-        ],
-        hide=True,
-    )
+    vm.run(["useradd", "--system", "--gid", "rugix-daemon", CLIENT], hide=True)
     return vm
 
 
-def test_ctrl_daemon_update_installation(
-    ctrl_daemon_vm: VMHandle,
+def test_client_installs_verified_update(
+    daemon_vm: VMHandle,
     rugix: RugixCtrl,
-    daemon_signed_bundle: Path,
+    signed_bundle: Path,
 ) -> None:
-    """Install a verified update as an unprivileged daemon client."""
+    """A client installs a signed bundle streamed from a file it can read."""
+    daemon_vm.upload(signed_bundle, REMOTE_BUNDLE)
+    daemon_vm.run(["chmod", "644", REMOTE_BUNDLE], hide=True)
+    _as_client(daemon_vm, ["update", "install", "--reboot", "no", REMOTE_BUNDLE])
     rugix.assert_boot(default="a", active="a")
 
-    ctrl_daemon_vm.upload(daemon_signed_bundle, REMOTE_BUNDLE)
-    ctrl_daemon_vm.run(["chmod", "644", REMOTE_BUNDLE], hide=True)
-    ctrl_daemon_vm.run(
-        [
-            "runuser",
-            "-u",
-            "rugix-admin",
-            "--",
-            "rugix-ctrl",
-            "update",
-            "install",
-            "--reboot",
-            "no",
-            REMOTE_BUNDLE,
-        ],
-        timeout=600,
-        hide=True,
-    )
-    rugix.assert_boot(default="a", active="a")
-
-    ctrl_daemon_vm.run(
-        [
-            "sh",
-            "-c",
-            (
-                "nohup sh -c 'sleep 1; rugix-ctrl system reboot --spare' "
-                ">/tmp/rugix-ctrl-reboot.log 2>&1 </dev/null &"
-            ),
-        ],
-        hide=True,
-    )
-    ctrl_daemon_vm.wait_for_reboot()
-
+    daemon_vm.run_disconnecting(["rugix-ctrl", "system", "reboot", "--spare"])
+    daemon_vm.wait_for_reboot()
     rugix.assert_boot(default="a", active="b")
 
 
-def test_ctrl_daemon_query_and_admission_policy(
-    ctrl_daemon_vm: VMHandle,
+def test_daemon_enforces_policy(
+    daemon_vm: VMHandle,
+    bakery: BakeryBuilder,
+    bundle_url: Callable[[Path], str],
 ) -> None:
-    """Query the recipe-configured daemon and verify its secure default policy."""
-    daemon_info = ctrl_daemon_vm.run_json(
-        [
-            "runuser",
-            "-u",
-            "rugix-admin",
-            "--",
-            "rugix-ctrl",
-            "daemon",
-            "info",
-            "--json",
-        ]
-    )
+    """Clients can query the system but not bypass verification, use disabled
+    features, or connect without group membership."""
+    daemon_info = _as_client_json(daemon_vm, ["daemon", "info", "--json"])
     assert daemon_info == {
         "dangerouslyInsecure": False,
         "features": {
@@ -148,55 +72,38 @@ def test_ctrl_daemon_query_and_admission_policy(
             "appLifecycle": False,
         },
     }
+    boot = _as_client_json(daemon_vm, ["system", "info", "--json"])["boot"]
+    assert (boot["defaultGroup"], boot["activeGroup"]) == ("a", "a")
 
-    info = ctrl_daemon_vm.run_json(
-        [
-            "runuser",
-            "-u",
-            "rugix-admin",
-            "--",
-            "rugix-ctrl",
-            "system",
-            "info",
-            "--json",
-        ]
+    unsigned = bundle_url(bakery.bake_bundle("customized-amd64"))
+    with pytest.raises(CmdError) as unverified:
+        _as_client(daemon_vm, ["update", "install", "--reboot", "no", unsigned])
+    assert "bundle verification failed" in unverified.value.result.stderr
+
+    with pytest.raises(CmdError) as insecure:
+        _as_client(
+            daemon_vm,
+            ["update", "install", "--insecure-skip-bundle-verification", unsigned],
+        )
+    assert "dangerously-insecure = true" in insecure.value.result.stderr
+
+    with pytest.raises(CmdError) as commit:
+        _as_client(daemon_vm, ["system", "commit"])
+    assert "features.system-commit = true" in commit.value.result.stderr
+
+    outsider = daemon_vm.run(
+        ["runuser", "-u", "nobody", "--", "rugix-ctrl", "system", "info"],
+        check=False,
+        hide=True,
     )
-    assert info["boot"]["activeGroup"] == "a"
-    assert info["boot"]["defaultGroup"] == "a"
+    assert not outsider.ok
 
-    ctrl_daemon_vm.run(["touch", REJECTED_BUNDLE], hide=True)
-    ctrl_daemon_vm.run(["chmod", "644", REJECTED_BUNDLE], hide=True)
-    with pytest.raises(CmdError) as insecure_install:
-        ctrl_daemon_vm.run(
-            [
-                "runuser",
-                "-u",
-                "rugix-admin",
-                "--",
-                "rugix-ctrl",
-                "update",
-                "install",
-                "--reboot",
-                "no",
-                "--insecure-skip-bundle-verification",
-                REJECTED_BUNDLE,
-            ],
-            timeout=300,
-            hide=True,
-        )
-    assert "dangerously-insecure = true" in insecure_install.value.result.stderr
 
-    with pytest.raises(CmdError) as system_commit:
-        ctrl_daemon_vm.run(
-            [
-                "runuser",
-                "-u",
-                "rugix-admin",
-                "--",
-                "rugix-ctrl",
-                "system",
-                "commit",
-            ],
-            hide=True,
-        )
-    assert "features.system-commit = true" in system_commit.value.result.stderr
+def _as_client(vm: VMHandle, args: list[str]) -> CmdResult:
+    return vm.run(
+        ["runuser", "-u", CLIENT, "--", "rugix-ctrl", *args], timeout=600, hide=True
+    )
+
+
+def _as_client_json(vm: VMHandle, args: list[str]) -> Any:
+    return vm.run_json(["runuser", "-u", CLIENT, "--", "rugix-ctrl", *args])

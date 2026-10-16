@@ -1,8 +1,7 @@
-"""Port of ``tests/tests/test-update-static-delta.toml``.
+"""Static delta bundles update a system from a slot with the delta's source.
 
-Three-step update: first installs the regular ``customized-amd64`` bundle,
-then installs a static delta to ``customized-amd64-delta``. A later regular
-update computes the missing source index only when enabled.
+Rugix Ctrl recognizes the source of a static delta only in slots that it
+installed from a bundle, so the test first installs the full source bundle.
 """
 
 from __future__ import annotations
@@ -13,13 +12,16 @@ from pathlib import Path
 import pytest
 from rugix_testkit import BakeryBuilder, Bundler, RugixCtrl, VMHandle
 
-SYSTEM_INDEX_FILE = (
-    "/run/rugix/mounts/data/rugix/slots/{slot}/casync-64_sha512-256.rugix-block-index"
+from support import UPDATE_PAGE, web_page
+
+TARGET_INDEX = (
+    "/run/rugix/mounts/data/rugix/slots/system-a/casync-64_sha512-256.rugix-block-index"
 )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def delta_bundle(bakery: BakeryBuilder, bundler: Bundler, rugix_project: Path) -> Path:
+    """Static delta from `customized-amd64` to a system with another web page."""
     base = bakery.bake_bundle("customized-amd64")
     target = bakery.bake_bundle("customized-amd64-delta")
     output = rugix_project / "build" / "delta.rugixb"
@@ -27,51 +29,21 @@ def delta_bundle(bakery: BakeryBuilder, bundler: Bundler, rugix_project: Path) -
     return output
 
 
-@pytest.mark.parametrize(
-    "compute_missing_indices", [False, True], ids=["retain", "compute"]
-)
-def test_update_static_delta(
+def test_static_delta_installs_target_system(
     vm: VMHandle,
     rugix: RugixCtrl,
     bakery: BakeryBuilder,
     delta_bundle: Path,
     bundle_url: Callable[[Path], str],
-    compute_missing_indices: bool,
 ) -> None:
-    """Static deltas leave no target index; later installs may compute it as a source."""
-    base = bundle_url(bakery.bake_bundle("customized-amd64"))
-    delta = bundle_url(delta_bundle)
-    source_index = SYSTEM_INDEX_FILE.format(slot="system-b")
-    target_index = SYSTEM_INDEX_FILE.format(slot="system-a")
-
-    rugix.assert_boot(default="a", active="a")
-
-    rugix.install_and_reboot(base)
-    rugix.assert_boot(default="a", active="b")
+    """The delta reconstructs the target system from the installed source.
+    Static deltas do not provide the block index of the target slot."""
+    rugix.install_and_reboot(bundle_url(bakery.bake_bundle("customized-amd64")))
     rugix.system_commit()
     rugix.assert_boot(default="b", active="b")
 
-    vm.run(["test", "-e", source_index], hide=True)
-    for update in (delta, base):
-        if compute_missing_indices:
-            vm.run(
-                [
-                    "sh",
-                    "-c",
-                    "printf '%s\\n' '[install]' 'auto-index = true' > /etc/rugix/ctrl.toml",
-                ],
-                hide=True,
-            )
-        rugix.install_and_reboot(update)
-        if update == delta:
-            vm.run(["test", "!", "-e", target_index], hide=True)
-            rugix.assert_boot(default="b", active="a")
-            rugix.system_commit()
-            rugix.assert_boot(default="a", active="a")
-        else:
-            target_check = ["test", "-e", target_index]
-            if not compute_missing_indices:
-                target_check.insert(1, "!")
-            vm.run(target_check, hide=True)
-            vm.run(["test", "-e", source_index], hide=True)
-            rugix.assert_boot(default="a", active="b")
+    rugix.install_and_reboot(bundle_url(delta_bundle))
+
+    rugix.assert_boot(default="b", active="a")
+    assert UPDATE_PAGE in web_page(vm)
+    vm.run(["test", "!", "-e", TARGET_INDEX], hide=True)

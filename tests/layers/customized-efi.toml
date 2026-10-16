@@ -4,4 +4,5 @@ recipes = [
     "install-root-certs",
     "hello-world",
     "xdelta3",
+    "persist-test-dir",
 ]

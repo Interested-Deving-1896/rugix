@@ -1,6 +1,6 @@
 """Device-specific application configuration across app generations.
 
-Boots ``customized-amd64-docker`` and walks the ``hello-config`` app through
+Boots ``customized-amd64-apps`` and walks the ``hello-config`` app through
 the configuration lifecycle: the bundled default applies until the device sets
 its own document, an unchanged document does not restart the workload, a
 generation whose schema no longer accepts the stored document is refused
@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 from rugix_testkit import Bundler, VMHandle
 
+from support import wait_for_app_state
+
 APP_NAME = "hello-config"
 
 DEVICE_CONFIG = {"endpoint": "https://device.example.com"}
@@ -30,12 +32,7 @@ DEVICE_CONFIG_V2_PATH = "/tmp/hello-config-v2.json"
 
 @pytest.fixture
 def boot_system() -> str:
-    return "customized-amd64-docker"
-
-
-@pytest.fixture
-def boot_timeout() -> float:
-    return 600.0
+    return "customized-amd64-apps"
 
 
 @pytest.fixture(scope="session")
@@ -166,7 +163,7 @@ def test_apps_configuration(
         timeout=120,
         hide=True,
     )
-    _wait(vm, 3)
+    wait_for_app_state(vm, APP_NAME, "running")
     assert _generation(vm) == 2
     assert _configuration_revision(vm) == 2
     assert _applied_config(vm) == DEVICE_CONFIG_V2
@@ -175,7 +172,7 @@ def test_apps_configuration(
     # Rollback restores generation 1 together with the revision it ran, rather
     # than the newest revision, which generation 1's schema would reject.
     vm.run(["rugix-ctrl", "apps", "rollback", APP_NAME], timeout=120, hide=True)
-    _wait(vm, 3)
+    wait_for_app_state(vm, APP_NAME, "running")
     assert _generation(vm) == 1
     assert _configuration_revision(vm) == 1
     assert _applied_config(vm) == DEVICE_CONFIG
@@ -188,7 +185,7 @@ def _install(vm: VMHandle, url: str) -> None:
         timeout=300,
         hide=True,
     )
-    _wait(vm, 3)
+    wait_for_app_state(vm, APP_NAME, "running")
 
 
 def _write_json(vm: VMHandle, path: str, document: dict[str, Any]) -> None:
@@ -237,7 +234,3 @@ def _applied_config(vm: VMHandle) -> Any:
 def _workload_pid(vm: VMHandle) -> str:
     path = f"/run/rugix/state/apps/{APP_NAME}/data/pid"
     return vm.run(["cat", path], hide=True).stdout.strip()
-
-
-def _wait(vm: VMHandle, seconds: int) -> None:
-    vm.run(["sleep", str(seconds)], hide=True)

@@ -1,11 +1,8 @@
-"""Port of ``tests/tests/test-apps-docker-compose.toml``.
+"""Docker Compose apps run from images that Rugix Ctrl keeps in its store.
 
-Packs ``apps/docker-compose-website`` via ``bundler apps pack
-docker-compose --pull``, installs into ``customized-amd64-docker``, and
-walks through the install / curl / activate / reboot / remove flow.
-Deactivation and removal must remove the app's Rugix-owned image tags. The
-bundled image is kept in the content-addressed store, so reactivation loads
-it from there.
+Deactivation and removal remove the app's Rugix-owned image tags from Docker.
+The bundled images stay in the content-addressed store, so reactivation loads
+them from there.
 """
 
 from __future__ import annotations
@@ -16,6 +13,8 @@ from pathlib import Path
 
 import pytest
 from rugix_testkit import Bundler, VMHandle
+
+from support import apps, install_app, wait_for_app_state, wait_until
 
 APP_NAME = "website"
 APP_IMAGE_PREFIX = f"localhost/rugix-apps/{APP_NAME}/"
@@ -33,7 +32,7 @@ def boot_timeout() -> float:
     return 600.0
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def website_bundle(bundler: Bundler, rugix_project: Path) -> Path:
     output = rugix_project / "apps" / "build" / "docker-compose-website_amd64.rugixb"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -61,26 +60,13 @@ def test_apps_docker_compose(
     website_bundle: Path,
     bundle_url: Callable[[Path], str],
 ) -> None:
-    vm.run(["docker", "--version"], hide=True)
-    vm.run(["docker", "compose", "version"], hide=True)
-    _assert_no_apps(vm)
+    """Install the app, which serves a web page, and keep its images in the
+    content-addressed store across generations, reboots, and reactivation."""
+    assert apps(vm) == {}
 
-    vm.run(
-        [
-            "rugix-ctrl",
-            "apps",
-            "install",
-            "--insecure-skip-bundle-verification",
-            bundle_url(website_bundle),
-        ],
-        timeout=600,
-        hide=True,
-    )
-    _wait(vm, 5)
-
-    apps = vm.run_json(["rugix-ctrl", "apps", "list"])
-    assert apps[APP_NAME]["status"]["state"] == "running"
-    assert apps[APP_NAME]["generation"] == 1
+    install_app(vm, bundle_url(website_bundle))
+    wait_for_app_state(vm, APP_NAME, "running")
+    assert apps(vm)[APP_NAME]["generation"] == 1
     assert _app_images(vm) != []
 
     files = json.loads(
@@ -96,65 +82,45 @@ def test_apps_docker_compose(
     )
     assert vm.run_json(["rugix-ctrl", "store", "verify"])["problems"] == []
 
-    _wait(vm, 2)
-    body = vm.run(["curl", "-sf", URL], hide=True).stdout
-    assert EXPECTED_BODY in body
+    _wait_until_serving(vm)
 
     vm.run(["rugix-ctrl", "apps", "deactivate", APP_NAME], hide=True)
-    apps = vm.run_json(["rugix-ctrl", "apps", "list"])
-    assert apps[APP_NAME]["status"]["state"] == "stopped"
+    wait_for_app_state(vm, APP_NAME, "stopped")
     assert _app_images(vm) == []
 
     vm.run(["rugix-ctrl", "apps", "activate", APP_NAME, "1"], hide=True)
-    _wait(vm, 3)
-    body = vm.run(["curl", "-sf", URL], hide=True).stdout
-    assert EXPECTED_BODY in body
+    _wait_until_serving(vm)
 
     vm.reboot()
-
-    # Wait for Docker to come back online.
-    vm.run(
-        [
-            "sh",
-            "-c",
-            "for i in $(seq 1 60); do docker info >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1",
-        ],
-        timeout=120,
-        hide=True,
+    wait_until(
+        lambda: vm.run(["docker", "info"], check=False, hide=True).ok,
+        "Docker is running",
+        timeout=300,
     )
-    _wait(vm, 10)
-
-    apps = vm.run_json(["rugix-ctrl", "apps", "list"])
-    assert apps[APP_NAME]["status"]["state"] == "running"
-    body = vm.run(["curl", "-sf", URL], hide=True).stdout
-    assert EXPECTED_BODY in body
+    wait_for_app_state(vm, APP_NAME, "running")
+    _wait_until_serving(vm)
 
     # A second generation with the same images shares all stored content.
-    vm.run(
-        [
-            "rugix-ctrl",
-            "apps",
-            "install",
-            "--insecure-skip-bundle-verification",
-            bundle_url(website_bundle),
-        ],
-        timeout=600,
-        hide=True,
-    )
+    install_app(vm, bundle_url(website_bundle))
+    assert apps(vm)[APP_NAME]["generation"] == 2
+    _wait_until_serving(vm)
     store_after_update = vm.run_json(["rugix-ctrl", "store", "info"])
     assert store_after_update["refs"] == 2 * len(images)
     assert store_after_update["storedSize"] == stored
 
     vm.run(["rugix-ctrl", "apps", "remove", APP_NAME], hide=True)
-    _assert_no_apps(vm)
+    assert apps(vm) == {}
     assert _app_images(vm) == []
     store = vm.run_json(["rugix-ctrl", "store", "info"])
     assert (store["refs"], store["objects"], store["chunks"]) == (0, 0, 0)
 
 
-def _assert_no_apps(vm: VMHandle) -> None:
-    apps = vm.run_json(["rugix-ctrl", "apps", "list"])
-    assert isinstance(apps, dict) and len(apps) == 0
+def _wait_until_serving(vm: VMHandle) -> None:
+    def serving() -> bool:
+        page = vm.run(["curl", "--silent", "--fail", URL], check=False, hide=True)
+        return page.ok and EXPECTED_BODY in page.stdout
+
+    wait_until(serving, f"{APP_NAME} serves its page")
 
 
 def _app_images(vm: VMHandle) -> list[str]:
@@ -162,7 +128,3 @@ def _app_images(vm: VMHandle) -> list[str]:
         ["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"], hide=True
     ).stdout
     return [image for image in output.split() if image.startswith(APP_IMAGE_PREFIX)]
-
-
-def _wait(vm: VMHandle, seconds: int) -> None:
-    vm.run(["sleep", str(seconds)], hide=True)

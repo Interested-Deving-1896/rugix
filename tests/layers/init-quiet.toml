@@ -6,6 +6,7 @@ recipes = [
     "append-grub-kernel-args",
 ]
 
+# Boots the GNU build of Rugix Ctrl, which no other system uses.
 [parameters."core/rugix-ctrl"]
 version = "container"
 use_musl = false
