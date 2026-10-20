@@ -93,7 +93,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: [self-hosted, nixos]
+    runs-on: [self-hosted, si-large]
     permissions:
       contents: read
       packages: read
