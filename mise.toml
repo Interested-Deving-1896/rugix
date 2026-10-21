@@ -88,6 +88,8 @@ description = "Run the QEMU-based system test suite (requires a container runtim
 dir = "tests"
 run = '''
 ./generate-test-keys.sh
+# The archived suite needs the Testkit API from before automatic pytest plugins.
+uv add --raw --no-sync "rugix-testkit @ git+https://github.com/rugix/rugix-testkit.git@5d871530eb0733257815d813dc76b586753dbfc5"
 uv sync --group dev
 ./scripts/run-pytest.sh "$@"
 '''

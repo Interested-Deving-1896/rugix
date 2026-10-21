@@ -7,7 +7,7 @@ Security:
 - Remove `emSign ECC Root CA - G3` from the bundled HTTPS trust roots and reject certificate chains containing the compromised eMudhra intermediate keys (CVE-2026-111943). Update `webpki-roots` to 1.0.10 and `rustls-webpki` to 0.103.16. Upgrade Rugix Ctrl on deployed devices; updating the operating system's CA certificates alone does not update its bundled roots.
 - Update Rustls to 0.23.46 to include its recent TLS security fixes.
 
-HTTPS endpoints whose certificate chains rely on the distrusted CA keys will fail verification after this update. Replace those server certificate chains with certificates from an unaffected CA.
+HTTPS endpoints whose certificate chains depend on the removed `emSign ECC Root CA - G3` root or the compromised intermediate keys will fail verification after this update. Replace those server certificate chains with certificates from an unaffected CA.
 
 ## Version 1.3.0
 
