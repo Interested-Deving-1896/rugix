@@ -149,7 +149,7 @@ pub fn main() -> SystemResult<()> {
                         insecure_skip_bundle_verification: *insecure_skip_bundle_verification,
                         insecure_allow_missing_block_index: *insecure_allow_missing_block_index,
                         skip_compatibility_check: *skip_compatibility_check,
-                        app_configuration: None,
+                        ..BundleInstallOptions::default()
                     },
                 };
                 execute_operation(operation, input)?;
@@ -430,6 +430,8 @@ pub fn main() -> SystemResult<()> {
                 AppsCommand::Install {
                     bundle,
                     config,
+                    origin,
+                    no_activate,
                     insecure_skip_bundle_verification,
                     insecure_allow_missing_block_index,
                     skip_compatibility_check,
@@ -452,6 +454,8 @@ pub fn main() -> SystemResult<()> {
                                 .as_deref()
                                 .map(read_app_configuration)
                                 .transpose()?,
+                            app_origin: origin.clone(),
+                            skip_app_activation: *no_activate,
                         },
                     };
                     execute_operation(operation, input)?;
@@ -747,6 +751,11 @@ fn resolve_cli_bundle_source(
 fn read_explicit_root_certificate(path: Option<&Path>) -> SystemResult<Option<Vec<u8>>> {
     path.map(|path| fs::read(path).whatever("unable to read root certificate"))
         .transpose()
+}
+
+/// Parse the JSON document of `apps install --origin`.
+fn parse_app_origin(value: &str) -> Result<crate::config::apps::AppOrigin, serde_json::Error> {
+    serde_json::from_str(value)
 }
 
 /// Read and parse an application configuration document.
@@ -1350,6 +1359,20 @@ pub enum AppsCommand {
         /// supported for bundles that install a single app.
         #[clap(long = "config")]
         config: Option<PathBuf>,
+        /// JSON document describing where the bundle came from.
+        ///
+        /// Rugix Ctrl records it with the new generation and reports it with `apps
+        /// info` and `apps generations`, so that the tool that installed a
+        /// generation can recognize it later.
+        #[clap(long, value_parser = parse_app_origin)]
+        origin: Option<crate::config::apps::AppOrigin>,
+        /// Install the new generation without activating it.
+        ///
+        /// Activate the generation later with `apps activate`, which also accepts
+        /// `--config`. Garbage collection keeps the generation until it or a newer
+        /// generation is activated.
+        #[clap(long, conflicts_with = "config")]
+        no_activate: bool,
         /// Skip bundle verification (insecure, do not use in production).
         ///
         /// By default, either a valid signature is required or a bundle hash has to be
@@ -1468,6 +1491,9 @@ pub enum AppsCommand {
         app: Option<String>,
         /// Number of previously activated generations to keep (in addition to the
         /// currently active generation, which is always kept).
+        ///
+        /// Generations installed with `--no-activate` that wait for their activation
+        /// are kept as well.
         #[clap(long, default_value_t = 1)]
         keep: usize,
     },
