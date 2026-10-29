@@ -1,5 +1,11 @@
 # Changelog
 
+## Version 1.3.2
+
+- Apply the default block-index requirement to execute payloads before starting their handlers.
+- Use supplied block encodings for block reuse in system and app installations even when `--insecure-allow-missing-block-index` is set. The option only permits missing indices.
+- Update Tokio to 1.53.3.
+
 ## Version 1.3.1
 
 Security:
